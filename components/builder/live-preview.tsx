@@ -226,15 +226,86 @@ export function LivePreview({ files: propFiles }: LivePreviewProps) {
     content = content.replace(/import\s+.*\s+from\s+["']\.\/config\/[^"']+["'];?\s*/g, "")
     
     // Entferne @-Pfad Imports (z.B. @store/, @lib/, @components/, etc.)
-    content = content.replace(/import\s+.*\s+from\s+["']@store\/[^"']+["'];?\s*/g, "")
-    content = content.replace(/import\s+.*\s+from\s+["']@lib\/[^"']+["'];?\s*/g, "")
-    content = content.replace(/import\s+.*\s+from\s+["']@components\/[^"']+["'];?\s*/g, "")
-    content = content.replace(/import\s+.*\s+from\s+["']@hooks\/[^"']+["'];?\s*/g, "")
-    content = content.replace(/import\s+.*\s+from\s+["']@utils\/[^"']+["'];?\s*/g, "")
-    content = content.replace(/import\s+.*\s+from\s+["']@services\/[^"']+["'];?\s*/g, "")
-    content = content.replace(/import\s+.*\s+from\s+["']@types\/[^"']+["'];?\s*/g, "")
-    content = content.replace(/import\s+.*\s+from\s+["']@api\/[^"']+["'];?\s*/g, "")
-    content = content.replace(/import\s+.*\s+from\s+["']@config\/[^"']+["'];?\s*/g, "")
+    // Sammle dabei die importierten Namen um sie später als Placeholder zu definieren
+    const removedImports: string[] = []
+    
+    const extractAndRemoveImport = (regex: RegExp) => {
+      content = content.replace(regex, (match) => {
+        // Extrahiere importierte Namen
+        const importMatch = match.match(/import\s+(?:\{([^}]+)\}|(\w+))\s+from/)
+        if (importMatch) {
+          const names = importMatch[1] || importMatch[2]
+          if (names) {
+            names.split(',').forEach(n => {
+              const name = n.trim().split(' as ').pop()?.trim()
+              if (name && /^[A-Z]/.test(name)) { // Nur Komponenten (beginnen mit Großbuchstabe)
+                removedImports.push(name)
+              }
+            })
+          }
+        }
+        return ""
+      })
+    }
+    
+    extractAndRemoveImport(/import\s+.*\s+from\s+["']@store\/[^"']+["'];?\s*/g)
+    extractAndRemoveImport(/import\s+.*\s+from\s+["']@lib\/[^"']+["'];?\s*/g)
+    extractAndRemoveImport(/import\s+.*\s+from\s+["']@components\/[^"']+["'];?\s*/g)
+    extractAndRemoveImport(/import\s+.*\s+from\s+["']@hooks\/[^"']+["'];?\s*/g)
+    extractAndRemoveImport(/import\s+.*\s+from\s+["']@utils\/[^"']+["'];?\s*/g)
+    extractAndRemoveImport(/import\s+.*\s+from\s+["']@services\/[^"']+["'];?\s*/g)
+    extractAndRemoveImport(/import\s+.*\s+from\s+["']@types\/[^"']+["'];?\s*/g)
+    extractAndRemoveImport(/import\s+.*\s+from\s+["']@api\/[^"']+["'];?\s*/g)
+    extractAndRemoveImport(/import\s+.*\s+from\s+["']@config\/[^"']+["'];?\s*/g)
+    
+    // Finde verwendete JSX-Komponenten die nicht definiert sind
+    const jsxComponentRegex = /<([A-Z][a-zA-Z0-9]*)\s*[^>]*\/?>/g
+    const usedComponents = new Set<string>()
+    let jsxMatch
+    while ((jsxMatch = jsxComponentRegex.exec(content)) !== null) {
+      usedComponents.add(jsxMatch[1])
+    }
+    
+    // Finde definierte Komponenten/Funktionen
+    const definedFunctions = new Set<string>()
+    const funcDefRegex = /(?:function|const|let|var)\s+([A-Z][a-zA-Z0-9]*)\s*(?:=|[\(\{])/g
+    let funcMatch
+    while ((funcMatch = funcDefRegex.exec(content)) !== null) {
+      definedFunctions.add(funcMatch[1])
+    }
+    
+    // Standard React-Komponenten die nicht definiert werden müssen
+    const builtInComponents = new Set(['Fragment', 'Suspense', 'StrictMode', 'Profiler'])
+    
+    // Finde undefinierte Komponenten
+    const undefinedComponents = [...usedComponents].filter(c => 
+      !definedFunctions.has(c) && 
+      !builtInComponents.has(c) &&
+      !content.includes(`import { ${c}`) &&
+      !content.includes(`import ${c}`) &&
+      !content.includes(`import {${c}`)
+    )
+    
+    // Generiere Placeholder-Komponenten für undefinierte
+    if (undefinedComponents.length > 0) {
+      const placeholders = undefinedComponents.map(name => 
+        `// Auto-generated placeholder for ${name}\nfunction ${name}(props: any) { return <div style={{padding: 10, border: '1px dashed #666', borderRadius: 4, margin: 4}}><span style={{color: '#888'}}>[${name}]</span>{props.children}</div>; }`
+      ).join('\n\n')
+      
+      // Füge Placeholders nach den Imports ein
+      const importEndMatch = content.match(/^(import\s+.*\n)+/m)
+      if (importEndMatch) {
+        const insertPos = importEndMatch.index! + importEndMatch[0].length
+        content = content.slice(0, insertPos) + '\n' + placeholders + '\n\n' + content.slice(insertPos)
+      } else {
+        // Keine Imports gefunden, füge am Anfang ein
+        content = placeholders + '\n\n' + content
+      }
+    }
+    
+    // Ersetze Hook-Aufrufe von entfernten Stores durch leere Objekte
+    content = content.replace(/const\s+\{[^}]+\}\s*=\s*use\w+Store\(\)/g, 'const {} = {}')
+    content = content.replace(/use\w+Store\(\)/g, '(() => ({}))()')
     
     // Finde CSS-Dateien
     const cssFile = files.find(f => f.path.endsWith(".css"))
