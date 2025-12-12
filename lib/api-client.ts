@@ -34,34 +34,63 @@ export async function sendChatRequest(options: ChatOptions): Promise<ChatRespons
     throw new Error("Kein Model angegeben.")
   }
   
-  console.log("[API Client] Sende Anfrage:", {
-    model: options.model,
-    provider: options.provider,
-    messageCount: options.messages.length,
-    hasApiKey: !!options.apiKey,
-  })
+  const MAX_RETRIES = 3
+  const RETRY_DELAY_BASE = 2000 // 2 Sekunden Basis-Delay
+  
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    console.log("[API Client] Sende Anfrage:", {
+      model: options.model,
+      provider: options.provider,
+      messageCount: options.messages.length,
+      hasApiKey: !!options.apiKey,
+      attempt,
+    })
 
-  const response = await fetch("/api/chat", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(options),
-  })
-
-  if (!response.ok) {
-    let errorMessage = `API Fehler: ${response.status}`
     try {
-      const error = await response.json()
-      errorMessage = error.error || errorMessage
-      console.error("[API Client] Fehler:", error)
-    } catch {
-      console.error("[API Client] Konnte Fehler nicht parsen:", response.statusText)
-    }
-    throw new Error(errorMessage)
-  }
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(options),
+      })
 
-  return response.json()
+      if (!response.ok) {
+        let errorMessage = `API Fehler: ${response.status}`
+        try {
+          const error = await response.json()
+          errorMessage = error.error || errorMessage
+          console.error("[API Client] Fehler:", error)
+        } catch {
+          console.error("[API Client] Konnte Fehler nicht parsen:", response.statusText)
+        }
+        
+        // Retry bei 502, 503, 504 (Gateway-Fehler) oder 429 (Rate Limit)
+        const retryableStatuses = [502, 503, 504, 429]
+        if (retryableStatuses.includes(response.status) && attempt < MAX_RETRIES) {
+          const delay = RETRY_DELAY_BASE * Math.pow(2, attempt - 1) // Exponential backoff
+          console.log(`[API Client] Retry ${attempt}/${MAX_RETRIES} nach ${delay}ms...`)
+          await new Promise(resolve => setTimeout(resolve, delay))
+          continue
+        }
+        
+        throw new Error(errorMessage)
+      }
+
+      return response.json()
+    } catch (error) {
+      // Bei Netzwerkfehlern auch retry
+      if (error instanceof TypeError && error.message.includes('fetch') && attempt < MAX_RETRIES) {
+        const delay = RETRY_DELAY_BASE * Math.pow(2, attempt - 1)
+        console.log(`[API Client] Netzwerkfehler, Retry ${attempt}/${MAX_RETRIES} nach ${delay}ms...`)
+        await new Promise(resolve => setTimeout(resolve, delay))
+        continue
+      }
+      throw error
+    }
+  }
+  
+  throw new Error("Maximale Anzahl an Versuchen erreicht")
 }
 
 // Hilfsfunktion um Provider aus Model-Name zu ermitteln
