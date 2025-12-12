@@ -5,12 +5,13 @@ import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
-import { Copy, Check, Code, FileText, Terminal, ChevronRight, File, Folder, Download, Trash2, Play, Edit3, Lightbulb } from "lucide-react"
+import { Copy, Check, Code, FileText, Terminal, ChevronRight, File, Folder, Download, Trash2, Play, Edit3, Lightbulb, Box } from "lucide-react"
 import type { ProjectFile } from "@/lib/types"
 import { useAgentStore } from "@/lib/agent-store"
 import { LivePreview } from "./live-preview"
 import { CodeEditor } from "./code-editor"
 import { SuggestionPanel } from "./suggestion-panel"
+import { WebContainerPreview } from "./webcontainer-preview"
 
 interface BuilderOutputProps {
   files: ProjectFile[]
@@ -68,7 +69,11 @@ export function BuilderOutput({ files }: BuilderOutputProps) {
           <TabsList className="h-12 bg-transparent">
             <TabsTrigger value="preview" className="gap-2">
               <Play className="h-4 w-4" />
-              Live Preview
+              Sandpack
+            </TabsTrigger>
+            <TabsTrigger value="webcontainer" className="gap-2">
+              <Box className="h-4 w-4" />
+              WebContainer
             </TabsTrigger>
             <TabsTrigger value="editor" className="gap-2">
               <Edit3 className="h-4 w-4" />
@@ -111,9 +116,14 @@ export function BuilderOutput({ files }: BuilderOutputProps) {
           </Button>
         </div>
 
-        {/* Live Preview Tab */}
+        {/* Sandpack Preview Tab */}
         <TabsContent value="preview" className="mt-0 flex-1 overflow-hidden">
           <LivePreview files={files} />
+        </TabsContent>
+
+        {/* WebContainer Preview Tab */}
+        <TabsContent value="webcontainer" className="mt-0 flex-1 overflow-hidden">
+          <WebContainerPreview files={files} />
         </TabsContent>
 
         {/* Monaco Editor Tab */}
