@@ -76,7 +76,7 @@ export function getProviderFromModel(model: string): "openai" | "anthropic" | "o
   return "openai"
 }
 
-// OpenRouter Modelle
+// OpenRouter Modelle - aktuelle Model-IDs (Stand Dezember 2024)
 export const openRouterModels = [
   { id: "openrouter/auto", name: "Auto (Best for prompt)", provider: "openrouter" as const },
   { id: "anthropic/claude-3.5-sonnet", name: "Claude 3.5 Sonnet (OR)", provider: "openrouter" as const },
@@ -92,6 +92,18 @@ export const openRouterModels = [
   { id: "deepseek/deepseek-chat", name: "DeepSeek Chat (OR)", provider: "openrouter" as const },
   { id: "qwen/qwen-2.5-72b-instruct", name: "Qwen 2.5 72B (OR)", provider: "openrouter" as const },
 ]
+
+// Mapping für Model-IDs die angepasst werden müssen
+export function normalizeModelId(model: string): string {
+  // OpenRouter Model-ID Korrekturen
+  const modelMappings: Record<string, string> = {
+    "google/gemini-pro-1.5": "google/gemini-pro-1.5",
+    "google/gemini-flash-1.5": "google/gemini-flash-1.5", 
+    "meta-llama/llama-3.1-405b-instruct": "meta-llama/llama-3.1-405b-instruct",
+    "meta-llama/llama-3.1-70b-instruct": "meta-llama/llama-3.1-70b-instruct",
+  }
+  return modelMappings[model] || model
+}
 
 // Verfügbare Modelle (OpenAI & Anthropic direkt)
 export const availableModels = [

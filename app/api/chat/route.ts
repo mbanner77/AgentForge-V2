@@ -86,6 +86,10 @@ export async function POST(request: NextRequest) {
       })
     } else if (provider === "openrouter") {
       // OpenRouter API - kompatibel mit OpenAI Format
+      console.log("[OpenRouter] Sende Anfrage an Model:", model)
+      console.log("[OpenRouter] Messages count:", messages.length)
+      console.log("[OpenRouter] Max tokens:", maxTokens)
+      
       const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
         headers: {
@@ -102,18 +106,47 @@ export async function POST(request: NextRequest) {
         }),
       })
 
+      console.log("[OpenRouter] Response status:", response.status)
+
       if (!response.ok) {
-        const error = await response.text()
-        console.error("OpenRouter API Error:", error)
+        const errorText = await response.text()
+        console.error("[OpenRouter] API Error:", errorText)
+        
+        // Parse error for better message
+        let errorMessage = `OpenRouter API Fehler: ${response.status}`
+        try {
+          const errorJson = JSON.parse(errorText)
+          if (errorJson.error?.message) {
+            errorMessage = `OpenRouter: ${errorJson.error.message}`
+          }
+        } catch {
+          // Use raw error text if not JSON
+          if (errorText.length < 200) {
+            errorMessage = `OpenRouter: ${errorText}`
+          }
+        }
+        
         return NextResponse.json(
-          { error: `OpenRouter API Fehler: ${response.status}` },
+          { error: errorMessage },
           { status: response.status }
         )
       }
 
       const data = await response.json()
+      console.log("[OpenRouter] Response received, choices:", data.choices?.length)
+      
+      // Check for empty response
+      const content = data.choices?.[0]?.message?.content
+      if (!content) {
+        console.error("[OpenRouter] Empty response:", JSON.stringify(data))
+        return NextResponse.json(
+          { error: "OpenRouter hat keine Antwort zurückgegeben. Bitte versuche es erneut oder wähle ein anderes Modell." },
+          { status: 500 }
+        )
+      }
+      
       return NextResponse.json({
-        content: data.choices[0]?.message?.content || "",
+        content: content,
         usage: {
           promptTokens: data.usage?.prompt_tokens || 0,
           completionTokens: data.usage?.completion_tokens || 0,
