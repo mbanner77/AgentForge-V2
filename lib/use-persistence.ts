@@ -18,7 +18,9 @@ export function usePersistence() {
     updateGlobalConfig,
     loadProject,
     getFiles,
-    messages
+    messages,
+    setGeneratedFiles,
+    setMessages
   } = useAgentStore()
 
   // Lade Einstellungen beim Start
@@ -132,6 +134,21 @@ export function usePersistence() {
           })
         })
       }
+
+      // Speichere Chat-Verlauf
+      if (messages.length > 0) {
+        await fetch(`/api/projects/${currentProject.id}/messages`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            messages: messages.map(m => ({
+              role: m.role,
+              content: m.content,
+              agent: m.agent || null
+            }))
+          })
+        })
+      }
     } catch (error) {
       const msg = error instanceof Error ? error.message : "Unbekannter Fehler"
       setLastSyncError(msg)
@@ -139,7 +156,7 @@ export function usePersistence() {
     } finally {
       setIsSyncing(false)
     }
-  }, [currentProject, getFiles])
+  }, [currentProject, getFiles, messages])
 
   // Erstelle neues Projekt auf dem Server
   const createServerProject = useCallback(async (name: string, description?: string) => {
@@ -175,6 +192,51 @@ export function usePersistence() {
       console.error("Error deleting project:", error)
     }
   }, [])
+
+  // Lade Projekt vom Server und setze Daten in den Store
+  const loadServerProject = useCallback(async (projectId: string) => {
+    try {
+      const response = await fetch(`/api/projects/${projectId}`)
+      if (response.ok) {
+        const data = await response.json()
+        if (data.project) {
+          // Lade Dateien in den Store
+          if (data.project.files && data.project.files.length > 0) {
+            const files = data.project.files.map((f: { id: string; path: string; content: string; language: string; status?: string }) => ({
+              id: f.id,
+              path: f.path,
+              content: f.content,
+              language: f.language,
+              status: f.status || "generated",
+              createdAt: new Date(),
+              modifiedAt: new Date()
+            }))
+            setGeneratedFiles(files)
+          }
+          
+          // Lade Messages in den Store
+          if (data.project.messages && data.project.messages.length > 0) {
+            const messages = data.project.messages.map((m: { id: string; role: string; content: string; agent?: string; createdAt: string }) => ({
+              id: m.id,
+              role: m.role as "user" | "assistant" | "system",
+              content: m.content,
+              agent: m.agent || undefined,
+              timestamp: new Date(m.createdAt)
+            }))
+            setMessages(messages)
+          }
+          
+          // Lade Projekt in den lokalen Store
+          loadProject(projectId)
+          
+          return data.project
+        }
+      }
+    } catch (error) {
+      console.error("Error loading project from server:", error)
+    }
+    return null
+  }, [loadProject, setGeneratedFiles, setMessages])
 
   // Initialisierung
   useEffect(() => {
@@ -217,6 +279,7 @@ export function usePersistence() {
     saveCurrentProject,
     createServerProject,
     deleteServerProject,
-    loadProjects
+    loadProjects,
+    loadServerProject
   }
 }

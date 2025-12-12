@@ -42,6 +42,7 @@ import { marketplaceAgents } from "@/lib/marketplace-agents"
 import { mcpServers, getMcpServerById } from "@/lib/mcp-servers"
 import { Input } from "@/components/ui/input"
 import { useAgentStore } from "@/lib/agent-store"
+import { usePersistence } from "@/lib/use-persistence"
 import type { AgentType } from "@/lib/types"
 import { Checkbox } from "@/components/ui/checkbox"
 
@@ -111,6 +112,8 @@ export function BuilderSidebar({ onClose }: BuilderSidebarProps) {
     updateCustomAgentConfig,
     installedMcpServers,
   } = useAgentStore()
+
+  const { loadServerProject } = usePersistence()
 
   const handleExportConfig = () => {
     const config = exportConfig()
@@ -761,7 +764,7 @@ export function BuilderSidebar({ onClose }: BuilderSidebarProps) {
                   >
                     <button
                       className="flex flex-1 flex-col items-start gap-1 text-left"
-                      onClick={() => loadProject(project.id)}
+                      onClick={() => loadServerProject(project.id)}
                     >
                       <div className="flex items-center gap-2">
                         <FolderOpen className="h-4 w-4" />

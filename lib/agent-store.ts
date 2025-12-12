@@ -466,6 +466,7 @@ interface AgentStore {
 
   // Message Actions
   addMessage: (message: Omit<Message, "id" | "timestamp">) => void
+  setMessages: (messages: Message[]) => void
   clearMessages: () => void
 
   // Workflow Actions
@@ -488,6 +489,7 @@ interface AgentStore {
   updateFileByPath: (path: string, content: string, language?: string) => void
   deleteFile: (fileId: string) => void
   getFiles: () => ProjectFile[]
+  setGeneratedFiles: (files: ProjectFile[]) => void
   clearFiles: () => void
 
   // Suggestion Actions (Human-in-the-Loop)
@@ -653,8 +655,10 @@ export const useAgentStore = create<AgentStore>()(
         if (project) {
           set({
             currentProject: project,
-            messages: project.messages,
+            messages: project.messages || [],
             agentConfigs: project.agentConfigs,
+            generatedFiles: project.files || [],
+            workflowSteps: [],
           })
         }
       },
@@ -689,6 +693,8 @@ export const useAgentStore = create<AgentStore>()(
         set((state) => ({
           messages: [...state.messages, { ...message, id: crypto.randomUUID(), timestamp: new Date() }],
         })),
+
+      setMessages: (messages) => set({ messages }),
 
       clearMessages: () => set({ messages: [] }),
 
@@ -833,6 +839,14 @@ export const useAgentStore = create<AgentStore>()(
 
       // Gibt generatedFiles zurück (projektunabhängig)
       getFiles: () => get().generatedFiles,
+
+      setGeneratedFiles: (files) =>
+        set((state) => ({
+          generatedFiles: files,
+          currentProject: state.currentProject
+            ? { ...state.currentProject, files }
+            : null,
+        })),
 
       clearFiles: () =>
         set((state) => ({
