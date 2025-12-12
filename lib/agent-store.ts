@@ -676,7 +676,22 @@ export const useAgentStore = create<AgentStore>()(
       // Bei gleichem Pfad wird die Datei aktualisiert (upsert)
       addFile: (file) =>
         set((state) => {
-          const existingFileIndex = state.generatedFiles.findIndex(f => f.path === file.path)
+          // Normalisiere Pfad für Vergleich (entferne führende Slashes, src/, etc.)
+          const normalizePath = (p: string) => {
+            let normalized = p.replace(/^\/+/, "").replace(/^src\//, "")
+            // Extrahiere nur den Dateinamen für App.tsx Vergleich
+            const fileName = normalized.split("/").pop() || normalized
+            // Wenn es App.tsx ist, vergleiche nur den Dateinamen
+            if (fileName === "App.tsx" || fileName === "App.jsx") {
+              return fileName
+            }
+            return normalized
+          }
+          
+          const normalizedNewPath = normalizePath(file.path)
+          const existingFileIndex = state.generatedFiles.findIndex(f => 
+            normalizePath(f.path) === normalizedNewPath
+          )
           
           if (existingFileIndex >= 0) {
             // Datei existiert - aktualisieren
@@ -691,7 +706,7 @@ export const useAgentStore = create<AgentStore>()(
             
             const updatedProjectFiles = state.currentProject 
               ? state.currentProject.files.map(f => 
-                  f.path === file.path 
+                  normalizePath(f.path) === normalizedNewPath 
                     ? { ...f, content: file.content, language: file.language, status: "modified" as const, modifiedAt: new Date() }
                     : f
                 )
