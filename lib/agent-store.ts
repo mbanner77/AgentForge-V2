@@ -910,8 +910,10 @@ export const useAgentStore = create<AgentStore>()(
         if (!suggestion || suggestion.status !== "approved") return
 
         // Wende alle Änderungen an
+        let appliedChanges = 0
         for (const change of suggestion.suggestedChanges) {
           state.updateFileByPath(change.filePath, change.newContent)
+          appliedChanges++
         }
 
         // Markiere als angewendet
@@ -920,6 +922,25 @@ export const useAgentStore = create<AgentStore>()(
             s.id === suggestionId ? { ...s, status: "applied" as const } : s
           ),
         }))
+
+        // Füge Erfolgsmeldung im Chat hinzu
+        const affectedFilesText = suggestion.affectedFiles.length > 0 
+          ? `\n\n**Betroffene Dateien:** ${suggestion.affectedFiles.join(', ')}`
+          : ''
+        const changesText = appliedChanges > 0 
+          ? `\n\n**Änderungen:** ${appliedChanges} Datei(en) aktualisiert`
+          : ''
+        
+        // Unterschiedliche Meldung je nachdem ob Code-Änderungen vorhanden waren
+        const messageContent = appliedChanges > 0
+          ? `✅ **Verbesserungsvorschlag umgesetzt**\n\n**${suggestion.title}**\n\n${suggestion.description}${affectedFilesText}${changesText}\n\n_Der Vorschlag vom ${suggestion.agent}-Agent wurde erfolgreich angewendet._`
+          : `✅ **Verbesserungsvorschlag angenommen**\n\n**${suggestion.title}**\n\n${suggestion.description}\n\n_Der Vorschlag vom ${suggestion.agent}-Agent wurde zur Kenntnis genommen. Für die Umsetzung bitte den Coder-Agent mit einer entsprechenden Anfrage starten._`
+        
+        state.addMessage({
+          role: "assistant",
+          content: messageContent,
+          agent: suggestion.agent as "planner" | "coder" | "reviewer" | "security" | "executor",
+        })
       },
 
       clearSuggestions: () =>
