@@ -344,13 +344,196 @@ input { padding: 10px; border: 1px solid #333; border-radius: 8px; background: #
                   files={getSandpackFiles()}
                   customSetup={{
                     dependencies: {
+                      // Icons
                       "react-icons": "^5.0.0",
                       "lucide-react": "^0.400.0",
+                      "@heroicons/react": "^2.1.0",
+                      "@phosphor-icons/react": "^2.1.0",
+                      
+                      // Animation
                       "framer-motion": "^11.0.0",
+                      "react-spring": "^9.7.0",
+                      "@react-spring/web": "^9.7.0",
+                      "animejs": "^3.2.0",
+                      "gsap": "^3.12.0",
+                      
+                      // Styling & CSS
                       "clsx": "^2.1.0",
                       "tailwind-merge": "^2.2.0",
-                      "@radix-ui/react-slot": "^1.0.0",
                       "class-variance-authority": "^0.7.0",
+                      "styled-components": "^6.1.0",
+                      "@emotion/react": "^11.11.0",
+                      "@emotion/styled": "^11.11.0",
+                      "sass": "^1.70.0",
+                      
+                      // UI Components & Libraries
+                      "@radix-ui/react-slot": "^1.0.0",
+                      "@radix-ui/react-dialog": "^1.0.0",
+                      "@radix-ui/react-dropdown-menu": "^2.0.0",
+                      "@radix-ui/react-tabs": "^1.0.0",
+                      "@radix-ui/react-tooltip": "^1.0.0",
+                      "@radix-ui/react-popover": "^1.0.0",
+                      "@radix-ui/react-select": "^2.0.0",
+                      "@radix-ui/react-checkbox": "^1.0.0",
+                      "@radix-ui/react-switch": "^1.0.0",
+                      "@radix-ui/react-slider": "^1.0.0",
+                      "@radix-ui/react-accordion": "^1.0.0",
+                      "@radix-ui/react-avatar": "^1.0.0",
+                      "@radix-ui/react-progress": "^1.0.0",
+                      "@headlessui/react": "^1.7.0",
+                      "@mui/material": "^5.15.0",
+                      "@mui/icons-material": "^5.15.0",
+                      "antd": "^5.12.0",
+                      "react-bootstrap": "^2.10.0",
+                      "bootstrap": "^5.3.0",
+                      "@chakra-ui/react": "^2.8.0",
+                      
+                      // Forms
+                      "react-hook-form": "^7.49.0",
+                      "formik": "^2.4.0",
+                      "yup": "^1.3.0",
+                      "zod": "^3.22.0",
+                      "@hookform/resolvers": "^3.3.0",
+                      
+                      // State Management
+                      "zustand": "^4.4.0",
+                      "jotai": "^2.6.0",
+                      "recoil": "^0.7.0",
+                      "redux": "^5.0.0",
+                      "react-redux": "^9.0.0",
+                      "@reduxjs/toolkit": "^2.0.0",
+                      "mobx": "^6.12.0",
+                      "mobx-react-lite": "^4.0.0",
+                      
+                      // Data Fetching
+                      "axios": "^1.6.0",
+                      "swr": "^2.2.0",
+                      "@tanstack/react-query": "^5.17.0",
+                      "ky": "^1.2.0",
+                      
+                      // Routing
+                      "react-router-dom": "^6.21.0",
+                      "wouter": "^3.0.0",
+                      
+                      // Date & Time
+                      "date-fns": "^3.0.0",
+                      "dayjs": "^1.11.0",
+                      "moment": "^2.30.0",
+                      "luxon": "^3.4.0",
+                      
+                      // Charts & Visualization
+                      "recharts": "^2.10.0",
+                      "chart.js": "^4.4.0",
+                      "react-chartjs-2": "^5.2.0",
+                      "d3": "^7.8.0",
+                      "victory": "^36.9.0",
+                      "nivo": "^0.84.0",
+                      "@visx/visx": "^3.5.0",
+                      "apexcharts": "^3.45.0",
+                      "react-apexcharts": "^1.4.0",
+                      
+                      // Tables
+                      "@tanstack/react-table": "^8.11.0",
+                      "react-data-grid": "^7.0.0",
+                      
+                      // Drag & Drop
+                      "react-beautiful-dnd": "^13.1.0",
+                      "@dnd-kit/core": "^6.1.0",
+                      "@dnd-kit/sortable": "^8.0.0",
+                      "react-dnd": "^16.0.0",
+                      "react-dnd-html5-backend": "^16.0.0",
+                      
+                      // Carousel & Slider
+                      "swiper": "^11.0.0",
+                      "embla-carousel-react": "^8.0.0",
+                      "react-slick": "^0.29.0",
+                      "slick-carousel": "^1.8.0",
+                      
+                      // Maps
+                      "leaflet": "^1.9.0",
+                      "react-leaflet": "^4.2.0",
+                      "@react-google-maps/api": "^2.19.0",
+                      "mapbox-gl": "^3.0.0",
+                      "react-map-gl": "^7.1.0",
+                      
+                      // Media
+                      "react-player": "^2.14.0",
+                      "react-dropzone": "^14.2.0",
+                      "react-image-crop": "^11.0.0",
+                      "react-webcam": "^7.2.0",
+                      
+                      // Rich Text & Markdown
+                      "react-markdown": "^9.0.0",
+                      "remark-gfm": "^4.0.0",
+                      "@tiptap/react": "^2.1.0",
+                      "@tiptap/starter-kit": "^2.1.0",
+                      "slate": "^0.100.0",
+                      "slate-react": "^0.100.0",
+                      "draft-js": "^0.11.0",
+                      "react-quill": "^2.0.0",
+                      
+                      // Syntax Highlighting
+                      "prismjs": "^1.29.0",
+                      "react-syntax-highlighter": "^15.5.0",
+                      "highlight.js": "^11.9.0",
+                      
+                      // Notifications & Toasts
+                      "react-hot-toast": "^2.4.0",
+                      "react-toastify": "^9.1.0",
+                      "sonner": "^1.3.0",
+                      "notistack": "^3.0.0",
+                      
+                      // Modals & Dialogs
+                      "react-modal": "^3.16.0",
+                      "sweetalert2": "^11.10.0",
+                      "sweetalert2-react-content": "^5.0.0",
+                      
+                      // Utilities
+                      "lodash": "^4.17.0",
+                      "lodash-es": "^4.17.0",
+                      "ramda": "^0.29.0",
+                      "uuid": "^9.0.0",
+                      "nanoid": "^5.0.0",
+                      "immer": "^10.0.0",
+                      "classnames": "^2.5.0",
+                      
+                      // Validation
+                      "validator": "^13.11.0",
+                      "joi": "^17.11.0",
+                      
+                      // Internationalization
+                      "i18next": "^23.7.0",
+                      "react-i18next": "^14.0.0",
+                      "react-intl": "^6.6.0",
+                      
+                      // PDF
+                      "@react-pdf/renderer": "^3.1.0",
+                      "react-pdf": "^7.6.0",
+                      "jspdf": "^2.5.0",
+                      
+                      // QR Code & Barcode
+                      "qrcode.react": "^3.1.0",
+                      "react-qr-code": "^2.0.0",
+                      "jsbarcode": "^3.11.0",
+                      
+                      // Virtualization
+                      "react-window": "^1.8.0",
+                      "react-virtualized": "^9.22.0",
+                      "@tanstack/react-virtual": "^3.0.0",
+                      
+                      // Misc UI
+                      "react-loading-skeleton": "^3.3.0",
+                      "react-spinners": "^0.13.0",
+                      "react-countup": "^6.5.0",
+                      "react-confetti": "^6.1.0",
+                      "lottie-react": "^2.4.0",
+                      "react-lottie": "^1.2.0",
+                      "react-type-animation": "^3.2.0",
+                      "typewriter-effect": "^2.21.0",
+                      "react-copy-to-clipboard": "^5.1.0",
+                      "react-use": "^17.4.0",
+                      "usehooks-ts": "^2.9.0",
+                      "ahooks": "^3.7.0",
                     }
                   }}
                 >
