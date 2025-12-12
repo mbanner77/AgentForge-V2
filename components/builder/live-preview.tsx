@@ -225,6 +225,17 @@ export function LivePreview({ files: propFiles }: LivePreviewProps) {
     content = content.replace(/import\s+.*\s+from\s+["']\.\.\/config\/[^"']+["'];?\s*/g, "")
     content = content.replace(/import\s+.*\s+from\s+["']\.\/config\/[^"']+["'];?\s*/g, "")
     
+    // Entferne @-Pfad Imports (z.B. @store/, @lib/, @components/, etc.)
+    content = content.replace(/import\s+.*\s+from\s+["']@store\/[^"']+["'];?\s*/g, "")
+    content = content.replace(/import\s+.*\s+from\s+["']@lib\/[^"']+["'];?\s*/g, "")
+    content = content.replace(/import\s+.*\s+from\s+["']@components\/[^"']+["'];?\s*/g, "")
+    content = content.replace(/import\s+.*\s+from\s+["']@hooks\/[^"']+["'];?\s*/g, "")
+    content = content.replace(/import\s+.*\s+from\s+["']@utils\/[^"']+["'];?\s*/g, "")
+    content = content.replace(/import\s+.*\s+from\s+["']@services\/[^"']+["'];?\s*/g, "")
+    content = content.replace(/import\s+.*\s+from\s+["']@types\/[^"']+["'];?\s*/g, "")
+    content = content.replace(/import\s+.*\s+from\s+["']@api\/[^"']+["'];?\s*/g, "")
+    content = content.replace(/import\s+.*\s+from\s+["']@config\/[^"']+["'];?\s*/g, "")
+    
     // Finde CSS-Dateien
     const cssFile = files.find(f => f.path.endsWith(".css"))
     const cssContent = cssFile?.content || `* { box-sizing: border-box; margin: 0; padding: 0; }
