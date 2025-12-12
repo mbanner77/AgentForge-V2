@@ -22,6 +22,118 @@ interface ParsedSuggestion {
   newContent: string
 }
 
+// Erstellt eine menschenlesbare Zusammenfassung der Agent-Ausgabe
+function createHumanReadableSummary(
+  agentType: AgentType,
+  content: string,
+  files: ParsedCodeFile[],
+  duration: string
+): string {
+  const agentNames: Record<string, string> = {
+    planner: "Planner",
+    coder: "Coder",
+    reviewer: "Reviewer",
+    security: "Security-Prüfer",
+    executor: "Executor",
+  }
+  
+  const agentName = agentNames[agentType] || agentType
+
+  // Planner Agent
+  if (agentType === "planner") {
+    const steps = (content.match(/^\d+\./gm) || []).length
+    const hasArchitecture = content.toLowerCase().includes("architektur") || content.toLowerCase().includes("struktur")
+    const hasTech = content.toLowerCase().includes("technolog") || content.toLowerCase().includes("react") || content.toLowerCase().includes("next")
+    
+    let summary = `✅ **${agentName} abgeschlossen** (${duration}s)\n\n`
+    summary += `📋 **Was wurde geplant:**\n`
+    if (steps > 0) summary += `- ${steps} Entwicklungsschritte definiert\n`
+    if (hasArchitecture) summary += `- Projektarchitektur festgelegt\n`
+    if (hasTech) summary += `- Technologie-Stack ausgewählt\n`
+    summary += `- Anforderungen analysiert und strukturiert`
+    
+    return summary
+  }
+
+  // Coder Agent
+  if (agentType === "coder") {
+    if (files.length === 0) {
+      return `✅ **${agentName} abgeschlossen** (${duration}s)\n\n📝 Code-Analyse durchgeführt, keine neuen Dateien erstellt.`
+    }
+    
+    const fileTypes = new Set(files.map(f => f.language))
+    const components = files.filter(f => f.path.includes("component") || f.content.includes("export default function") || f.content.includes("export function"))
+    
+    let summary = `✅ **${agentName} abgeschlossen** (${duration}s)\n\n`
+    summary += `📁 **Erstellte Dateien:** ${files.length}\n`
+    files.forEach(f => {
+      const fileName = f.path.split("/").pop()
+      summary += `- \`${fileName}\`\n`
+    })
+    
+    if (components.length > 0) {
+      summary += `\n🧩 **Komponenten:** ${components.length} React-Komponenten erstellt`
+    }
+    
+    return summary
+  }
+
+  // Reviewer Agent
+  if (agentType === "reviewer") {
+    const hasIssues = content.toLowerCase().includes("problem") || content.toLowerCase().includes("fehler") || content.toLowerCase().includes("issue")
+    const hasSuggestions = content.toLowerCase().includes("vorschlag") || content.toLowerCase().includes("empfehl") || content.toLowerCase().includes("verbess")
+    const isApproved = content.toLowerCase().includes("gut") || content.toLowerCase().includes("korrekt") || content.toLowerCase().includes("✓") || content.toLowerCase().includes("approved")
+    
+    let summary = `✅ **${agentName} abgeschlossen** (${duration}s)\n\n`
+    summary += `🔍 **Code-Review Ergebnis:**\n`
+    
+    if (isApproved && !hasIssues) {
+      summary += `- ✓ Code-Qualität: Gut\n`
+      summary += `- ✓ Keine kritischen Probleme gefunden`
+    } else if (hasIssues) {
+      summary += `- ⚠️ Verbesserungspotential identifiziert\n`
+    }
+    
+    if (hasSuggestions) {
+      summary += `\n- 💡 Optimierungsvorschläge erstellt`
+    }
+    
+    return summary
+  }
+
+  // Security Agent
+  if (agentType === "security") {
+    const hasVulnerabilities = content.toLowerCase().includes("vulnerab") || content.toLowerCase().includes("sicherheitslücke") || content.toLowerCase().includes("risiko")
+    const isSecure = content.toLowerCase().includes("sicher") || content.toLowerCase().includes("keine probleme") || content.toLowerCase().includes("✓")
+    
+    let summary = `✅ **${agentName} abgeschlossen** (${duration}s)\n\n`
+    summary += `🔒 **Sicherheitsanalyse:**\n`
+    
+    if (isSecure && !hasVulnerabilities) {
+      summary += `- ✓ Keine Sicherheitslücken gefunden\n`
+      summary += `- ✓ Best Practices eingehalten`
+    } else if (hasVulnerabilities) {
+      summary += `- ⚠️ Sicherheitshinweise erstellt\n`
+      summary += `- Empfehlungen im Detail-Log verfügbar`
+    }
+    
+    return summary
+  }
+
+  // Executor Agent
+  if (agentType === "executor") {
+    let summary = `✅ **${agentName} abgeschlossen** (${duration}s)\n\n`
+    summary += `🚀 **Ausführung:**\n`
+    summary += `- Projekt ist bereit zur Vorschau\n`
+    summary += `- Wechsle zum "Sandbox"-Tab für Live-Preview`
+    
+    return summary
+  }
+
+  // Fallback für unbekannte Agenten
+  return `✅ **${agentName} abgeschlossen** (${duration}s)`
+}
+
 function parseSuggestionsFromResponse(content: string, agent: string, existingFiles: ProjectFile[]): Omit<AgentSuggestion, "id" | "createdAt" | "status">[] {
   const suggestions: Omit<AgentSuggestion, "id" | "createdAt" | "status">[] = []
   
@@ -472,10 +584,11 @@ export function useAgentExecutor() {
               }
             }
 
-            // Füge Agent-Nachricht hinzu
+            // Füge Agent-Nachricht hinzu (menschenlesbare Zusammenfassung)
+            const humanSummary = createHumanReadableSummary(agentType, result.content, result.files, duration)
             addMessage({
               role: "assistant",
-              content: result.content,
+              content: humanSummary,
               agent: agentType,
             })
 

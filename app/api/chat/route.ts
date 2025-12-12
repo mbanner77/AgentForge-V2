@@ -86,9 +86,38 @@ export async function POST(request: NextRequest) {
       })
     } else if (provider === "openrouter") {
       // OpenRouter API - kompatibel mit OpenAI Format
-      console.log("[OpenRouter] Sende Anfrage an Model:", model)
+      // Model-ID Mapping für korrekte OpenRouter IDs
+      const modelMapping: Record<string, string> = {
+        "openrouter/auto": "openrouter/auto",
+        "anthropic/claude-3.5-sonnet": "anthropic/claude-3.5-sonnet",
+        "anthropic/claude-3-opus": "anthropic/claude-3-opus",
+        "openai/gpt-4o": "openai/gpt-4o",
+        "openai/gpt-4o-mini": "openai/gpt-4o-mini",
+        "google/gemini-pro-1.5": "google/gemini-pro-1.5",
+        "google/gemini-flash-1.5": "google/gemini-flash-1.5",
+        "meta-llama/llama-3.1-405b-instruct": "meta-llama/llama-3.1-405b-instruct",
+        "meta-llama/llama-3.1-70b-instruct": "meta-llama/llama-3.1-70b-instruct",
+        "mistralai/mistral-large": "mistralai/mistral-large",
+        "deepseek/deepseek-chat": "deepseek/deepseek-chat",
+        "qwen/qwen-2.5-72b-instruct": "qwen/qwen-2.5-72b-instruct",
+      }
+      
+      const actualModel = modelMapping[model] || model
+      
+      console.log("[OpenRouter] Sende Anfrage an Model:", actualModel)
+      console.log("[OpenRouter] Original Model:", model)
       console.log("[OpenRouter] Messages count:", messages.length)
       console.log("[OpenRouter] Max tokens:", maxTokens)
+      console.log("[OpenRouter] API Key (first 10 chars):", apiKey?.substring(0, 10) + "...")
+      
+      const requestBody = {
+        model: actualModel,
+        messages: messages,
+        temperature: temperature,
+        max_tokens: maxTokens,
+      }
+      
+      console.log("[OpenRouter] Request body:", JSON.stringify(requestBody, null, 2).substring(0, 500))
       
       const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
@@ -98,15 +127,11 @@ export async function POST(request: NextRequest) {
           "HTTP-Referer": "https://agentforge.dev",
           "X-Title": "AgentForge",
         },
-        body: JSON.stringify({
-          model: model,
-          messages: messages,
-          temperature: temperature,
-          max_tokens: maxTokens,
-        }),
+        body: JSON.stringify(requestBody),
       })
 
       console.log("[OpenRouter] Response status:", response.status)
+      console.log("[OpenRouter] Response headers:", Object.fromEntries(response.headers.entries()))
 
       if (!response.ok) {
         const errorText = await response.text()
@@ -118,6 +143,8 @@ export async function POST(request: NextRequest) {
           const errorJson = JSON.parse(errorText)
           if (errorJson.error?.message) {
             errorMessage = `OpenRouter: ${errorJson.error.message}`
+          } else if (errorJson.error?.code) {
+            errorMessage = `OpenRouter: ${errorJson.error.code}`
           }
         } catch {
           // Use raw error text if not JSON
@@ -133,14 +160,32 @@ export async function POST(request: NextRequest) {
       }
 
       const data = await response.json()
+      console.log("[OpenRouter] Full response:", JSON.stringify(data).substring(0, 1000))
       console.log("[OpenRouter] Response received, choices:", data.choices?.length)
       
-      // Check for empty response
+      // Check for empty response with detailed error
       const content = data.choices?.[0]?.message?.content
       if (!content) {
-        console.error("[OpenRouter] Empty response:", JSON.stringify(data))
+        console.error("[OpenRouter] Empty response data:", JSON.stringify(data))
+        
+        // Check for specific error patterns
+        if (data.error) {
+          return NextResponse.json(
+            { error: `OpenRouter Fehler: ${data.error.message || data.error}` },
+            { status: 500 }
+          )
+        }
+        
+        // Check if model requires payment
+        if (data.choices?.[0]?.finish_reason === "length") {
+          return NextResponse.json(
+            { error: "OpenRouter: Antwort wurde abgeschnitten. Erhöhe max_tokens oder verwende ein anderes Modell." },
+            { status: 500 }
+          )
+        }
+        
         return NextResponse.json(
-          { error: "OpenRouter hat keine Antwort zurückgegeben. Bitte versuche es erneut oder wähle ein anderes Modell." },
+          { error: `OpenRouter: Keine Antwort erhalten. Model: ${actualModel}. Prüfe deinen API-Key und ob das Modell verfügbar ist.` },
           { status: 500 }
         )
       }
