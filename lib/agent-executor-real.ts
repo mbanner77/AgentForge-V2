@@ -137,11 +137,14 @@ function createHumanReadableSummary(
 function parseSuggestionsFromResponse(content: string, agent: string, existingFiles: ProjectFile[]): Omit<AgentSuggestion, "id" | "createdAt" | "status">[] {
   const suggestions: Omit<AgentSuggestion, "id" | "createdAt" | "status">[] = []
   
-  // Versuche JSON aus der Antwort zu extrahieren
+  console.log(`[parseSuggestions] Parsing response from ${agent}, length: ${content.length}`)
+  
+  // Methode 1: Versuche JSON aus der Antwort zu extrahieren
   const jsonMatch = content.match(/\{[\s\S]*"suggestedFixes"[\s\S]*\}/m)
   if (jsonMatch) {
     try {
       const parsed = JSON.parse(jsonMatch[0])
+      console.log(`[parseSuggestions] Found JSON with suggestedFixes:`, parsed.suggestedFixes?.length || 0)
       if (parsed.suggestedFixes && Array.isArray(parsed.suggestedFixes)) {
         for (const fix of parsed.suggestedFixes) {
           if (fix.filePath && fix.newContent) {
@@ -163,10 +166,68 @@ function parseSuggestionsFromResponse(content: string, agent: string, existingFi
         }
       }
     } catch (e) {
-      // JSON parsing fehlgeschlagen, ignorieren
+      console.log(`[parseSuggestions] JSON parsing failed:`, e)
     }
   }
   
+  // Methode 2: Parse "issues" Array aus dem JSON (alternatives Format)
+  if (suggestions.length === 0) {
+    const issuesMatch = content.match(/\{[\s\S]*"issues"[\s\S]*\}/m)
+    if (issuesMatch) {
+      try {
+        const parsed = JSON.parse(issuesMatch[0])
+        console.log(`[parseSuggestions] Found JSON with issues:`, parsed.issues?.length || 0)
+        if (parsed.issues && Array.isArray(parsed.issues)) {
+          for (const issue of parsed.issues) {
+            if (issue.file && issue.suggestion) {
+              suggestions.push({
+                agent,
+                type: issue.severity === "critical" ? "fix" : "improvement",
+                title: issue.message || "Code-Issue",
+                description: issue.suggestion,
+                affectedFiles: [issue.file],
+                suggestedChanges: [],
+                priority: issue.severity === "critical" ? "high" : issue.severity === "warning" ? "medium" : "low",
+              })
+            }
+          }
+        }
+      } catch (e) {
+        console.log(`[parseSuggestions] Issues JSON parsing failed:`, e)
+      }
+    }
+  }
+  
+  // Methode 3: Parse natürlichsprachliche Vorschläge (Fallback)
+  if (suggestions.length === 0) {
+    // Suche nach Mustern wie "Problem:", "Issue:", "Verbesserung:", etc.
+    const patterns = [
+      /(?:Problem|Issue|Fehler|Error):\s*(.+?)(?:\n|$)/gi,
+      /(?:Verbesserung|Improvement|Empfehlung|Recommendation):\s*(.+?)(?:\n|$)/gi,
+      /(?:⚠️|❌|🔴)\s*(.+?)(?:\n|$)/gi,
+    ]
+    
+    for (const pattern of patterns) {
+      let match
+      while ((match = pattern.exec(content)) !== null) {
+        const title = match[1].trim().substring(0, 100)
+        if (title.length > 10) {
+          suggestions.push({
+            agent,
+            type: "improvement",
+            title: title,
+            description: "",
+            affectedFiles: [],
+            suggestedChanges: [],
+            priority: "medium",
+          })
+        }
+      }
+    }
+    console.log(`[parseSuggestions] Found ${suggestions.length} natural language suggestions`)
+  }
+  
+  console.log(`[parseSuggestions] Total suggestions found: ${suggestions.length}`)
   return suggestions
 }
 
@@ -569,9 +630,24 @@ export function useAgentExecutor() {
             }
 
             // Parse und füge Vorschläge hinzu (für Reviewer/Security Agents)
+            let suggestionsCount = 0
             if (agentType === "reviewer" || agentType === "security") {
               const existingFiles = getFiles()
+              addLog({
+                level: "debug",
+                agent: agentType,
+                message: `Parsing Vorschläge aus ${result.content.length} Zeichen...`,
+              })
+              
               const suggestions = parseSuggestionsFromResponse(result.content, agentType, existingFiles)
+              suggestionsCount = suggestions.length
+              
+              addLog({
+                level: "info",
+                agent: agentType,
+                message: `${suggestions.length} Vorschläge gefunden`,
+              })
+              
               if (suggestions.length > 0) {
                 for (const suggestion of suggestions) {
                   addSuggestion(suggestion)
@@ -579,6 +655,19 @@ export function useAgentExecutor() {
                     level: "info",
                     agent: agentType,
                     message: `Vorschlag hinzugefügt: ${suggestion.title}`,
+                  })
+                }
+              } else {
+                // Fallback: Erstelle einen generischen Vorschlag wenn der Agent Verbesserungen erwähnt
+                const hasImprovements = result.content.toLowerCase().includes("verbesser") || 
+                                       result.content.toLowerCase().includes("empfehl") ||
+                                       result.content.toLowerCase().includes("sollte") ||
+                                       result.content.toLowerCase().includes("könnte")
+                if (hasImprovements) {
+                  addLog({
+                    level: "debug",
+                    agent: agentType,
+                    message: `Keine strukturierten Vorschläge gefunden, aber Verbesserungen erwähnt`,
                   })
                 }
               }
