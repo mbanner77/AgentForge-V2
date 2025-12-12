@@ -876,7 +876,11 @@ Korrigiere jetzt den Code:`
         try {
           const coderConfig = agentConfigs.coder
           const provider = getProviderFromModel(coderConfig.model)
-          const apiKey = provider === "openai" ? globalConfig.openaiApiKey : globalConfig.anthropicApiKey
+          const apiKey = provider === "openai" 
+            ? globalConfig.openaiApiKey 
+            : provider === "openrouter"
+              ? globalConfig.openrouterApiKey
+              : globalConfig.anthropicApiKey
 
           const response = await sendChatRequest({
             provider,
