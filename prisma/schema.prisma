@@ -1,0 +1,113 @@
+// Prisma Schema für AgentForge
+// Dokumentation: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Benutzer (optional für Multi-User Support)
+model User {
+  id        String   @id @default(cuid())
+  email     String?  @unique
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  projects Project[]
+  settings UserSettings?
+}
+
+// Benutzereinstellungen
+model UserSettings {
+  id              String  @id @default(cuid())
+  userId          String  @unique
+  user            User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Globale Konfiguration
+  defaultModel    String  @default("gpt-4o")
+  autoReview      Boolean @default(true)
+  streaming       Boolean @default(true)
+  theme           String  @default("dark")
+  language        String  @default("de")
+  
+  // API Keys (verschlüsselt speichern in Produktion!)
+  openaiApiKey    String?
+  anthropicApiKey String?
+  openrouterApiKey String?
+  renderApiKey    String?
+  githubToken     String?
+  
+  // Agent-Konfigurationen als JSON
+  agentConfigs    Json?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+// Projekte
+model Project {
+  id          String   @id @default(cuid())
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  name        String
+  description String?
+  
+  // Agent-Konfigurationen für dieses Projekt
+  agentConfigs Json?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  files       ProjectFile[]
+  messages    Message[]
+  workflows   WorkflowRun[]
+}
+
+// Projektdateien
+model ProjectFile {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  path      String
+  content   String   @db.Text
+  language  String
+  status    String   @default("created")
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([projectId, path])
+}
+
+// Chat-Nachrichten
+model Message {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  role      String   // user, assistant, system
+  content   String   @db.Text
+  agent     String?  // planner, coder, reviewer, executor
+  
+  createdAt DateTime @default(now())
+}
+
+// Workflow-Ausführungen
+model WorkflowRun {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  status    String   @default("running") // running, completed, failed
+  steps     Json     // Array von WorkflowSteps
+  
+  startedAt DateTime @default(now())
+  endedAt   DateTime?
+}
