@@ -1,9 +1,19 @@
 "use client"
 
+import { useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
-import { Brain, Code2, Eye, Play, Check, Loader2, Circle, AlertCircle, Clock, Shield, TestTube, FileText, Zap, Globe, Database, Network, RefreshCw, Container, Accessibility } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Brain, Code2, Eye, Play, Check, Loader2, Circle, AlertCircle, Clock, Shield, TestTube, FileText, Zap, Globe, Database, Network, RefreshCw, Container, Accessibility, FileSearch } from "lucide-react"
 import type { WorkflowStep, AgentStatus, AgentType } from "@/lib/types"
 import { useAgentStore } from "@/lib/agent-store"
 import { marketplaceAgents } from "@/lib/marketplace-agents"
@@ -81,6 +91,13 @@ const statusConfig: Record<AgentStatus, { icon: typeof Check; className: string;
 
 export function BuilderWorkflow({ steps }: BuilderWorkflowProps) {
   const { currentAgent, logs } = useAgentStore()
+  const [selectedStep, setSelectedStep] = useState<WorkflowStep | null>(null)
+  const [dialogOpen, setDialogOpen] = useState(false)
+
+  const handleViewOutput = (step: WorkflowStep) => {
+    setSelectedStep(step)
+    setDialogOpen(true)
+  }
 
   if (steps.length === 0) {
     return (
@@ -189,10 +206,21 @@ export function BuilderWorkflow({ steps }: BuilderWorkflowProps) {
                       <div className="mt-2 rounded-md bg-destructive/10 p-2 text-sm text-destructive">{step.error}</div>
                     )}
 
-                    {/* Output preview */}
+                    {/* Output preview with view button */}
                     {step.output && step.status === "completed" && (
-                      <div className="mt-2 rounded-md bg-secondary/50 p-2 text-xs text-muted-foreground line-clamp-2">
-                        {step.output}
+                      <div className="mt-2 space-y-2">
+                        <div className="rounded-md bg-secondary/50 p-2 text-xs text-muted-foreground line-clamp-2">
+                          {step.output}
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleViewOutput(step)}
+                          className="h-7 text-xs"
+                        >
+                          <FileSearch className="h-3 w-3 mr-1" />
+                          Vollständiges Ergebnis anzeigen
+                        </Button>
                       </div>
                     )}
                   </div>
@@ -225,6 +253,60 @@ export function BuilderWorkflow({ steps }: BuilderWorkflowProps) {
           </div>
         </div>
       )}
+
+      {/* Agent Output Dialog */}
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {selectedStep && (
+                <>
+                  {(() => {
+                    const agentInfo = getAgentInfo(selectedStep.agent)
+                    const AgentIcon = agentInfo.icon
+                    return (
+                      <div className={`rounded-lg p-1.5 ${agentInfo.bgColor}`}>
+                        <AgentIcon className="h-4 w-4 text-background" />
+                      </div>
+                    )
+                  })()}
+                  <span>{selectedStep.title} - Arbeitsergebnis</span>
+                </>
+              )}
+            </DialogTitle>
+            <DialogDescription>
+              {selectedStep?.startTime && selectedStep?.endTime && (
+                <span>
+                  Ausgeführt am {new Date(selectedStep.startTime).toLocaleDateString("de-DE")} um{" "}
+                  {new Date(selectedStep.startTime).toLocaleTimeString("de-DE")} • Dauer:{" "}
+                  {Math.round(
+                    (new Date(selectedStep.endTime).getTime() - new Date(selectedStep.startTime).getTime()) / 1000
+                  )}s
+                </span>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          
+          <ScrollArea className="flex-1 mt-4">
+            <div className="space-y-4">
+              {/* Agent Output */}
+              <div className="rounded-lg border border-border">
+                <div className="px-4 py-2 bg-secondary/50 border-b border-border flex items-center justify-between">
+                  <span className="font-medium text-sm">Vollständige Ausgabe</span>
+                  <Badge variant="outline" className="text-xs">
+                    {selectedStep?.output?.length || 0} Zeichen
+                  </Badge>
+                </div>
+                <div className="p-4">
+                  <pre className="whitespace-pre-wrap text-sm font-mono bg-background rounded-md p-4 overflow-x-auto max-h-[50vh]">
+                    {selectedStep?.output || "Keine Ausgabe verfügbar"}
+                  </pre>
+                </div>
+              </div>
+            </div>
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
