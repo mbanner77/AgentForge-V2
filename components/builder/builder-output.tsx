@@ -19,7 +19,7 @@ interface BuilderOutputProps {
 export function BuilderOutput({ files }: BuilderOutputProps) {
   const [copied, setCopied] = useState(false)
   const [selectedFile, setSelectedFile] = useState<ProjectFile | null>(files[0] || null)
-  const { logs, deleteFile } = useAgentStore()
+  const { logs, deleteFile, pendingSuggestions } = useAgentStore()
 
   const handleCopy = (content: string) => {
     navigator.clipboard.writeText(content)
@@ -86,9 +86,14 @@ export function BuilderOutput({ files }: BuilderOutputProps) {
               <Terminal className="h-4 w-4" />
               Logs
             </TabsTrigger>
-            <TabsTrigger value="suggestions" className="gap-2">
+            <TabsTrigger value="suggestions" className="gap-2 relative">
               <Lightbulb className="h-4 w-4" />
               Vorschläge
+              {pendingSuggestions.length > 0 && (
+                <Badge variant="destructive" className="ml-1 h-5 min-w-5 px-1.5 text-xs">
+                  {pendingSuggestions.length}
+                </Badge>
+              )}
             </TabsTrigger>
           </TabsList>
           <Button variant="ghost" size="sm" onClick={handleCopyAll}>

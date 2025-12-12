@@ -662,13 +662,58 @@ export function useAgentExecutor() {
                 const hasImprovements = result.content.toLowerCase().includes("verbesser") || 
                                        result.content.toLowerCase().includes("empfehl") ||
                                        result.content.toLowerCase().includes("sollte") ||
-                                       result.content.toLowerCase().includes("könnte")
+                                       result.content.toLowerCase().includes("könnte") ||
+                                       result.content.toLowerCase().includes("optimier") ||
+                                       result.content.toLowerCase().includes("problem") ||
+                                       result.content.toLowerCase().includes("fehler") ||
+                                       result.content.toLowerCase().includes("issue")
                 if (hasImprovements) {
-                  addLog({
-                    level: "debug",
-                    agent: agentType,
-                    message: `Keine strukturierten Vorschläge gefunden, aber Verbesserungen erwähnt`,
-                  })
+                  // Extrahiere die ersten 3 Punkte aus der Antwort als Vorschläge
+                  const lines = result.content.split('\n').filter(l => l.trim().length > 20)
+                  const bulletPoints = lines.filter(l => 
+                    l.trim().startsWith('-') || 
+                    l.trim().startsWith('•') || 
+                    l.trim().startsWith('*') ||
+                    /^\d+\./.test(l.trim())
+                  ).slice(0, 5)
+                  
+                  if (bulletPoints.length > 0) {
+                    for (const point of bulletPoints) {
+                      const cleanPoint = point.replace(/^[-•*\d.]+\s*/, '').trim()
+                      if (cleanPoint.length > 15) {
+                        addSuggestion({
+                          agent: agentType,
+                          type: "improvement",
+                          title: cleanPoint.substring(0, 80) + (cleanPoint.length > 80 ? '...' : ''),
+                          description: cleanPoint,
+                          affectedFiles: [],
+                          suggestedChanges: [],
+                          priority: "medium",
+                        })
+                        addLog({
+                          level: "info",
+                          agent: agentType,
+                          message: `Generischer Vorschlag hinzugefügt: ${cleanPoint.substring(0, 50)}...`,
+                        })
+                      }
+                    }
+                  } else {
+                    // Erstelle einen einzelnen generischen Vorschlag
+                    addSuggestion({
+                      agent: agentType,
+                      type: "improvement",
+                      title: `${agentType === 'reviewer' ? 'Code-Review' : 'Sicherheits'}-Empfehlungen verfügbar`,
+                      description: `Der ${agentType === 'reviewer' ? 'Reviewer' : 'Security'}-Agent hat Verbesserungsvorschläge erstellt. Klicke auf "Vollständiges Ergebnis anzeigen" im Workflow-Tab für Details.`,
+                      affectedFiles: [],
+                      suggestedChanges: [],
+                      priority: "medium",
+                    })
+                    addLog({
+                      level: "info",
+                      agent: agentType,
+                      message: `Generischer Vorschlag hinzugefügt (keine strukturierten Daten gefunden)`,
+                    })
+                  }
                 }
               }
             }
