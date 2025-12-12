@@ -131,27 +131,41 @@ Erstelle einen JSON-Plan mit folgender Struktur:
 
 ZIEL-UMGEBUNG: CodeSandbox Sandpack (react-ts Template)
 - Sandpack unterstützt TypeScript nativ
-- Keine Next.js Features (kein "use client", keine @/ Imports, kein next/...)
+- Keine Next.js Features
 - Alle Komponenten müssen als EINE App.tsx Datei funktionieren
 
 PFLICHT-STRUKTUR für Sandpack:
 1. EINE Haupt-Datei: App.tsx (wird automatisch als /App.tsx geladen)
-2. Optional: styles.css für CSS
+2. CSS wird automatisch bereitgestellt - KEIN CSS-Import nötig
 
-WICHTIGE REGELN FÜR SANDPACK-KOMPATIBILITÄT:
+KRITISCHE SANDPACK-REGELN (IMMER EINHALTEN):
 - KEIN "use client" - Sandpack ist kein Next.js
-- KEINE @/ Imports - verwende relative Pfade oder direkte Imports
-- KEINE next/... Imports (next/image, next/link, next/router)
+- KEINE @/ Imports - verwende relative Pfade
+- KEINE next/... Imports (next/image, next/link, next/router, next/font)
+- KEIN import './globals.css' oder import './styles.css' - CSS ist automatisch da
+- KEIN import von lokalen CSS-Dateien
 - ALLE Komponenten in EINER Datei (App.tsx) definieren
-- Export default für die Haupt-Komponente
-- React muss NICHT importiert werden (automatisch verfügbar)
+- export default function App() als Haupt-Komponente
+- React Hooks direkt importieren: import { useState, useEffect } from "react"
 
-CODING-STANDARDS:
-- TypeScript ist erlaubt und empfohlen
-- Inline Styles ODER Tailwind-ähnliche className Strings
-- useState, useEffect für State Management
-- Alle Daten als lokaler State oder Mock-Daten
-- Fehlerbehandlung mit try/catch
+ERLAUBTE IMPORTS (bereits in Sandpack verfügbar):
+- react, react-dom (automatisch)
+- react-icons (z.B. import { FaHeart } from "react-icons/fa")
+- lucide-react (z.B. import { Heart } from "lucide-react")
+- framer-motion
+- clsx, classnames
+- zustand
+- axios
+- date-fns
+- recharts
+- lodash
+- uuid
+- react-hot-toast, sonner
+
+STYLING-OPTIONEN:
+1. Inline Styles (EMPFOHLEN): style={{ padding: 20, background: "#1a1a2e" }}
+2. CSS-in-JS mit style-Objekt
+3. className mit einfachen Klassen (ohne Tailwind)
 
 AUSGABE-FORMAT:
 \`\`\`typescript
@@ -187,12 +201,14 @@ BEI FEHLERMELDUNGEN:
 2. Generiere den VOLLSTÄNDIGEN korrigierten Code
 3. Stelle sicher, dass der Code Sandpack-kompatibel ist
 
-HÄUFIGE SANDPACK-FEHLER:
+HÄUFIGE SANDPACK-FEHLER UND LÖSUNGEN:
+- "Could not find module './globals.css'" → ENTFERNE den CSS-Import komplett
+- "Could not find module '@/...'" → Ersetze @/ durch relative Pfade oder entferne
 - "Can't find variable: X" → Variable muss vor Verwendung deklariert sein
 - "X is not defined" → Import fehlt oder Variable nicht deklariert
-- Module-Fehler → Keine externen Packages außer react/react-dom verwenden
+- "Could not find dependency" → Verwende nur erlaubte Packages (siehe Liste oben)
 
-WICHTIG: Generiere IMMER vollständigen, sofort in Sandpack lauffähigen Code!`,
+WICHTIG: Generiere IMMER vollständigen, sofort in Sandpack lauffähigen Code ohne CSS-Imports!`,
       autoRetry: true,
       streaming: true,
       detailedLogging: false,
