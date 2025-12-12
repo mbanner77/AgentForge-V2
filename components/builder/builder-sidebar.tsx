@@ -217,14 +217,23 @@ export function BuilderSidebar({ onClose }: BuilderSidebarProps) {
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
+                              <div className="px-2 py-1 text-xs font-semibold text-muted-foreground">OpenAI</div>
                               <SelectItem value="gpt-4o">GPT-4o</SelectItem>
                               <SelectItem value="gpt-4o-mini">GPT-4o Mini</SelectItem>
                               <SelectItem value="gpt-4-turbo">GPT-4 Turbo</SelectItem>
                               <SelectItem value="gpt-4">GPT-4</SelectItem>
                               <SelectItem value="gpt-3.5-turbo">GPT-3.5 Turbo</SelectItem>
+                              <div className="px-2 py-1 text-xs font-semibold text-muted-foreground mt-2">Anthropic</div>
                               <SelectItem value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet</SelectItem>
                               <SelectItem value="claude-3-opus-20240229">Claude 3 Opus</SelectItem>
                               <SelectItem value="claude-3-haiku-20240307">Claude 3 Haiku</SelectItem>
+                              <div className="px-2 py-1 text-xs font-semibold text-muted-foreground mt-2">OpenRouter</div>
+                              <SelectItem value="openrouter/auto">Auto (Best for prompt)</SelectItem>
+                              <SelectItem value="anthropic/claude-3.5-sonnet">Claude 3.5 Sonnet (OR)</SelectItem>
+                              <SelectItem value="openai/gpt-4o">GPT-4o (OR)</SelectItem>
+                              <SelectItem value="google/gemini-pro-1.5">Gemini Pro 1.5 (OR)</SelectItem>
+                              <SelectItem value="meta-llama/llama-3.1-405b-instruct">Llama 3.1 405B (OR)</SelectItem>
+                              <SelectItem value="deepseek/deepseek-chat">DeepSeek Chat (OR)</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
@@ -338,14 +347,23 @@ export function BuilderSidebar({ onClose }: BuilderSidebarProps) {
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
+                            <div className="px-2 py-1 text-xs font-semibold text-muted-foreground">OpenAI</div>
                             <SelectItem value="gpt-4o">GPT-4o</SelectItem>
                             <SelectItem value="gpt-4o-mini">GPT-4o Mini</SelectItem>
                             <SelectItem value="gpt-4-turbo">GPT-4 Turbo</SelectItem>
                             <SelectItem value="gpt-4">GPT-4</SelectItem>
                             <SelectItem value="gpt-3.5-turbo">GPT-3.5 Turbo</SelectItem>
+                            <div className="px-2 py-1 text-xs font-semibold text-muted-foreground mt-2">Anthropic</div>
                             <SelectItem value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet</SelectItem>
                             <SelectItem value="claude-3-opus-20240229">Claude 3 Opus</SelectItem>
                             <SelectItem value="claude-3-haiku-20240307">Claude 3 Haiku</SelectItem>
+                            <div className="px-2 py-1 text-xs font-semibold text-muted-foreground mt-2">OpenRouter</div>
+                            <SelectItem value="openrouter/auto">Auto (Best for prompt)</SelectItem>
+                            <SelectItem value="anthropic/claude-3.5-sonnet">Claude 3.5 Sonnet (OR)</SelectItem>
+                            <SelectItem value="openai/gpt-4o">GPT-4o (OR)</SelectItem>
+                            <SelectItem value="google/gemini-pro-1.5">Gemini Pro 1.5 (OR)</SelectItem>
+                            <SelectItem value="meta-llama/llama-3.1-405b-instruct">Llama 3.1 405B (OR)</SelectItem>
+                            <SelectItem value="deepseek/deepseek-chat">DeepSeek Chat (OR)</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
