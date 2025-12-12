@@ -139,55 +139,6 @@ export function LivePreview({ files: propFiles }: LivePreviewProps) {
     content = content.replace(/import\s+.*\s+from\s+["']\.\.\/config\/[^"']+["'];?\s*/g, "")
     content = content.replace(/import\s+.*\s+from\s+["']\.\/config\/[^"']+["'];?\s*/g, "")
     
-    // Finde undefinierte Komponenten und erstelle Platzhalter
-    // Suche nach JSX-Komponenten die verwendet werden aber nicht definiert sind
-    const jsxComponentPattern = /<([A-Z][a-zA-Z0-9]*)\s/g
-    const functionPattern = /(?:function|const)\s+([A-Z][a-zA-Z0-9]*)/g
-    const importPattern = /import\s+(?:\{[^}]*\}|[A-Z][a-zA-Z0-9]*)/g
-    
-    // Finde alle verwendeten Komponenten
-    const usedComponents = new Set<string>()
-    let match
-    while ((match = jsxComponentPattern.exec(content)) !== null) {
-      usedComponents.add(match[1])
-    }
-    
-    // Finde alle definierten Komponenten
-    const definedComponents = new Set<string>()
-    while ((match = functionPattern.exec(content)) !== null) {
-      definedComponents.add(match[1])
-    }
-    
-    // Standard React-Komponenten die nicht definiert werden müssen
-    const builtInComponents = new Set(['Fragment', 'Suspense', 'StrictMode'])
-    
-    // Finde fehlende Komponenten
-    const missingComponents: string[] = []
-    usedComponents.forEach(comp => {
-      if (!definedComponents.has(comp) && !builtInComponents.has(comp)) {
-        missingComponents.push(comp)
-      }
-    })
-    
-    // Erstelle Platzhalter für fehlende Komponenten
-    if (missingComponents.length > 0) {
-      const placeholders = missingComponents.map(comp => 
-        `const ${comp} = ({ children, ...props }: { children?: React.ReactNode; [key: string]: unknown }) => <div style={{ padding: '10px', border: '1px dashed #666', borderRadius: '8px', margin: '5px 0' }} {...props}>{children || '${comp}'}</div>;`
-      ).join('\n')
-      
-      // Füge Platzhalter nach den Imports ein
-      const lastImportIndex = content.lastIndexOf('import ')
-      if (lastImportIndex !== -1) {
-        const endOfImport = content.indexOf('\n', content.indexOf(';', lastImportIndex))
-        if (endOfImport !== -1) {
-          content = content.slice(0, endOfImport + 1) + '\n// Auto-generated placeholders for missing components\n' + placeholders + '\n' + content.slice(endOfImport + 1)
-        }
-      } else {
-        // Keine Imports gefunden, füge am Anfang ein
-        content = '// Auto-generated placeholders for missing components\n' + placeholders + '\n\n' + content
-      }
-    }
-    
     // Finde CSS-Dateien
     const cssFile = files.find(f => f.path.endsWith(".css"))
     const cssContent = cssFile?.content || `* { box-sizing: border-box; margin: 0; padding: 0; }
