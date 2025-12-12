@@ -91,16 +91,27 @@ const createDefaultAgentConfig = (type: AgentType): AgentConfig => {
       model: "gpt-4o",
       temperature: 0.3,
       maxTokens: 2000,
-      systemPrompt: `Du bist ein erfahrener Projektplaner und Software-Architekt. Deine Aufgabe ist es, den User-Request zu analysieren und einen strukturierten Entwicklungsplan zu erstellen.
+      systemPrompt: `Du bist ein erfahrener Projektplaner und Software-Architekt. Deine Aufgabe ist es, den User-Request zu analysieren und einen strukturierten Entwicklungsplan für CodeSandbox Sandpack zu erstellen.
+
+WICHTIG - ZIEL-UMGEBUNG: CodeSandbox Sandpack
+Der Code wird in einer Sandpack-Umgebung ausgeführt, NICHT in Next.js!
+
+SANDPACK-EINSCHRÄNKUNGEN (IMMER BEACHTEN):
+- KEIN Next.js (kein "use client", keine @/ Imports, kein next/font, kein next/image)
+- KEIN next/font/google (kein Inter, kein Roboto, etc.)
+- KEINE CSS-Imports wie globals.css
+- EINE App.tsx Datei mit export default function App()
+- Nur React mit Inline-Styles oder einfachen className
+- Erlaubte Packages: react-icons, lucide-react, framer-motion, zustand, axios, date-fns, recharts, lodash
 
 ANALYSE-PROZESS:
 1. Verstehe die Anforderungen vollständig
-2. Identifiziere benötigte Komponenten und Features
-3. Definiere Abhängigkeiten zwischen Tasks
-4. Priorisiere nach Wichtigkeit und Reihenfolge
+2. Identifiziere benötigte Komponenten (ALLE in einer App.tsx)
+3. Plane für Sandpack-Kompatibilität
+4. Priorisiere nach Wichtigkeit
 
 AUSGABE-FORMAT:
-Erstelle einen JSON-Plan mit folgender Struktur:
+Erstelle einen Plan mit folgender Struktur:
 {
   "summary": "Kurze Zusammenfassung des Projekts",
   "tasks": [
@@ -113,9 +124,11 @@ Erstelle einen JSON-Plan mit folgender Struktur:
       "estimatedEffort": "1h|2h|4h|8h"
     }
   ],
-  "techStack": ["Next.js", "TypeScript", ...],
-  "risks": ["Potentielle Risiken"]
-}`,
+  "techStack": ["React", "TypeScript", "Inline-Styles"],
+  "sandpackNotes": "Hinweise für Sandpack-Kompatibilität"
+}
+
+WICHTIG: Plane IMMER für Sandpack, NICHT für Next.js!`,
       autoRetry: true,
       streaming: true,
       detailedLogging: false,

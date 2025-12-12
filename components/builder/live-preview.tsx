@@ -101,12 +101,23 @@ export function LivePreview({ files: propFiles }: LivePreviewProps) {
     // Entferne problematische Imports (Next.js spezifisch)
     content = content.replace(/import\s+.*\s+from\s+["']next\/[^"']+["'];?\s*/g, "")
     
-    // Ersetze CSS-Imports auf /styles.css (Sandpack Standard)
-    content = content.replace(/import\s+["']\.\/globals\.css["'];?\s*/g, "import './styles.css';\n")
-    content = content.replace(/import\s+["']\.\/app\/globals\.css["'];?\s*/g, "import './styles.css';\n")
-    content = content.replace(/import\s+["']@\/app\/globals\.css["'];?\s*/g, "import './styles.css';\n")
-    content = content.replace(/import\s+["']\.\.\/globals\.css["'];?\s*/g, "import './styles.css';\n")
-    content = content.replace(/import\s+["']\.\/index\.css["'];?\s*/g, "import './styles.css';\n")
+    // Entferne next/font Imports und Variablen (Inter, etc.)
+    content = content.replace(/import\s*\{[^}]*\}\s*from\s*["']next\/font\/[^"']+["'];?\s*/g, "")
+    content = content.replace(/const\s+\w+\s*=\s*\w+\(\s*\{[^}]*\}\s*\);?\s*/g, "")
+    
+    // Entferne Font-Variablen aus className (z.B. ${inter.className} oder inter.className)
+    content = content.replace(/\$\{[\w]+\.className\}/g, "")
+    content = content.replace(/[\w]+\.className/g, '""')
+    content = content.replace(/className=\{""\s*\}/g, "")
+    content = content.replace(/className=\{`\s*`\}/g, "")
+    
+    // Ersetze CSS-Imports auf /styles.css (Sandpack Standard) oder entferne sie
+    content = content.replace(/import\s+["']\.\/globals\.css["'];?\s*/g, "")
+    content = content.replace(/import\s+["']\.\/app\/globals\.css["'];?\s*/g, "")
+    content = content.replace(/import\s+["']@\/app\/globals\.css["'];?\s*/g, "")
+    content = content.replace(/import\s+["']\.\.\/globals\.css["'];?\s*/g, "")
+    content = content.replace(/import\s+["']\.\/index\.css["'];?\s*/g, "")
+    content = content.replace(/import\s+["']\.\/styles\.css["'];?\s*/g, "")
     
     // Finde CSS-Dateien
     const cssFile = files.find(f => f.path.endsWith(".css"))
