@@ -5,7 +5,7 @@ import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Copy, Check, ExternalLink, File, Github, Download, Bug, Loader2, Box } from "lucide-react"
-import { SandpackProvider, SandpackLayout, SandpackCodeEditor, SandpackPreview, useSandpack, SandpackConsole } from "@codesandbox/sandpack-react"
+import { SandpackProvider, SandpackLayout, SandpackCodeEditor, SandpackPreview, useSandpack, SandpackConsole, useSandpackConsole } from "@codesandbox/sandpack-react"
 import { useAgentStore } from "@/lib/agent-store"
 import { useAgentExecutor } from "@/lib/agent-executor-real"
 import {
@@ -34,6 +34,38 @@ function SandpackErrorListener({ onError }: { onError: (error: string | null) =>
   return null
 }
 
+// Sandpack Console Error Listener Komponente
+function SandpackConsoleErrorListener({ onConsoleError }: { onConsoleError: (error: string | null) => void }) {
+  const { logs } = useSandpackConsole({ resetOnPreviewRestart: true })
+  
+  useEffect(() => {
+    // Finde den letzten Fehler in den Console-Logs
+    const errorLogs = logs.filter(log => log.method === 'error')
+    if (errorLogs.length > 0) {
+      const lastError = errorLogs[errorLogs.length - 1]
+      // Extrahiere die Fehlermeldung
+      const errorMessage = lastError.data
+        ?.map((item: unknown) => {
+          if (typeof item === 'string') return item
+          if (typeof item === 'object' && item !== null) {
+            const obj = item as { message?: string; stack?: string }
+            return obj.message || obj.stack || JSON.stringify(item)
+          }
+          return String(item)
+        })
+        .join(' ')
+      
+      if (errorMessage) {
+        onConsoleError(`Console Error: ${errorMessage}`)
+      }
+    } else {
+      onConsoleError(null)
+    }
+  }, [logs, onConsoleError])
+  
+  return null
+}
+
 interface LivePreviewProps {
   files: ProjectFile[]
 }
@@ -57,16 +89,20 @@ export function LivePreview({ files: propFiles }: LivePreviewProps) {
   const [isFixing, setIsFixing] = useState(false)
   const [previewMode, setPreviewMode] = useState<"code" | "sandpack">("code")
   const [sandpackError, setSandpackError] = useState<string | null>(null)
+  const [consoleError, setConsoleError] = useState<string | null>(null)
   const [isAutoFixing, setIsAutoFixing] = useState(false)
   const [autoFixAttempts, setAutoFixAttempts] = useState(0)
   const [lastFixedError, setLastFixedError] = useState<string | null>(null)
   const MAX_AUTO_FIX_ATTEMPTS = 5
 
-  // Automatische Fehlerkorrektur bei Sandpack-Fehlern
+  // Kombinierter Fehler (Sandpack-Fehler hat Priorität, dann Console-Fehler)
+  const currentError = sandpackError || consoleError
+
+  // Automatische Fehlerkorrektur bei Sandpack-Fehlern oder Console-Fehlern
   useEffect(() => {
     // Nur im Sandpack-Modus und wenn ein Fehler vorliegt
     if (previewMode !== "sandpack") return
-    if (!sandpackError) {
+    if (!currentError) {
       // Fehler behoben - Reset
       setAutoFixAttempts(0)
       setLastFixedError(null)
@@ -78,24 +114,26 @@ export function LivePreview({ files: propFiles }: LivePreviewProps) {
     
     // Max Versuche erreicht
     if (autoFixAttempts >= MAX_AUTO_FIX_ATTEMPTS) {
-      console.log(`Auto-Fix: Max Versuche (${MAX_AUTO_FIX_ATTEMPTS}) erreicht für Fehler:`, sandpackError)
+      console.log(`Auto-Fix: Max Versuche (${MAX_AUTO_FIX_ATTEMPTS}) erreicht für Fehler:`, currentError)
       return
     }
     
     // Gleicher Fehler wie beim letzten Versuch - nicht erneut versuchen
-    if (lastFixedError === sandpackError && autoFixAttempts > 0) {
+    if (lastFixedError === currentError && autoFixAttempts > 0) {
       return
     }
     
     // Starte automatische Korrektur nach kurzer Verzögerung
     const timer = setTimeout(async () => {
-      console.log(`Auto-Fix: Versuch ${autoFixAttempts + 1}/${MAX_AUTO_FIX_ATTEMPTS} für Fehler:`, sandpackError)
+      console.log(`Auto-Fix: Versuch ${autoFixAttempts + 1}/${MAX_AUTO_FIX_ATTEMPTS} für Fehler:`, currentError)
       setIsAutoFixing(true)
-      setLastFixedError(sandpackError)
+      setLastFixedError(currentError)
       setAutoFixAttempts(prev => prev + 1)
       
       try {
-        await fixErrors(sandpackError, 3)
+        if (currentError) {
+          await fixErrors(currentError, 3)
+        }
         // Nach erfolgreicher Korrektur wird der Fehler durch den SandpackErrorListener aktualisiert
       } catch (err) {
         console.error("Auto-Fix fehlgeschlagen:", err)
@@ -105,7 +143,7 @@ export function LivePreview({ files: propFiles }: LivePreviewProps) {
     }, 1500) // Kurze Verzögerung um sicherzustellen, dass der Fehler stabil ist
     
     return () => clearTimeout(timer)
-  }, [sandpackError, previewMode, isAutoFixing, isProcessing, isFixing, autoFixAttempts, lastFixedError, fixErrors])
+  }, [currentError, previewMode, isAutoFixing, isProcessing, isFixing, autoFixAttempts, lastFixedError, fixErrors])
 
   const handleCopy = (content: string) => {
     navigator.clipboard.writeText(content)
@@ -407,8 +445,11 @@ input { padding: 10px; border: 1px solid #333; border-radius: 8px; background: #
                     <span>Auto-Fix läuft... (Versuch {autoFixAttempts}/{MAX_AUTO_FIX_ATTEMPTS})</span>
                   </div>
                 )}
-                {sandpackError && !isAutoFixing && (
+                {currentError && !isAutoFixing && (
                   <div className="flex items-center gap-2">
+                    {consoleError && !sandpackError && (
+                      <span className="text-xs text-yellow-500">Console-Fehler</span>
+                    )}
                     {autoFixAttempts >= MAX_AUTO_FIX_ATTEMPTS && (
                       <span className="text-xs text-red-500">Max Versuche erreicht</span>
                     )}
@@ -419,7 +460,9 @@ input { padding: 10px; border: 1px solid #333; border-radius: 8px; background: #
                       onClick={() => {
                         setAutoFixAttempts(0)
                         setLastFixedError(null)
-                        handleAutoFix(sandpackError)
+                        if (currentError) {
+                          handleAutoFix(currentError)
+                        }
                       }}
                       disabled={isAutoFixing || isProcessing}
                     >
@@ -492,6 +535,7 @@ input { padding: 10px; border: 1px solid #333; border-radius: 8px; background: #
                   }}
                 >
                   <SandpackErrorListener onError={setSandpackError} />
+                  <SandpackConsoleErrorListener onConsoleError={setConsoleError} />
                   <SandpackLayout>
                     <SandpackCodeEditor 
                       showLineNumbers 
