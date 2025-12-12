@@ -6,13 +6,14 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
-import { Send, Bot, User, Brain, Code2, Eye, Play, Loader2, Copy, Check, Shield } from "lucide-react"
+import { Send, Bot, User, Brain, Code2, Eye, Play, Loader2, Copy, Check, Shield, Sparkles } from "lucide-react"
 import type { Message } from "@/lib/types"
 
 interface BuilderChatProps {
   messages: Message[]
   onSendMessage: (content: string) => void
   isProcessing: boolean
+  onImplementSuggestion?: (suggestion: string) => void
 }
 
 const agentIcons: Record<string, typeof Bot> = {
@@ -130,7 +131,7 @@ function formatInlineMarkdown(text: string): React.ReactNode {
   })
 }
 
-export function BuilderChat({ messages, onSendMessage, isProcessing }: BuilderChatProps) {
+export function BuilderChat({ messages, onSendMessage, isProcessing, onImplementSuggestion }: BuilderChatProps) {
   const [input, setInput] = useState("")
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -202,8 +203,27 @@ export function BuilderChat({ messages, onSendMessage, isProcessing }: BuilderCh
                     </div>
                   )}
                   <div className="text-sm">
-                    <SimpleMarkdown content={message.content} />
+                    <SimpleMarkdown content={message.content.replace(/<!-- IMPLEMENT_SUGGESTION:[^>]+ -->/g, '')} />
                   </div>
+                  {/* Button zum Umsetzen von Vorschlägen */}
+                  {message.content.includes('<!-- IMPLEMENT_SUGGESTION:') && onImplementSuggestion && (
+                    <div className="mt-3 pt-3 border-t border-border/50">
+                      <Button
+                        size="sm"
+                        className="gap-2"
+                        onClick={() => {
+                          const match = message.content.match(/<!-- IMPLEMENT_SUGGESTION:(.+?) -->/)
+                          if (match) {
+                            onImplementSuggestion(match[1])
+                          }
+                        }}
+                        disabled={isProcessing}
+                      >
+                        <Sparkles className="h-4 w-4" />
+                        Vorschlag jetzt umsetzen
+                      </Button>
+                    </div>
+                  )}
                   <div className="mt-2 flex items-center justify-between">
                     <span className="text-xs opacity-50">
                       {new Date(message.timestamp).toLocaleTimeString("de-DE", {

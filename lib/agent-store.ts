@@ -980,7 +980,7 @@ export const useAgentStore = create<AgentStore>()(
         // Unterschiedliche Meldung je nachdem ob Code-Änderungen vorhanden waren
         const messageContent = appliedChanges > 0
           ? `✅ **Verbesserungsvorschlag umgesetzt**\n\n**${suggestion.title}**\n\n${suggestion.description}${affectedFilesText}${changesText}\n\n_Der Vorschlag vom ${suggestion.agent}-Agent wurde erfolgreich angewendet._`
-          : `✅ **Verbesserungsvorschlag angenommen**\n\n**${suggestion.title}**\n\n${suggestion.description}\n\n_Der Vorschlag vom ${suggestion.agent}-Agent wurde zur Kenntnis genommen. Für die Umsetzung bitte den Coder-Agent mit einer entsprechenden Anfrage starten._`
+          : `✅ **Verbesserungsvorschlag angenommen**\n\n**${suggestion.title}**\n\n${suggestion.description}\n\n<!-- IMPLEMENT_SUGGESTION:${suggestion.title} -->`
         
         state.addMessage({
           role: "assistant",

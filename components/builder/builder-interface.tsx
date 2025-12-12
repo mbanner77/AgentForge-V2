@@ -405,7 +405,15 @@ ${f.content}
         <div className="flex flex-1 min-h-0 overflow-hidden">
           {/* Chat Panel */}
           <div className="flex w-full flex-col border-r border-border lg:w-[400px] min-h-0 overflow-hidden">
-            <BuilderChat messages={messages} onSendMessage={handleSendMessage} isProcessing={isProcessing} />
+            <BuilderChat 
+              messages={messages} 
+              onSendMessage={handleSendMessage} 
+              isProcessing={isProcessing}
+              onImplementSuggestion={(suggestion) => {
+                // Starte den Coder-Agent mit dem Vorschlag
+                handleSendMessage(`Bitte setze folgenden Verbesserungsvorschlag um: ${suggestion}`)
+              }}
+            />
           </div>
 
           {/* Workflow & Output Panel with Resizable Panels */}
