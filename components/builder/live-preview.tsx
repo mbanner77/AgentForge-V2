@@ -101,6 +101,13 @@ export function LivePreview({ files: propFiles }: LivePreviewProps) {
     // Entferne problematische Imports (Next.js spezifisch)
     content = content.replace(/import\s+.*\s+from\s+["']next\/[^"']+["'];?\s*/g, "")
     
+    // Ersetze CSS-Imports auf /styles.css (Sandpack Standard)
+    content = content.replace(/import\s+["']\.\/globals\.css["'];?\s*/g, "import './styles.css';\n")
+    content = content.replace(/import\s+["']\.\/app\/globals\.css["'];?\s*/g, "import './styles.css';\n")
+    content = content.replace(/import\s+["']@\/app\/globals\.css["'];?\s*/g, "import './styles.css';\n")
+    content = content.replace(/import\s+["']\.\.\/globals\.css["'];?\s*/g, "import './styles.css';\n")
+    content = content.replace(/import\s+["']\.\/index\.css["'];?\s*/g, "import './styles.css';\n")
+    
     // Finde CSS-Dateien
     const cssFile = files.find(f => f.path.endsWith(".css"))
     const cssContent = cssFile?.content || `* { box-sizing: border-box; margin: 0; padding: 0; }
