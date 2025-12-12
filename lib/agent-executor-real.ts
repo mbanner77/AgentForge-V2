@@ -280,6 +280,9 @@ function parseCodeFromResponse(content: string): ParsedCodeFile[] {
       } else if (code.includes("module.exports") && code.includes("content:")) {
         path = "tailwind.config.js"
         language = "javascript"
+      } else if (code.includes("export default function App")) {
+        // WICHTIG: App-Komponente immer als App.tsx speichern (für Sandpack)
+        path = "App.tsx"
       } else if (code.includes("export default function RootLayout") || code.includes("export default function Layout")) {
         path = "app/layout.tsx"
       } else if (code.includes("export default function Home") || code.includes("export default function Page")) {
@@ -288,8 +291,10 @@ function parseCodeFromResponse(content: string): ParsedCodeFile[] {
         const funcMatch = code.match(/export\s+(?:default\s+)?function\s+(\w+)/)
         if (funcMatch) {
           const name = funcMatch[1]
-          // Prüfe ob es eine Page ist
-          if (name.toLowerCase().includes("page")) {
+          // Prüfe ob es App ist (für Sandpack)
+          if (name === "App") {
+            path = "App.tsx"
+          } else if (name.toLowerCase().includes("page")) {
             path = `app/${name.toLowerCase().replace("page", "")}/page.tsx`
           } else {
             path = `components/${name.charAt(0).toLowerCase() + name.slice(1)}.tsx`
