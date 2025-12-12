@@ -86,20 +86,26 @@ export async function POST(request: NextRequest) {
       })
     } else if (provider === "openrouter") {
       // OpenRouter API - kompatibel mit OpenAI Format
-      // Model-ID Mapping für korrekte OpenRouter IDs
+      // Model-ID Mapping für korrekte OpenRouter IDs (aktualisiert Dezember 2024)
       const modelMapping: Record<string, string> = {
         "openrouter/auto": "openrouter/auto",
         "anthropic/claude-3.5-sonnet": "anthropic/claude-3.5-sonnet",
         "anthropic/claude-3-opus": "anthropic/claude-3-opus",
         "openai/gpt-4o": "openai/gpt-4o",
         "openai/gpt-4o-mini": "openai/gpt-4o-mini",
-        "google/gemini-pro-1.5": "google/gemini-pro-1.5",
-        "google/gemini-flash-1.5": "google/gemini-flash-1.5",
-        "meta-llama/llama-3.1-405b-instruct": "meta-llama/llama-3.1-405b-instruct",
-        "meta-llama/llama-3.1-70b-instruct": "meta-llama/llama-3.1-70b-instruct",
-        "mistralai/mistral-large": "mistralai/mistral-large",
+        "google/gemini-2.0-flash-001": "google/gemini-2.0-flash-001",
+        "google/gemini-2.5-pro-preview": "google/gemini-2.5-pro-preview",
+        "meta-llama/llama-3.3-70b-instruct": "meta-llama/llama-3.3-70b-instruct",
+        "mistralai/mistral-large-2411": "mistralai/mistral-large-2411",
         "deepseek/deepseek-chat": "deepseek/deepseek-chat",
         "qwen/qwen-2.5-72b-instruct": "qwen/qwen-2.5-72b-instruct",
+        // Legacy mappings für alte IDs
+        "google/gemini-pro-1.5": "google/gemini-2.0-flash-001",
+        "google/gemini-flash-1.5": "google/gemini-2.0-flash-001",
+        "meta-llama/llama-3.1-405b-instruct": "meta-llama/llama-3.3-70b-instruct",
+        "meta-llama/llama-3.1-70b-instruct": "meta-llama/llama-3.3-70b-instruct",
+        "mistralai/mistral-large": "mistralai/mistral-large-2411",
+        "mistralai/mixtral-8x22b-instruct": "mistralai/mistral-large-2411",
       }
       
       const actualModel = modelMapping[model] || model

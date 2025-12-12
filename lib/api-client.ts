@@ -77,18 +77,17 @@ export function getProviderFromModel(model: string): "openai" | "anthropic" | "o
 }
 
 // OpenRouter Modelle - aktuelle Model-IDs (Stand Dezember 2024)
+// WICHTIG: Model-IDs müssen exakt mit OpenRouter übereinstimmen
 export const openRouterModels = [
   { id: "openrouter/auto", name: "Auto (Best for prompt)", provider: "openrouter" as const },
   { id: "anthropic/claude-3.5-sonnet", name: "Claude 3.5 Sonnet (OR)", provider: "openrouter" as const },
   { id: "anthropic/claude-3-opus", name: "Claude 3 Opus (OR)", provider: "openrouter" as const },
   { id: "openai/gpt-4o", name: "GPT-4o (OR)", provider: "openrouter" as const },
   { id: "openai/gpt-4o-mini", name: "GPT-4o Mini (OR)", provider: "openrouter" as const },
-  { id: "google/gemini-pro-1.5", name: "Gemini Pro 1.5 (OR)", provider: "openrouter" as const },
-  { id: "google/gemini-flash-1.5", name: "Gemini Flash 1.5 (OR)", provider: "openrouter" as const },
-  { id: "meta-llama/llama-3.1-405b-instruct", name: "Llama 3.1 405B (OR)", provider: "openrouter" as const },
-  { id: "meta-llama/llama-3.1-70b-instruct", name: "Llama 3.1 70B (OR)", provider: "openrouter" as const },
-  { id: "mistralai/mistral-large", name: "Mistral Large (OR)", provider: "openrouter" as const },
-  { id: "mistralai/mixtral-8x22b-instruct", name: "Mixtral 8x22B (OR)", provider: "openrouter" as const },
+  { id: "google/gemini-2.0-flash-001", name: "Gemini 2.0 Flash (OR)", provider: "openrouter" as const },
+  { id: "google/gemini-2.5-pro-preview", name: "Gemini 2.5 Pro (OR)", provider: "openrouter" as const },
+  { id: "meta-llama/llama-3.3-70b-instruct", name: "Llama 3.3 70B (OR)", provider: "openrouter" as const },
+  { id: "mistralai/mistral-large-2411", name: "Mistral Large (OR)", provider: "openrouter" as const },
   { id: "deepseek/deepseek-chat", name: "DeepSeek Chat (OR)", provider: "openrouter" as const },
   { id: "qwen/qwen-2.5-72b-instruct", name: "Qwen 2.5 72B (OR)", provider: "openrouter" as const },
 ]

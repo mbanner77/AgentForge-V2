@@ -231,8 +231,8 @@ export function BuilderSidebar({ onClose }: BuilderSidebarProps) {
                               <SelectItem value="openrouter/auto">Auto (Best for prompt)</SelectItem>
                               <SelectItem value="anthropic/claude-3.5-sonnet">Claude 3.5 Sonnet (OR)</SelectItem>
                               <SelectItem value="openai/gpt-4o">GPT-4o (OR)</SelectItem>
-                              <SelectItem value="google/gemini-pro-1.5">Gemini Pro 1.5 (OR)</SelectItem>
-                              <SelectItem value="meta-llama/llama-3.1-405b-instruct">Llama 3.1 405B (OR)</SelectItem>
+                              <SelectItem value="google/gemini-2.0-flash-001">Gemini 2.0 Flash (OR)</SelectItem>
+                              <SelectItem value="meta-llama/llama-3.3-70b-instruct">Llama 3.3 70B (OR)</SelectItem>
                               <SelectItem value="deepseek/deepseek-chat">DeepSeek Chat (OR)</SelectItem>
                             </SelectContent>
                           </Select>
@@ -361,8 +361,8 @@ export function BuilderSidebar({ onClose }: BuilderSidebarProps) {
                             <SelectItem value="openrouter/auto">Auto (Best for prompt)</SelectItem>
                             <SelectItem value="anthropic/claude-3.5-sonnet">Claude 3.5 Sonnet (OR)</SelectItem>
                             <SelectItem value="openai/gpt-4o">GPT-4o (OR)</SelectItem>
-                            <SelectItem value="google/gemini-pro-1.5">Gemini Pro 1.5 (OR)</SelectItem>
-                            <SelectItem value="meta-llama/llama-3.1-405b-instruct">Llama 3.1 405B (OR)</SelectItem>
+                            <SelectItem value="google/gemini-2.0-flash-001">Gemini 2.0 Flash (OR)</SelectItem>
+                            <SelectItem value="meta-llama/llama-3.3-70b-instruct">Llama 3.3 70B (OR)</SelectItem>
                             <SelectItem value="deepseek/deepseek-chat">DeepSeek Chat (OR)</SelectItem>
                           </SelectContent>
                         </Select>
@@ -664,11 +664,10 @@ export function BuilderSidebar({ onClose }: BuilderSidebarProps) {
                     <SelectItem value="anthropic/claude-3-opus">Claude 3 Opus (OR)</SelectItem>
                     <SelectItem value="openai/gpt-4o">GPT-4o (OR)</SelectItem>
                     <SelectItem value="openai/gpt-4o-mini">GPT-4o Mini (OR)</SelectItem>
-                    <SelectItem value="google/gemini-pro-1.5">Gemini Pro 1.5 (OR)</SelectItem>
-                    <SelectItem value="google/gemini-flash-1.5">Gemini Flash 1.5 (OR)</SelectItem>
-                    <SelectItem value="meta-llama/llama-3.1-405b-instruct">Llama 3.1 405B (OR)</SelectItem>
-                    <SelectItem value="meta-llama/llama-3.1-70b-instruct">Llama 3.1 70B (OR)</SelectItem>
-                    <SelectItem value="mistralai/mistral-large">Mistral Large (OR)</SelectItem>
+                    <SelectItem value="google/gemini-2.0-flash-001">Gemini 2.0 Flash (OR)</SelectItem>
+                    <SelectItem value="google/gemini-2.5-pro-preview">Gemini 2.5 Pro (OR)</SelectItem>
+                    <SelectItem value="meta-llama/llama-3.3-70b-instruct">Llama 3.3 70B (OR)</SelectItem>
+                    <SelectItem value="mistralai/mistral-large-2411">Mistral Large (OR)</SelectItem>
                     <SelectItem value="deepseek/deepseek-chat">DeepSeek Chat (OR)</SelectItem>
                     <SelectItem value="qwen/qwen-2.5-72b-instruct">Qwen 2.5 72B (OR)</SelectItem>
                   </SelectContent>
