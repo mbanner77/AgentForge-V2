@@ -7,6 +7,10 @@ import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Loader2, Play, Square, RefreshCw, Terminal, ExternalLink } from "lucide-react"
 
+// Globale Singleton-Instanz für WebContainer
+let globalWebContainer: WebContainer | null = null
+let bootPromise: Promise<WebContainer> | null = null
+
 interface WebContainerPreviewProps {
   files: ProjectFile[]
 }
@@ -175,13 +179,31 @@ export function WebContainerPreview({ files }: WebContainerPreviewProps) {
   }, [files])
 
   const bootContainer = useCallback(async () => {
-    if (webcontainer) return webcontainer
+    // Verwende existierende Instanz wenn vorhanden
+    if (globalWebContainer) {
+      setWebcontainer(globalWebContainer)
+      addLog("WebContainer bereits gestartet (wiederverwendet)")
+      return globalWebContainer
+    }
+    
+    // Warte auf laufenden Boot-Prozess
+    if (bootPromise) {
+      addLog("Warte auf laufenden Boot-Prozess...")
+      const container = await bootPromise
+      setWebcontainer(container)
+      return container
+    }
     
     setStatus("booting")
     addLog("Starte WebContainer...")
     
     try {
-      const container = await WebContainer.boot()
+      // Starte Boot-Prozess und speichere Promise
+      bootPromise = WebContainer.boot()
+      const container = await bootPromise
+      
+      // Speichere als globale Singleton-Instanz
+      globalWebContainer = container
       setWebcontainer(container)
       addLog("WebContainer gestartet")
       
@@ -205,9 +227,10 @@ export function WebContainerPreview({ files }: WebContainerPreviewProps) {
       addLog(`Boot-Fehler: ${message}`)
       setError(message)
       setStatus("error")
+      bootPromise = null
       return null
     }
-  }, [webcontainer, addLog])
+  }, [addLog])
 
   const startDevServer = useCallback(async () => {
     setError(null)
