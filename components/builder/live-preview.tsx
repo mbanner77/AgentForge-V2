@@ -58,6 +58,54 @@ export function LivePreview({ files: propFiles }: LivePreviewProps) {
   const [previewMode, setPreviewMode] = useState<"code" | "sandpack">("code")
   const [sandpackError, setSandpackError] = useState<string | null>(null)
   const [isAutoFixing, setIsAutoFixing] = useState(false)
+  const [autoFixAttempts, setAutoFixAttempts] = useState(0)
+  const [lastFixedError, setLastFixedError] = useState<string | null>(null)
+  const MAX_AUTO_FIX_ATTEMPTS = 5
+
+  // Automatische Fehlerkorrektur bei Sandpack-Fehlern
+  useEffect(() => {
+    // Nur im Sandpack-Modus und wenn ein Fehler vorliegt
+    if (previewMode !== "sandpack") return
+    if (!sandpackError) {
+      // Fehler behoben - Reset
+      setAutoFixAttempts(0)
+      setLastFixedError(null)
+      return
+    }
+    
+    // Nicht während der Verarbeitung oder wenn bereits am Fixen
+    if (isAutoFixing || isProcessing || isFixing) return
+    
+    // Max Versuche erreicht
+    if (autoFixAttempts >= MAX_AUTO_FIX_ATTEMPTS) {
+      console.log(`Auto-Fix: Max Versuche (${MAX_AUTO_FIX_ATTEMPTS}) erreicht für Fehler:`, sandpackError)
+      return
+    }
+    
+    // Gleicher Fehler wie beim letzten Versuch - nicht erneut versuchen
+    if (lastFixedError === sandpackError && autoFixAttempts > 0) {
+      return
+    }
+    
+    // Starte automatische Korrektur nach kurzer Verzögerung
+    const timer = setTimeout(async () => {
+      console.log(`Auto-Fix: Versuch ${autoFixAttempts + 1}/${MAX_AUTO_FIX_ATTEMPTS} für Fehler:`, sandpackError)
+      setIsAutoFixing(true)
+      setLastFixedError(sandpackError)
+      setAutoFixAttempts(prev => prev + 1)
+      
+      try {
+        await fixErrors(sandpackError, 3)
+        // Nach erfolgreicher Korrektur wird der Fehler durch den SandpackErrorListener aktualisiert
+      } catch (err) {
+        console.error("Auto-Fix fehlgeschlagen:", err)
+      } finally {
+        setIsAutoFixing(false)
+      }
+    }, 1500) // Kurze Verzögerung um sicherzustellen, dass der Fehler stabil ist
+    
+    return () => clearTimeout(timer)
+  }, [sandpackError, previewMode, isAutoFixing, isProcessing, isFixing, autoFixAttempts, lastFixedError, fixErrors])
 
   const handleCopy = (content: string) => {
     navigator.clipboard.writeText(content)
@@ -353,26 +401,32 @@ input { padding: 10px; border: 1px solid #333; border-radius: 8px; background: #
                   <Box className="inline h-4 w-4 mr-2" />
                   CodeSandbox Sandpack (vollständige IDE)
                 </span>
-                {sandpackError && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="text-xs border-orange-500/50 text-orange-500 hover:bg-orange-500/10"
-                    onClick={() => handleAutoFix(sandpackError)}
-                    disabled={isAutoFixing || isProcessing}
-                  >
-                    {isAutoFixing ? (
-                      <>
-                        <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                        Korrigiere...
-                      </>
-                    ) : (
-                      <>
-                        <Bug className="mr-1 h-3 w-3" />
-                        Auto-Fix
-                      </>
+                {isAutoFixing && (
+                  <div className="flex items-center gap-2 text-xs text-orange-500">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    <span>Auto-Fix läuft... (Versuch {autoFixAttempts}/{MAX_AUTO_FIX_ATTEMPTS})</span>
+                  </div>
+                )}
+                {sandpackError && !isAutoFixing && (
+                  <div className="flex items-center gap-2">
+                    {autoFixAttempts >= MAX_AUTO_FIX_ATTEMPTS && (
+                      <span className="text-xs text-red-500">Max Versuche erreicht</span>
                     )}
-                  </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-xs border-orange-500/50 text-orange-500 hover:bg-orange-500/10"
+                      onClick={() => {
+                        setAutoFixAttempts(0)
+                        setLastFixedError(null)
+                        handleAutoFix(sandpackError)
+                      }}
+                      disabled={isAutoFixing || isProcessing}
+                    >
+                      <Bug className="mr-1 h-3 w-3" />
+                      {autoFixAttempts >= MAX_AUTO_FIX_ATTEMPTS ? "Erneut versuchen" : "Manuell fixen"}
+                    </Button>
+                  </div>
                 )}
               </div>
               <div className="flex-1 overflow-hidden h-full">
