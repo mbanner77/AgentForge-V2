@@ -342,6 +342,17 @@ input { padding: 10px; border: 1px solid #333; border-radius: 8px; background: #
                   template="react-ts"
                   theme="dark"
                   files={getSandpackFiles()}
+                  customSetup={{
+                    dependencies: {
+                      "react-icons": "^5.0.0",
+                      "lucide-react": "^0.400.0",
+                      "framer-motion": "^11.0.0",
+                      "clsx": "^2.1.0",
+                      "tailwind-merge": "^2.2.0",
+                      "@radix-ui/react-slot": "^1.0.0",
+                      "class-variance-authority": "^0.7.0",
+                    }
+                  }}
                 >
                   <SandpackErrorListener onError={setSandpackError} />
                   <SandpackLayout>
