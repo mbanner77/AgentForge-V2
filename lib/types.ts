@@ -1,6 +1,7 @@
 // Zentrale Typdefinitionen für das Agent-System
 
 export type AgentType = "planner" | "coder" | "reviewer" | "security" | "executor"
+export type TargetEnvironment = "sandpack" | "webcontainer"
 export type AgentStatus = "idle" | "running" | "completed" | "error" | "waiting"
 
 export interface Tool {
@@ -113,6 +114,7 @@ export interface GlobalConfig {
   openrouterApiKey: string
   renderApiKey: string
   githubToken: string
+  targetEnvironment: TargetEnvironment
 }
 
 export interface DeploymentInfo {

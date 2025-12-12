@@ -520,6 +520,48 @@ export function BuilderSidebar({ onClose }: BuilderSidebarProps) {
         <TabsContent value="global" className="mt-0 flex-1 overflow-hidden">
           <ScrollArea className="h-full p-4">
             <div className="space-y-4">
+              {/* Target Environment Section */}
+              <div className="rounded-lg border border-blue-500/50 bg-blue-500/5 p-3">
+                <div className="mb-3 flex items-center gap-2">
+                  <Container className="h-4 w-4 text-blue-500" />
+                  <Label className="font-medium">Zielumgebung</Label>
+                </div>
+                <p className="mb-3 text-xs text-muted-foreground">
+                  Wähle die Laufzeitumgebung für generierten Code
+                </p>
+                <Select
+                  value={globalConfig.targetEnvironment || "sandpack"}
+                  onValueChange={(value: "sandpack" | "webcontainer") => 
+                    updateGlobalConfig({ targetEnvironment: value })
+                  }
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="sandpack">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">Sandpack</span>
+                        <span className="text-xs text-muted-foreground">(Einfach, schnell)</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="webcontainer">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">WebContainer</span>
+                        <span className="text-xs text-muted-foreground">(Voll, Vite)</span>
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <div className="mt-2 text-xs text-muted-foreground">
+                  {globalConfig.targetEnvironment === "webcontainer" ? (
+                    <span>✓ Mehrere Dateien, npm-Packages, Vite</span>
+                  ) : (
+                    <span>✓ Eine App.tsx, Inline-Styles, schnelle Vorschau</span>
+                  )}
+                </div>
+              </div>
+
               {/* API Keys Section */}
               <div className="rounded-lg border border-primary/50 bg-primary/5 p-3">
                 <div className="mb-3 flex items-center gap-2">

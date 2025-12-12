@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback } from "react"
-import { useAgentStore } from "./agent-store"
+import { useAgentStore, getEnvironmentPrompt } from "./agent-store"
 import { sendChatRequest, getProviderFromModel } from "./api-client"
 import type { AgentType, Message, WorkflowStep, ProjectFile, AgentSuggestion } from "./types"
 import { marketplaceAgents } from "./marketplace-agents"
@@ -379,6 +379,13 @@ export function useAgentExecutor() {
       if (!config.systemPrompt) {
         console.warn(`Agent "${agentType}" hat keinen systemPrompt, verwende Fallback`)
         config.systemPrompt = `Du bist ein hilfreicher KI-Assistent namens ${config.name}.`
+      }
+      
+      // Für Planner und Coder: Verwende umgebungsspezifischen Prompt
+      const targetEnv = globalConfig.targetEnvironment || "sandpack"
+      if (agentType === "planner" || agentType === "coder") {
+        config.systemPrompt = getEnvironmentPrompt(agentType, targetEnv)
+        console.log(`[Agent Executor] Verwende ${targetEnv}-Prompt für ${agentType}`)
       }
       
       // Debug: Zeige Config
