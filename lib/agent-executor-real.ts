@@ -459,10 +459,106 @@ export function useAgentExecutor() {
           }).filter(Boolean).join("\n")}`
         : ""
 
+      // Tools-Kontext basierend auf aktivierten Tools
+      const enabledTools = config.tools?.filter((t: { enabled: boolean }) => t.enabled) || []
+      let toolsContext = ""
+      
+      if (enabledTools.length > 0) {
+        const toolDescriptions: string[] = []
+        
+        for (const tool of enabledTools) {
+          const toolId = (tool as { id: string }).id
+          const toolName = (tool as { name: string }).name
+          
+          // Tool-spezifische Kontexte
+          switch (toolId) {
+            case "codebase_search":
+            case "code_search":
+              toolDescriptions.push(`- **${toolName}**: Du kannst den bestehenden Code analysieren und Patterns finden.`)
+              break
+            case "file_reader":
+              toolDescriptions.push(`- **${toolName}**: Du hast Zugriff auf alle Projektdateien (siehe BESTEHENDE DATEIEN).`)
+              break
+            case "file_writer":
+              toolDescriptions.push(`- **${toolName}**: Du kannst Dateien erstellen und modifizieren. Gib Code in \`\`\`typescript // filepath: Dateiname.tsx\`\`\` Blöcken aus.`)
+              break
+            case "dependency_analyzer":
+              // Analysiere package.json wenn vorhanden
+              const packageJson = existingFiles.find(f => f.path.includes("package.json"))
+              if (packageJson) {
+                try {
+                  const pkg = JSON.parse(packageJson.content)
+                  const deps = Object.keys(pkg.dependencies || {}).join(", ")
+                  const devDeps = Object.keys(pkg.devDependencies || {}).join(", ")
+                  toolDescriptions.push(`- **${toolName}**: Dependencies: ${deps || "keine"} | DevDeps: ${devDeps || "keine"}`)
+                } catch {
+                  toolDescriptions.push(`- **${toolName}**: package.json vorhanden aber nicht parsebar.`)
+                }
+              } else {
+                toolDescriptions.push(`- **${toolName}**: Keine package.json gefunden.`)
+              }
+              break
+            case "structure_analyzer":
+              // Zeige Projektstruktur
+              const filePaths = existingFiles.map(f => f.path).sort()
+              if (filePaths.length > 0) {
+                toolDescriptions.push(`- **${toolName}**: Projektstruktur:\n  ${filePaths.join("\n  ")}`)
+              }
+              break
+            case "refactor_tool":
+              toolDescriptions.push(`- **${toolName}**: Du kannst Code refactoren. Gib immer den vollständigen refactored Code aus.`)
+              break
+            case "test_generator":
+              toolDescriptions.push(`- **${toolName}**: Du kannst Unit Tests generieren. Verwende Jest/Vitest Syntax.`)
+              break
+            case "diff_analyzer":
+              toolDescriptions.push(`- **${toolName}**: Analysiere Änderungen zwischen altem und neuem Code.`)
+              break
+            case "security_scanner":
+            case "vulnerability_scanner":
+              toolDescriptions.push(`- **${toolName}**: Prüfe auf: XSS, SQL Injection, unsichere Dependencies, hardcodierte Secrets.`)
+              break
+            case "secrets_detector":
+              toolDescriptions.push(`- **${toolName}**: Suche nach: API Keys, Passwörter, Tokens, private Keys im Code.`)
+              break
+            case "injection_checker":
+              toolDescriptions.push(`- **${toolName}**: Prüfe auf: SQL Injection, XSS, Command Injection, Path Traversal.`)
+              break
+            case "auth_analyzer":
+              toolDescriptions.push(`- **${toolName}**: Analysiere: Auth-Flows, Session-Management, Token-Handling, RBAC.`)
+              break
+            case "complexity_analyzer":
+              toolDescriptions.push(`- **${toolName}**: Berechne: Cyclomatic Complexity, Nesting Depth, Function Length.`)
+              break
+            case "style_checker":
+              toolDescriptions.push(`- **${toolName}**: Prüfe: Naming Conventions, Code Formatting, Best Practices.`)
+              break
+            case "test_runner":
+              toolDescriptions.push(`- **${toolName}**: Führe Tests aus und berichte Ergebnisse.`)
+              break
+            case "build_tool":
+              toolDescriptions.push(`- **${toolName}**: Erstelle Build-Artefakte (npm run build).`)
+              break
+            case "git_tool":
+              toolDescriptions.push(`- **${toolName}**: Git-Operationen: commit, push, branch, merge.`)
+              break
+            case "deploy_tool":
+              toolDescriptions.push(`- **${toolName}**: Deployment zu Vercel, Netlify, Render.`)
+              break
+            default:
+              toolDescriptions.push(`- **${toolName}**: ${(tool as { description: string }).description}`)
+          }
+        }
+        
+        if (toolDescriptions.length > 0) {
+          toolsContext = `\n\n## VERFÜGBARE TOOLS:\n${toolDescriptions.join("\n")}`
+        }
+      }
+
       const messages: { role: "system" | "user" | "assistant"; content: string }[] = [
         {
           role: "system",
-          content: config.systemPrompt + projectContext + filesContext + mcpContext,
+          content: config.systemPrompt + projectContext + filesContext + toolsContext + mcpContext,
         },
         {
           role: "user",
