@@ -26,7 +26,7 @@ databases:
   # PostgreSQL Datenbank
   - name: agentforge-db
     region: frankfurt
-    plan: basic
+    plan: basic-256mb
     databaseName: agentforge
     user: agentforge_user
     ipAllowList: []
