@@ -99,6 +99,7 @@ export function KnowledgeBaseDialog({ trigger, open, onOpenChange }: KnowledgeBa
   const [editingDocument, setEditingDocument] = useState<RagDocument | null>(null)
   
   // Upload form state
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [uploadTitle, setUploadTitle] = useState("")
   const [uploadDescription, setUploadDescription] = useState("")
   const [uploadCategory, setUploadCategory] = useState("general")
@@ -151,15 +152,31 @@ export function KnowledgeBaseDialog({ trigger, open, onOpenChange }: KnowledgeBa
     }
   }, [open, loadDocuments, loadStats])
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (!file) return
+    if (file) {
+      setSelectedFile(file)
+      if (!uploadTitle) {
+        setUploadTitle(file.name.replace(/\.[^/.]+$/, ""))
+      }
+    }
+  }
+
+  const handleUpload = async () => {
+    if (!selectedFile) {
+      alert("Bitte zuerst eine Datei auswählen")
+      return
+    }
+    if (!apiKey) {
+      alert("Bitte OpenAI oder OpenRouter API Key in den Einstellungen konfigurieren")
+      return
+    }
 
     setUploading(true)
     try {
       const formData = new FormData()
-      formData.append("file", file)
-      formData.append("title", uploadTitle || file.name)
+      formData.append("file", selectedFile)
+      formData.append("title", uploadTitle || selectedFile.name)
       formData.append("description", uploadDescription)
       formData.append("category", uploadCategory)
       formData.append("tags", uploadTags)
@@ -178,6 +195,7 @@ export function KnowledgeBaseDialog({ trigger, open, onOpenChange }: KnowledgeBa
         }
         
         // Reset form
+        setSelectedFile(null)
         setUploadTitle("")
         setUploadDescription("")
         setUploadCategory("general")
@@ -194,7 +212,6 @@ export function KnowledgeBaseDialog({ trigger, open, onOpenChange }: KnowledgeBa
       alert("Fehler beim Hochladen der Datei")
     } finally {
       setUploading(false)
-      e.target.value = ""
     }
   }
 
@@ -669,28 +686,63 @@ export function KnowledgeBaseDialog({ trigger, open, onOpenChange }: KnowledgeBa
                 </p>
               </div>
 
+              {/* Datei-Auswahl - prominent oben */}
               <div className="space-y-2">
-                <Label>Datei</Label>
-                <div className="border-2 border-dashed rounded-lg p-6 text-center hover:border-primary transition-colors">
+                <Label className="text-base font-semibold">1. Datei auswählen</Label>
+                <div className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
+                  selectedFile ? "border-green-500 bg-green-500/10" : "hover:border-primary"
+                }`}>
                   <input
                     type="file"
-                    accept=".txt,.md,.json,.js,.jsx,.ts,.tsx,.html,.css,.csv"
-                    onChange={handleFileUpload}
+                    accept=".txt,.md,.json,.js,.jsx,.ts,.tsx,.html,.css,.csv,.pdf"
+                    onChange={handleFileSelect}
                     className="hidden"
                     id="file-upload-dialog"
                     disabled={uploading}
                   />
-                  <label htmlFor="file-upload-dialog" className="cursor-pointer">
-                    <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
-                    <p className="text-sm text-muted-foreground">
-                      {uploading ? "Wird hochgeladen..." : "Klicken oder Datei hierher ziehen"}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      TXT, MD, JSON, JS, TS, HTML, CSS
-                    </p>
+                  <label htmlFor="file-upload-dialog" className="cursor-pointer block">
+                    {selectedFile ? (
+                      <>
+                        <CheckCircle2 className="h-8 w-8 mx-auto mb-2 text-green-500" />
+                        <p className="text-sm font-medium text-green-600">{selectedFile.name}</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {(selectedFile.size / 1024).toFixed(1)} KB - Klicken um andere Datei zu wählen
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
+                        <p className="text-sm text-muted-foreground">
+                          Klicken um Datei auszuwählen
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          TXT, MD, JSON, JS, TS, HTML, CSS, PDF
+                        </p>
+                      </>
+                    )}
                   </label>
                 </div>
               </div>
+
+              {/* Upload Button */}
+              <Button 
+                onClick={handleUpload} 
+                disabled={!selectedFile || !apiKey || uploading}
+                className="w-full"
+                size="lg"
+              >
+                {uploading ? (
+                  <>
+                    <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                    Wird hochgeladen und verarbeitet...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="mr-2 h-4 w-4" />
+                    Dokument hochladen und verarbeiten
+                  </>
+                )}
+              </Button>
             </CardContent>
           </Card>
         </TabsContent>
