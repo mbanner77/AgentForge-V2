@@ -16,6 +16,7 @@ export async function GET() {
         description: true,
         tags: true,
         category: true,
+        allowedAgents: true,
         status: true,
         errorMessage: true,
         createdAt: true,
