@@ -63,23 +63,40 @@ export function splitTextIntoChunks(text: string): string[] {
   return chunks.filter(chunk => chunk.length > 50) // Filtere zu kleine Chunks
 }
 
-// Embedding über OpenAI API erstellen
-export async function createEmbedding(text: string, apiKey: string): Promise<number[]> {
-  const response = await fetch("https://api.openai.com/v1/embeddings", {
+// Embedding über OpenAI oder OpenRouter API erstellen
+export async function createEmbedding(
+  text: string, 
+  apiKey: string, 
+  provider: "openai" | "openrouter" = "openai"
+): Promise<number[]> {
+  // OpenRouter verwendet das gleiche Embedding-Format wie OpenAI
+  const baseUrl = provider === "openrouter" 
+    ? "https://openrouter.ai/api/v1/embeddings"
+    : "https://api.openai.com/v1/embeddings"
+  
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "Authorization": `Bearer ${apiKey}`,
+  }
+  
+  // OpenRouter benötigt zusätzliche Header
+  if (provider === "openrouter") {
+    headers["HTTP-Referer"] = "https://agentforge.app"
+    headers["X-Title"] = "AgentForge RAG"
+  }
+  
+  const response = await fetch(baseUrl, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${apiKey}`,
-    },
+    headers,
     body: JSON.stringify({
-      model: "text-embedding-ada-002",
+      model: provider === "openrouter" ? "openai/text-embedding-ada-002" : "text-embedding-ada-002",
       input: text,
     }),
   })
   
   if (!response.ok) {
     const error = await response.text()
-    throw new Error(`Embedding API Fehler: ${error}`)
+    throw new Error(`Embedding API Fehler (${provider}): ${error}`)
   }
   
   const data = await response.json()
@@ -106,7 +123,8 @@ export function cosineSimilarity(a: number[], b: number[]): number {
 // Dokument verarbeiten und embedden
 export async function processDocument(
   documentId: string,
-  apiKey: string
+  apiKey: string,
+  provider: "openai" | "openrouter" = "openai"
 ): Promise<void> {
   const document = await prisma.ragDocument.findUnique({
     where: { id: documentId },
@@ -123,7 +141,7 @@ export async function processDocument(
     // Embeddings für jeden Chunk erstellen
     for (let i = 0; i < chunks.length; i++) {
       const chunkContent = chunks[i]
-      const embedding = await createEmbedding(chunkContent, apiKey)
+      const embedding = await createEmbedding(chunkContent, apiKey, provider)
       
       await prisma.ragChunk.create({
         data: {
@@ -160,10 +178,11 @@ export async function searchRelevantChunks(
   apiKey: string,
   topK: number = 5,
   category?: string,
-  agentId?: string
+  agentId?: string,
+  provider: "openai" | "openrouter" = "openai"
 ): Promise<SearchResult[]> {
   // Query embedding erstellen
-  const queryEmbedding = await createEmbedding(query, apiKey)
+  const queryEmbedding = await createEmbedding(query, apiKey, provider)
   
   // Alle fertigen Dokumente und ihre Chunks laden
   const whereClause: { status: string; category?: string } = { status: "ready" }
@@ -242,9 +261,10 @@ export async function buildRagContext(
   query: string,
   apiKey: string,
   maxTokens: number = 2000,
-  agentId?: string
+  agentId?: string,
+  provider: "openai" | "openrouter" = "openai"
 ): Promise<string> {
-  const results = await searchRelevantChunks(query, apiKey, 10, undefined, agentId)
+  const results = await searchRelevantChunks(query, apiKey, 10, undefined, agentId, provider)
   
   if (results.length === 0) {
     return ""

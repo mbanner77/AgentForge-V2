@@ -3,7 +3,7 @@ import { searchRelevantChunks, buildRagContext } from "@/lib/rag-service"
 
 export async function POST(request: NextRequest) {
   try {
-    const { query, apiKey, topK = 5, category, buildContext = false, maxTokens = 2000, agentId } = await request.json()
+    const { query, apiKey, topK = 5, category, buildContext = false, maxTokens = 2000, agentId, provider = "openai" } = await request.json()
     
     if (!query) {
       return NextResponse.json(
@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
     
     if (buildContext) {
       // Kontext für Agenten-Prompts erstellen (mit Agent-spezifischer Filterung)
-      const context = await buildRagContext(query, apiKey, maxTokens, agentId)
+      const context = await buildRagContext(query, apiKey, maxTokens, agentId, provider)
       return NextResponse.json({
         success: true,
         context,
@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
     }
     
     // Normale Suche (mit Agent-spezifischer Filterung)
-    const results = await searchRelevantChunks(query, apiKey, topK, category, agentId)
+    const results = await searchRelevantChunks(query, apiKey, topK, category, agentId, provider)
     
     return NextResponse.json({
       success: true,

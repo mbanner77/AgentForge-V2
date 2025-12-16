@@ -4,7 +4,7 @@ import { splitTextIntoChunks, createEmbedding } from "@/lib/rag-service"
 
 export async function POST(request: NextRequest) {
   try {
-    const { documentId, apiKey } = await request.json()
+    const { documentId, apiKey, provider = "openai" } = await request.json()
     
     if (!documentId) {
       return NextResponse.json(
@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
       const chunkContent = chunks[i]
       
       try {
-        const embedding = await createEmbedding(chunkContent, apiKey)
+        const embedding = await createEmbedding(chunkContent, apiKey, provider)
         
         const chunk = await prisma.ragChunk.create({
           data: {

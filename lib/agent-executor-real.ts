@@ -8,7 +8,12 @@ import { marketplaceAgents } from "./marketplace-agents"
 import { getMcpServerById } from "./mcp-servers"
 
 // RAG-Kontext für Agenten abrufen (mit Agent-spezifischer Filterung)
-async function fetchRagContext(query: string, apiKey: string, agentId?: string): Promise<string> {
+async function fetchRagContext(
+  query: string, 
+  apiKey: string, 
+  agentId?: string,
+  provider: "openai" | "openrouter" = "openai"
+): Promise<string> {
   if (!apiKey) return ""
   
   try {
@@ -21,6 +26,7 @@ async function fetchRagContext(query: string, apiKey: string, agentId?: string):
         buildContext: true,
         maxTokens: 2000,
         agentId,
+        provider,
       }),
     })
     
@@ -494,15 +500,19 @@ export function useAgentExecutor() {
         : ""
 
       // RAG-Kontext aus der Knowledge Base abrufen (agentenspezifisch)
+      // Verwende OpenAI wenn verfügbar, sonst OpenRouter als Fallback
       let ragContext = ""
-      if (globalConfig.openaiApiKey) {
+      const ragApiKey = globalConfig.openaiApiKey || globalConfig.openrouterApiKey
+      const ragProvider = globalConfig.openaiApiKey ? "openai" : "openrouter"
+      
+      if (ragApiKey) {
         try {
-          ragContext = await fetchRagContext(userRequest, globalConfig.openaiApiKey, agentType)
+          ragContext = await fetchRagContext(userRequest, ragApiKey, agentType, ragProvider)
           if (ragContext) {
             addLog({
               level: "info",
               agent: agentType,
-              message: "RAG-Kontext aus Knowledge Base geladen",
+              message: `RAG-Kontext aus Knowledge Base geladen (${ragProvider})`,
             })
           }
         } catch (error) {

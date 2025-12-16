@@ -105,7 +105,9 @@ export function KnowledgeBaseDialog({ trigger, open, onOpenChange }: KnowledgeBa
   const [uploadTags, setUploadTags] = useState("")
   const [uploadAllowedAgents, setUploadAllowedAgents] = useState<string[]>([])
   
-  const apiKey = globalConfig.openaiApiKey
+  // Verwende OpenAI wenn verfügbar, sonst OpenRouter
+  const apiKey = globalConfig.openaiApiKey || globalConfig.openrouterApiKey
+  const provider = globalConfig.openaiApiKey ? "openai" : "openrouter"
 
   // Alle verfügbaren Agenten (Core + Marketplace)
   const allAgents = [
@@ -207,7 +209,7 @@ export function KnowledgeBaseDialog({ trigger, open, onOpenChange }: KnowledgeBa
       const res = await fetch("/api/rag/process", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ documentId, apiKey }),
+        body: JSON.stringify({ documentId, apiKey, provider }),
       })
       const data = await res.json()
 
@@ -587,7 +589,12 @@ export function KnowledgeBaseDialog({ trigger, open, onOpenChange }: KnowledgeBa
             <CardContent className="space-y-4">
               {!apiKey && (
                 <div className="p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg text-sm text-yellow-600">
-                  ⚠️ OpenAI API Key fehlt. Bitte in den Einstellungen konfigurieren.
+                  ⚠️ Kein API Key konfiguriert. Bitte OpenAI oder OpenRouter API Key in den Einstellungen hinterlegen um Dokumente zu verarbeiten.
+                </div>
+              )}
+              {apiKey && provider === "openrouter" && (
+                <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg text-sm text-blue-600">
+                  ℹ️ Verwende OpenRouter für Embeddings (OpenAI Key nicht konfiguriert)
                 </div>
               )}
 
