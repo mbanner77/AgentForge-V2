@@ -500,7 +500,17 @@ export function useAgentExecutor() {
           }
         }
         
-        filesContext = `\n\n## BESTEHENDE DATEIEN IM PROJEKT (${existingFiles.length} Dateien):\n${fileContexts.join("\n\n")}\n\nWICHTIG: Bei Änderungen an bestehenden Dateien, gib den VOLLSTÄNDIGEN aktualisierten Code aus.`
+        filesContext = `\n\n## ⚠️ ITERATIONS-MODUS AKTIV - BESTEHENDE DATEIEN (${existingFiles.length} Dateien):
+Dies ist eine Folge-Anfrage zu einem bestehenden Projekt. Analysiere den bestehenden Code sorgfältig!
+
+${fileContexts.join("\n\n")}
+
+## WICHTIGE ANWEISUNGEN FÜR DIESE ITERATION:
+1. Erkenne ob es ein BUGFIX, FEATURE oder ANPASSUNG ist
+2. Analysiere welche Teile des Codes betroffen sind
+3. Behalte ALLE funktionierenden Teile bei
+4. Gib bei Änderungen den VOLLSTÄNDIGEN aktualisierten Code aus
+5. Vergiss keine bestehenden Imports, States oder Handler`
       }
 
       const projectContext = currentProject
