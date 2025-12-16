@@ -111,3 +111,49 @@ model WorkflowRun {
   startedAt DateTime @default(now())
   endedAt   DateTime?
 }
+
+// RAG Dokumente für Knowledge Base
+model RagDocument {
+  id          String   @id @default(cuid())
+  
+  filename    String
+  originalName String
+  mimeType    String
+  size        Int
+  content     String   @db.Text
+  
+  // Metadaten
+  title       String?
+  description String?
+  tags        String[] @default([])
+  category    String   @default("general")
+  
+  // Status
+  status      String   @default("processing") // processing, ready, error
+  errorMessage String?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  chunks      RagChunk[]
+}
+
+// RAG Chunks mit Embeddings
+model RagChunk {
+  id          String   @id @default(cuid())
+  documentId  String
+  document    RagDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  
+  content     String   @db.Text
+  chunkIndex  Int
+  
+  // Embedding als JSON Array (1536 Dimensionen für OpenAI ada-002)
+  embedding   Json?
+  
+  // Metadaten für Retrieval
+  tokenCount  Int      @default(0)
+  
+  createdAt   DateTime @default(now())
+  
+  @@index([documentId])
+}

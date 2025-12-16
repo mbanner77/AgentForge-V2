@@ -45,6 +45,7 @@ import { useAgentStore } from "@/lib/agent-store"
 import { usePersistence } from "@/lib/use-persistence"
 import type { AgentType } from "@/lib/types"
 import { Checkbox } from "@/components/ui/checkbox"
+import { KnowledgeBaseManager } from "./knowledge-base-manager"
 
 interface BuilderSidebarProps {
   onClose: () => void
@@ -153,6 +154,10 @@ export function BuilderSidebar({ onClose }: BuilderSidebarProps) {
             </TabsTrigger>
             <TabsTrigger value="global" className="text-xs">
               Global
+            </TabsTrigger>
+            <TabsTrigger value="knowledge" className="text-xs">
+              <Database className="h-3 w-3 mr-1" />
+              Wissen
             </TabsTrigger>
             <TabsTrigger value="projects" className="text-xs">
               Projekte
@@ -786,6 +791,11 @@ export function BuilderSidebar({ onClose }: BuilderSidebarProps) {
               </div>
             </div>
           </ScrollArea>
+        </TabsContent>
+
+        {/* Knowledge Base Tab */}
+        <TabsContent value="knowledge" className="mt-0 flex-1 overflow-hidden p-4">
+          <KnowledgeBaseManager />
         </TabsContent>
 
         {/* Projects Tab */}

@@ -7,6 +7,32 @@ import type { AgentType, Message, WorkflowStep, ProjectFile, AgentSuggestion } f
 import { marketplaceAgents } from "./marketplace-agents"
 import { getMcpServerById } from "./mcp-servers"
 
+// RAG-Kontext für Agenten abrufen
+async function fetchRagContext(query: string, apiKey: string): Promise<string> {
+  if (!apiKey) return ""
+  
+  try {
+    const response = await fetch("/api/rag/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        query,
+        apiKey,
+        buildContext: true,
+        maxTokens: 2000,
+      }),
+    })
+    
+    if (!response.ok) return ""
+    
+    const data = await response.json()
+    return data.context || ""
+  } catch (error) {
+    console.warn("[RAG] Fehler beim Abrufen des Kontexts:", error)
+    return ""
+  }
+}
+
 interface ParsedCodeFile {
   path: string
   content: string
@@ -466,6 +492,23 @@ export function useAgentExecutor() {
           }).filter(Boolean).join("\n")}`
         : ""
 
+      // RAG-Kontext aus der Knowledge Base abrufen
+      let ragContext = ""
+      if (globalConfig.openaiApiKey) {
+        try {
+          ragContext = await fetchRagContext(userRequest, globalConfig.openaiApiKey)
+          if (ragContext) {
+            addLog({
+              level: "info",
+              agent: agentType,
+              message: "RAG-Kontext aus Knowledge Base geladen",
+            })
+          }
+        } catch (error) {
+          console.warn("[RAG] Kontext konnte nicht geladen werden:", error)
+        }
+      }
+
       // Tools-Kontext basierend auf aktivierten Tools
       const enabledTools = config.tools?.filter((t: { enabled: boolean }) => t.enabled) || []
       let toolsContext = ""
@@ -565,7 +608,7 @@ export function useAgentExecutor() {
       const messages: { role: "system" | "user" | "assistant"; content: string }[] = [
         {
           role: "system",
-          content: config.systemPrompt + projectContext + filesContext + toolsContext + mcpContext,
+          content: config.systemPrompt + projectContext + filesContext + toolsContext + mcpContext + (ragContext ? `\n\n${ragContext}` : ""),
         },
         {
           role: "user",
