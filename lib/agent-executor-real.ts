@@ -432,9 +432,11 @@ export function useAgentExecutor() {
       })
       
       // Bestimme den API-Key basierend auf dem Model
-      const provider = getProviderFromModel(config.model)
+      // Mit Fallback zu OpenRouter wenn der primäre Provider nicht konfiguriert ist
+      let provider = getProviderFromModel(config.model)
       let apiKey: string
       let providerName: string
+      let usedModel = config.model
       
       if (provider === "openrouter") {
         apiKey = globalConfig.openrouterApiKey
@@ -442,19 +444,39 @@ export function useAgentExecutor() {
       } else if (provider === "anthropic") {
         apiKey = globalConfig.anthropicApiKey
         providerName = "Anthropic"
+        // Fallback zu OpenRouter wenn Anthropic nicht konfiguriert
+        if (!apiKey && globalConfig.openrouterApiKey) {
+          apiKey = globalConfig.openrouterApiKey
+          provider = "openrouter"
+          providerName = "OpenRouter (Fallback)"
+          usedModel = `anthropic/${config.model}`
+          console.log(`[Agent Executor] Fallback zu OpenRouter für Anthropic Model`)
+        }
       } else {
+        // OpenAI
         apiKey = globalConfig.openaiApiKey
         providerName = "OpenAI"
+        // Fallback zu OpenRouter wenn OpenAI nicht konfiguriert
+        if (!apiKey && globalConfig.openrouterApiKey) {
+          apiKey = globalConfig.openrouterApiKey
+          provider = "openrouter"
+          providerName = "OpenRouter (Fallback)"
+          usedModel = `openai/${config.model}`
+          console.log(`[Agent Executor] Fallback zu OpenRouter für OpenAI Model`)
+        }
       }
 
       console.log(`[Agent Executor] Provider: ${provider}, hasApiKey: ${!!apiKey}`)
 
       if (!apiKey) {
         throw new Error(
-          `Kein API-Key für ${providerName} konfiguriert. ` +
-          `Bitte in den Einstellungen (Sidebar) hinterlegen.`
+          `Kein API-Key konfiguriert. Bitte OpenAI, Anthropic oder OpenRouter API-Key ` +
+          `in den Einstellungen (Sidebar) hinterlegen.`
         )
       }
+      
+      // Aktualisiere Model wenn Fallback verwendet wird
+      config.model = usedModel
 
       // Baue die Nachrichten für den Agent
       const existingFiles = getFiles()
