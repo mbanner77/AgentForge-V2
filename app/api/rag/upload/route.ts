@@ -9,6 +9,7 @@ export async function POST(request: NextRequest) {
     const description = formData.get("description") as string
     const category = formData.get("category") as string || "general"
     const tags = formData.get("tags") as string
+    const allowedAgentsStr = formData.get("allowedAgents") as string
     
     if (!file) {
       return NextResponse.json(
@@ -51,6 +52,17 @@ export async function POST(request: NextRequest) {
       )
     }
     
+    // Parse allowedAgents
+    let allowedAgents: string[] = []
+    if (allowedAgentsStr) {
+      try {
+        allowedAgents = JSON.parse(allowedAgentsStr)
+      } catch {
+        // Falls kein JSON, behandle als kommagetrennte Liste
+        allowedAgents = allowedAgentsStr.split(",").map(a => a.trim()).filter(Boolean)
+      }
+    }
+
     // Dokument in DB speichern
     const document = await prisma.ragDocument.create({
       data: {
@@ -63,6 +75,7 @@ export async function POST(request: NextRequest) {
         description: description || null,
         category: category,
         tags: tags ? tags.split(",").map(t => t.trim()) : [],
+        allowedAgents: allowedAgents,
         status: "processing",
       },
     })

@@ -76,7 +76,7 @@ export async function DELETE(request: NextRequest) {
 // PATCH: Dokument aktualisieren
 export async function PATCH(request: NextRequest) {
   try {
-    const { id, title, description, category, tags } = await request.json()
+    const { id, title, description, category, tags, allowedAgents } = await request.json()
     
     if (!id) {
       return NextResponse.json(
@@ -90,12 +90,14 @@ export async function PATCH(request: NextRequest) {
       description?: string
       category?: string
       tags?: string[]
+      allowedAgents?: string[]
     } = {}
     
     if (title !== undefined) updateData.title = title
     if (description !== undefined) updateData.description = description
     if (category !== undefined) updateData.category = category
     if (tags !== undefined) updateData.tags = tags
+    if (allowedAgents !== undefined) updateData.allowedAgents = allowedAgents
     
     const document = await prisma.ragDocument.update({
       where: { id },

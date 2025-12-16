@@ -6,7 +6,7 @@ import { BuilderWorkflow } from "./builder-workflow"
 import { BuilderOutput } from "./builder-output"
 import { BuilderSidebar } from "./builder-sidebar"
 import { Button } from "@/components/ui/button"
-import { Bot, PanelLeft, Download, FolderOpen, Plus, Rocket, Github, Loader2, ExternalLink, LogOut, Settings, GripHorizontal } from "lucide-react"
+import { Bot, PanelLeft, Download, FolderOpen, Plus, Rocket, Github, Loader2, ExternalLink, LogOut, Settings, GripHorizontal, Database } from "lucide-react"
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels"
 import Link from "next/link"
 import { useAgentStore } from "@/lib/agent-store"
@@ -27,6 +27,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { toast } from "sonner"
+import { KnowledgeBaseDialog } from "@/components/knowledge-base-dialog"
 
 export function BuilderInterface() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
@@ -378,6 +379,14 @@ ${f.content}
               <Download className="mr-2 h-4 w-4" />
               Export
             </Button>
+            <KnowledgeBaseDialog
+              trigger={
+                <Button variant="outline" size="sm" title="Knowledge Base verwalten">
+                  <Database className="mr-2 h-4 w-4" />
+                  Wissen
+                </Button>
+              }
+            />
             <Button 
               size="sm" 
               onClick={handleOpenDeployDialog} 

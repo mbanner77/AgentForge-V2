@@ -159,7 +159,8 @@ export async function searchRelevantChunks(
   query: string,
   apiKey: string,
   topK: number = 5,
-  category?: string
+  category?: string,
+  agentId?: string
 ): Promise<SearchResult[]> {
   // Query embedding erstellen
   const queryEmbedding = await createEmbedding(query, apiKey)
@@ -177,10 +178,24 @@ export async function searchRelevantChunks(
     },
   })
   
+  // Filtere Dokumente basierend auf Agent-Zugriff
+  const accessibleDocuments = documents.filter(doc => {
+    // Wenn keine Agent-Einschränkungen, hat jeder Zugriff
+    if (!doc.allowedAgents || doc.allowedAgents.length === 0) {
+      return true
+    }
+    // Wenn kein Agent angegeben, zeige alle ohne Einschränkung
+    if (!agentId) {
+      return doc.allowedAgents.length === 0
+    }
+    // Prüfe ob Agent Zugriff hat
+    return doc.allowedAgents.includes(agentId)
+  })
+  
   // Ähnlichkeiten berechnen
   const results: SearchResult[] = []
   
-  for (const doc of documents) {
+  for (const doc of accessibleDocuments) {
     for (const chunk of doc.chunks) {
       if (chunk.embedding) {
         const embedding = chunk.embedding as number[]
@@ -226,9 +241,10 @@ export async function searchRelevantChunks(
 export async function buildRagContext(
   query: string,
   apiKey: string,
-  maxTokens: number = 2000
+  maxTokens: number = 2000,
+  agentId?: string
 ): Promise<string> {
-  const results = await searchRelevantChunks(query, apiKey, 10)
+  const results = await searchRelevantChunks(query, apiKey, 10, undefined, agentId)
   
   if (results.length === 0) {
     return ""

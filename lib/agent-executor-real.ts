@@ -7,8 +7,8 @@ import type { AgentType, Message, WorkflowStep, ProjectFile, AgentSuggestion } f
 import { marketplaceAgents } from "./marketplace-agents"
 import { getMcpServerById } from "./mcp-servers"
 
-// RAG-Kontext für Agenten abrufen
-async function fetchRagContext(query: string, apiKey: string): Promise<string> {
+// RAG-Kontext für Agenten abrufen (mit Agent-spezifischer Filterung)
+async function fetchRagContext(query: string, apiKey: string, agentId?: string): Promise<string> {
   if (!apiKey) return ""
   
   try {
@@ -20,6 +20,7 @@ async function fetchRagContext(query: string, apiKey: string): Promise<string> {
         apiKey,
         buildContext: true,
         maxTokens: 2000,
+        agentId,
       }),
     })
     
@@ -492,11 +493,11 @@ export function useAgentExecutor() {
           }).filter(Boolean).join("\n")}`
         : ""
 
-      // RAG-Kontext aus der Knowledge Base abrufen
+      // RAG-Kontext aus der Knowledge Base abrufen (agentenspezifisch)
       let ragContext = ""
       if (globalConfig.openaiApiKey) {
         try {
-          ragContext = await fetchRagContext(userRequest, globalConfig.openaiApiKey)
+          ragContext = await fetchRagContext(userRequest, globalConfig.openaiApiKey, agentType)
           if (ragContext) {
             addLog({
               level: "info",

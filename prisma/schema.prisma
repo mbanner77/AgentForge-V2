@@ -128,6 +128,11 @@ model RagDocument {
   tags        String[] @default([])
   category    String   @default("general")
   
+  // Agent-Zugriffskontrolle
+  // Wenn leer: Alle Agenten haben Zugriff
+  // Sonst: Nur die gelisteten Agenten
+  allowedAgents String[] @default([])
+  
   // Status
   status      String   @default("processing") // processing, ready, error
   errorMessage String?
