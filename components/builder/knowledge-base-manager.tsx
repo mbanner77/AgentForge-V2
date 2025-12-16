@@ -86,7 +86,9 @@ export function KnowledgeBaseManager() {
   const [uploadCategory, setUploadCategory] = useState("general")
   const [uploadTags, setUploadTags] = useState("")
   
-  const apiKey = globalConfig.openaiApiKey
+  // Verwende OpenAI wenn verfügbar, sonst OpenRouter als Fallback
+  const apiKey = globalConfig.openaiApiKey || globalConfig.openrouterApiKey
+  const provider = globalConfig.openaiApiKey ? "openai" : "openrouter"
 
   const loadDocuments = useCallback(async () => {
     setLoading(true)
@@ -170,7 +172,7 @@ export function KnowledgeBaseManager() {
 
   const processDocument = async (documentId: string) => {
     if (!apiKey) {
-      alert("Bitte OpenAI API Key in den Einstellungen konfigurieren")
+      alert("Bitte OpenAI oder OpenRouter API Key in den Einstellungen konfigurieren")
       return
     }
 
@@ -179,7 +181,7 @@ export function KnowledgeBaseManager() {
       const res = await fetch("/api/rag/process", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ documentId, apiKey }),
+        body: JSON.stringify({ documentId, apiKey, provider }),
       })
       const data = await res.json()
 
@@ -226,7 +228,7 @@ export function KnowledgeBaseManager() {
       const res = await fetch("/api/rag/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: searchQuery, apiKey, topK: 5 }),
+        body: JSON.stringify({ query: searchQuery, apiKey, topK: 5, provider }),
       })
       const data = await res.json()
 
@@ -410,7 +412,7 @@ export function KnowledgeBaseManager() {
             <CardContent className="space-y-4">
               {!apiKey && (
                 <div className="p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg text-sm text-yellow-600">
-                  ⚠️ OpenAI API Key fehlt. Bitte in den Einstellungen konfigurieren um Dokumente zu verarbeiten.
+                  ⚠️ Kein API Key konfiguriert. Bitte OpenAI oder OpenRouter API Key in den Einstellungen hinterlegen.
                 </div>
               )}
               
@@ -498,7 +500,7 @@ export function KnowledgeBaseManager() {
             <CardContent className="space-y-4">
               {!apiKey && (
                 <div className="p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg text-sm text-yellow-600">
-                  ⚠️ OpenAI API Key fehlt. Bitte in den Einstellungen konfigurieren.
+                  ⚠️ Kein API Key konfiguriert. Bitte OpenAI oder OpenRouter API Key in den Einstellungen hinterlegen.
                 </div>
               )}
               
