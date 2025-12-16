@@ -595,12 +595,75 @@ export function KnowledgeBaseDialog({ trigger, open, onOpenChange }: KnowledgeBa
         </TabsContent>
 
         {/* Upload Tab */}
-        <TabsContent value="upload" className="mt-3">
+        <TabsContent value="upload" className="mt-3 flex flex-col">
+          {/* Upload Button - OBEN und immer sichtbar */}
+          <div className="mb-4 p-4 bg-muted/30 rounded-lg border">
+            <div className="flex items-center gap-4">
+              <div className="flex-1">
+                <input
+                  type="file"
+                  accept=".txt,.md,.json,.js,.jsx,.ts,.tsx,.html,.css,.csv,.pdf"
+                  onChange={handleFileSelect}
+                  className="hidden"
+                  id="file-upload-dialog-top"
+                  disabled={uploading}
+                />
+                <label 
+                  htmlFor="file-upload-dialog-top" 
+                  className={`flex items-center gap-3 p-3 border-2 border-dashed rounded-lg cursor-pointer transition-colors ${
+                    selectedFile ? "border-green-500 bg-green-500/10" : "hover:border-primary"
+                  }`}
+                >
+                  {selectedFile ? (
+                    <>
+                      <CheckCircle2 className="h-6 w-6 text-green-500 flex-shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-green-600 truncate">{selectedFile.name}</p>
+                        <p className="text-xs text-muted-foreground">{(selectedFile.size / 1024).toFixed(1)} KB</p>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="h-6 w-6 text-muted-foreground flex-shrink-0" />
+                      <div>
+                        <p className="text-sm font-medium">Datei auswählen</p>
+                        <p className="text-xs text-muted-foreground">TXT, MD, JSON, JS, TS, HTML, CSS, PDF</p>
+                      </div>
+                    </>
+                  )}
+                </label>
+              </div>
+              <Button 
+                onClick={handleUpload} 
+                disabled={!selectedFile || !apiKey || uploading}
+                size="lg"
+                className="flex-shrink-0"
+              >
+                {uploading ? (
+                  <>
+                    <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                    Hochladen...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="mr-2 h-4 w-4" />
+                    Hochladen
+                  </>
+                )}
+              </Button>
+            </div>
+            {!apiKey && (
+              <p className="text-xs text-yellow-600 mt-2">⚠️ API Key fehlt - bitte in Einstellungen konfigurieren</p>
+            )}
+          </div>
+
+          {/* Optionale Metadaten in scrollbarem Bereich */}
+          <ScrollArea className="flex-1 max-h-[350px]">
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-base">Neues Dokument hochladen</CardTitle>
+              <CardTitle className="text-base">Optionale Metadaten</CardTitle>
               <CardDescription>
-                Lade Dokumente hoch und definiere welche Agenten darauf zugreifen können
+                Füge Titel, Beschreibung und Agent-Zugriff hinzu (optional)
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -685,66 +748,9 @@ export function KnowledgeBaseDialog({ trigger, open, onOpenChange }: KnowledgeBa
                   Wähle spezifische Agenten aus, oder lasse leer für Zugriff durch alle Agenten
                 </p>
               </div>
-
-              {/* Datei-Auswahl - prominent oben */}
-              <div className="space-y-2">
-                <Label className="text-base font-semibold">1. Datei auswählen</Label>
-                <div className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
-                  selectedFile ? "border-green-500 bg-green-500/10" : "hover:border-primary"
-                }`}>
-                  <input
-                    type="file"
-                    accept=".txt,.md,.json,.js,.jsx,.ts,.tsx,.html,.css,.csv,.pdf"
-                    onChange={handleFileSelect}
-                    className="hidden"
-                    id="file-upload-dialog"
-                    disabled={uploading}
-                  />
-                  <label htmlFor="file-upload-dialog" className="cursor-pointer block">
-                    {selectedFile ? (
-                      <>
-                        <CheckCircle2 className="h-8 w-8 mx-auto mb-2 text-green-500" />
-                        <p className="text-sm font-medium text-green-600">{selectedFile.name}</p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {(selectedFile.size / 1024).toFixed(1)} KB - Klicken um andere Datei zu wählen
-                        </p>
-                      </>
-                    ) : (
-                      <>
-                        <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
-                        <p className="text-sm text-muted-foreground">
-                          Klicken um Datei auszuwählen
-                        </p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          TXT, MD, JSON, JS, TS, HTML, CSS, PDF
-                        </p>
-                      </>
-                    )}
-                  </label>
-                </div>
-              </div>
-
-              {/* Upload Button */}
-              <Button 
-                onClick={handleUpload} 
-                disabled={!selectedFile || !apiKey || uploading}
-                className="w-full"
-                size="lg"
-              >
-                {uploading ? (
-                  <>
-                    <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                    Wird hochgeladen und verarbeitet...
-                  </>
-                ) : (
-                  <>
-                    <Upload className="mr-2 h-4 w-4" />
-                    Dokument hochladen und verarbeiten
-                  </>
-                )}
-              </Button>
             </CardContent>
           </Card>
+          </ScrollArea>
         </TabsContent>
       </Tabs>
     </DialogContent>
