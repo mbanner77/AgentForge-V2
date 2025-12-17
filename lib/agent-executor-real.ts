@@ -46,6 +46,104 @@ interface ParsedCodeFile {
   language: string
 }
 
+// Agent-Ergebnis-Validierung
+interface ValidationResult {
+  isValid: boolean
+  issues: string[]
+  score: number // 0-100
+}
+
+function validateAgentResult(
+  agentType: AgentType,
+  content: string,
+  files: ParsedCodeFile[]
+): ValidationResult {
+  const issues: string[] = []
+  let score = 100
+
+  // Coder-Agent Validierung
+  if (agentType === "coder") {
+    // Muss mindestens eine Code-Datei enthalten
+    if (files.length === 0) {
+      issues.push("Keine Code-Dateien generiert")
+      score -= 40
+    }
+    
+    // Prüfe auf häufige Fehler
+    for (const file of files) {
+      // Unvollständiger Code
+      if (file.content.includes("// ... rest") || file.content.includes("// TODO")) {
+        issues.push(`${file.path}: Enthält unvollständigen Code`)
+        score -= 20
+      }
+      
+      // Leere Datei
+      if (file.content.trim().length < 50) {
+        issues.push(`${file.path}: Datei ist zu kurz`)
+        score -= 30
+      }
+      
+      // Fehlende Imports bei React-Komponenten
+      if (file.path.endsWith(".tsx") || file.path.endsWith(".jsx")) {
+        if (!file.content.includes("import") && file.content.includes("function")) {
+          issues.push(`${file.path}: Fehlende Imports`)
+          score -= 15
+        }
+      }
+    }
+    
+    // Prüfe ob Antwort nur Anweisungen enthält statt Code
+    const instructionPatterns = [
+      /du kannst.*ändern/i,
+      /füge.*hinzu/i,
+      /ändere zeile/i,
+      /ersetze.*durch/i,
+    ]
+    if (instructionPatterns.some(p => p.test(content)) && files.length === 0) {
+      issues.push("Antwort enthält nur Anweisungen statt Code")
+      score -= 50
+    }
+  }
+  
+  // Planner-Agent Validierung
+  if (agentType === "planner") {
+    // Muss strukturierten Plan enthalten
+    if (!content.includes("task") && !content.includes("Task") && !content.includes("##")) {
+      issues.push("Kein strukturierter Plan erkennbar")
+      score -= 30
+    }
+  }
+  
+  // Reviewer-Agent Validierung  
+  if (agentType === "reviewer") {
+    // Muss Bewertung oder Issues enthalten
+    if (!content.includes("score") && !content.includes("issue") && !content.includes("Problem")) {
+      issues.push("Kein Review-Feedback erkennbar")
+      score -= 25
+    }
+  }
+
+  return {
+    isValid: score >= 50,
+    issues,
+    score: Math.max(0, score),
+  }
+}
+
+// Retry-Konfiguration
+const RETRY_CONFIG = {
+  maxRetries: 2,
+  retryDelay: 1000,
+  retryableErrors: [
+    "rate limit",
+    "timeout",
+    "network",
+    "500",
+    "503",
+    "overloaded",
+  ],
+}
+
 interface ParsedSuggestion {
   type: AgentSuggestion["type"]
   title: string
@@ -676,17 +774,77 @@ ${fileContexts.join("\n\n")}
         },
       ]
 
-      const response = await sendChatRequest({
-        messages,
-        model: config.model,
-        temperature: config.temperature,
-        maxTokens: config.maxTokens,
-        apiKey,
-        provider,
-      })
+      // Retry-Logik für robustere Agent-Ausführung
+      let lastError: Error | null = null
+      let response: { content: string } | null = null
+      
+      for (let attempt = 0; attempt <= RETRY_CONFIG.maxRetries; attempt++) {
+        try {
+          if (attempt > 0) {
+            console.log(`[Agent Executor] Retry ${attempt}/${RETRY_CONFIG.maxRetries} für ${agentType}`)
+            await new Promise(r => setTimeout(r, RETRY_CONFIG.retryDelay * attempt))
+          }
+          
+          response = await sendChatRequest({
+            messages,
+            model: config.model,
+            temperature: config.temperature,
+            maxTokens: config.maxTokens,
+            apiKey,
+            provider,
+          })
+          
+          break // Erfolgreich, beende Retry-Loop
+        } catch (error) {
+          lastError = error instanceof Error ? error : new Error(String(error))
+          const errorMsg = lastError.message.toLowerCase()
+          
+          // Prüfe ob Fehler retryable ist
+          const isRetryable = RETRY_CONFIG.retryableErrors.some(e => errorMsg.includes(e))
+          
+          if (!isRetryable || attempt === RETRY_CONFIG.maxRetries) {
+            throw lastError
+          }
+        }
+      }
+      
+      if (!response) {
+        throw lastError || new Error("Keine Antwort vom Agent")
+      }
 
       // Parse Code-Dateien aus der Antwort (nur für Coder-Agent)
       const files = agentType === "coder" ? parseCodeFromResponse(response.content) : []
+      
+      // Validiere Agent-Ergebnis
+      const validation = validateAgentResult(agentType, response.content, files)
+      
+      if (!validation.isValid) {
+        console.warn(`[Agent Executor] Validierung für ${agentType} fehlgeschlagen:`, validation.issues)
+        // Bei Coder: Versuche nochmal mit expliziterem Prompt
+        if (agentType === "coder" && validation.issues.includes("Keine Code-Dateien generiert")) {
+          console.log(`[Agent Executor] Coder hat keinen Code generiert, versuche erneut...`)
+          
+          const retryMessages = [
+            ...messages,
+            { role: "assistant" as const, content: response.content },
+            { role: "user" as const, content: "WICHTIG: Du musst vollständigen, lauffähigen Code als Code-Block ausgeben. Keine Erklärungen, nur den kompletten Code mit // filepath: Dateiname am Anfang." }
+          ]
+          
+          const retryResponse = await sendChatRequest({
+            messages: retryMessages,
+            model: config.model,
+            temperature: 0.3, // Niedrigere Temperatur für konsistentere Ausgabe
+            maxTokens: config.maxTokens,
+            apiKey,
+            provider,
+          })
+          
+          const retryFiles = parseCodeFromResponse(retryResponse.content)
+          if (retryFiles.length > 0) {
+            return { content: retryResponse.content, files: retryFiles }
+          }
+        }
+      }
 
       return {
         content: response.content,
