@@ -175,11 +175,31 @@ export class WorkflowEngine {
       switch (node.type) {
         case "start":
           // Start-Node: Einfach zum nächsten Node
+          // Setze erfolgreiches Ergebnis für Start-Node
+          this.state.nodeResults[nodeId] = {
+            nodeId,
+            nodeName: node.data.label,
+            nodeType: "start",
+            output: "Workflow gestartet",
+            success: true,
+            duration: 0,
+            timestamp: new Date(),
+          }
           nextNodeId = this.getNextNode(nodeId)
           break
 
         case "end":
           // End-Node: Workflow beenden
+          // Setze erfolgreiches Ergebnis für End-Node
+          this.state.nodeResults[nodeId] = {
+            nodeId,
+            nodeName: node.data.label,
+            nodeType: "end",
+            output: "Workflow erfolgreich abgeschlossen",
+            success: true,
+            duration: 0,
+            timestamp: new Date(),
+          }
           this.state = {
             ...this.state,
             status: "completed",
@@ -434,11 +454,12 @@ export class WorkflowEngine {
 
   // Workflow fortsetzen
   resume(): void {
-    if (this.state.status === "paused" && this.state.currentNodeId) {
+    const currentNode = this.state.currentNodeId
+    if (this.state.status === "paused" && currentNode) {
       this.state = { ...this.state, status: "running" }
       this.onStateChange(this.state)
       this.log("Workflow fortgesetzt", "info")
-      this.executeNode(this.state.currentNodeId)
+      this.executeNode(currentNode)
     }
   }
 
