@@ -368,6 +368,197 @@ export const getIterationPrompt = (agent: "planner" | "coder" | "reviewer"): str
   return iterationPrompts[agent] || ""
 }
 
+// Dynamische Prompt-Hinweise basierend auf Kontext
+export interface DynamicPromptContext {
+  hasErrors?: boolean
+  errorTypes?: string[]
+  fileCount?: number
+  isComplexProject?: boolean
+  previousAgentFailed?: boolean
+  iterationCount?: number
+  userFeedback?: string
+}
+
+export const getDynamicPromptHints = (agent: AgentType, context: DynamicPromptContext): string => {
+  const hints: string[] = []
+  
+  if (agent === "coder") {
+    // Fehler-spezifische Hinweise
+    if (context.hasErrors && context.errorTypes) {
+      hints.push("\n## ⚠️ FEHLER-KONTEXT")
+      if (context.errorTypes.includes("syntax")) {
+        hints.push("- SYNTAX-FEHLER erkannt: Prüfe Klammern, Semikolons, JSX-Syntax")
+      }
+      if (context.errorTypes.includes("type")) {
+        hints.push("- TYPE-FEHLER erkannt: Prüfe TypeScript-Typen und Interfaces")
+      }
+      if (context.errorTypes.includes("import")) {
+        hints.push("- IMPORT-FEHLER erkannt: Prüfe Pfade und verfügbare Module")
+      }
+      if (context.errorTypes.includes("runtime")) {
+        hints.push("- RUNTIME-FEHLER erkannt: Prüfe null/undefined, Array-Zugriffe")
+      }
+    }
+    
+    // Komplexitäts-Hinweise
+    if (context.isComplexProject) {
+      hints.push("\n## 📁 KOMPLEXES PROJEKT")
+      hints.push("- Teile Code in logische Module auf")
+      hints.push("- Verwende Custom Hooks für wiederverwendbare Logik")
+      hints.push("- Halte Komponenten klein und fokussiert")
+    }
+    
+    // Iterations-Hinweise
+    if (context.iterationCount && context.iterationCount > 2) {
+      hints.push("\n## 🔄 MEHRFACHE ITERATION")
+      hints.push("- Du hast diesen Code bereits mehrfach bearbeitet")
+      hints.push("- STOPP und analysiere das Grundproblem")
+      hints.push("- Erwäge einen anderen Lösungsansatz")
+    }
+    
+    // Vorheriger Agent fehlgeschlagen
+    if (context.previousAgentFailed) {
+      hints.push("\n## 🔧 VORHERIGER VERSUCH FEHLGESCHLAGEN")
+      hints.push("- Der vorherige Coder-Versuch war nicht erfolgreich")
+      hints.push("- Analysiere was schief ging")
+      hints.push("- Wähle einen robusteren Ansatz")
+    }
+  }
+  
+  if (agent === "planner") {
+    if (context.fileCount && context.fileCount > 5) {
+      hints.push("\n## 📊 GROSSES PROJEKT")
+      hints.push(`- ${context.fileCount} bestehende Dateien`)
+      hints.push("- Plane gezielte, minimale Änderungen")
+      hints.push("- Identifiziere Abhängigkeiten zwischen Dateien")
+    }
+    
+    if (context.userFeedback) {
+      hints.push("\n## 💬 USER-FEEDBACK")
+      hints.push(`"${context.userFeedback}"`)
+      hints.push("- Berücksichtige dieses Feedback in deiner Planung")
+    }
+  }
+  
+  if (agent === "reviewer") {
+    if (context.hasErrors) {
+      hints.push("\n## 🔍 BESONDERE AUFMERKSAMKEIT")
+      hints.push("- Es wurden Fehler im vorherigen Output erkannt")
+      hints.push("- Prüfe besonders auf: " + (context.errorTypes?.join(", ") || "unbekannte Fehler"))
+    }
+  }
+  
+  return hints.join("\n")
+}
+
+// Chain-of-Thought Prompt-Erweiterungen
+export const chainOfThoughtPrompts = {
+  planner: `
+## STRUKTURIERTES DENKEN (Chain-of-Thought)
+Gehe bei der Analyse IMMER diese Schritte durch:
+
+**SCHRITT 1 - VERSTEHEN**
+Was genau will der User erreichen?
+- Kernziel: [...]
+- Nebenziele: [...]
+- Implizite Anforderungen: [...]
+
+**SCHRITT 2 - ANALYSIEREN**
+Was existiert bereits?
+- Vorhandene Komponenten: [...]
+- Aktuelle Funktionalität: [...]
+- Technologie-Stack: [...]
+
+**SCHRITT 3 - PLANEN**
+Wie erreichen wir das Ziel?
+- Notwendige Änderungen: [...]
+- Reihenfolge der Schritte: [...]
+- Potenzielle Risiken: [...]
+
+**SCHRITT 4 - VALIDIEREN**
+Ist der Plan vollständig?
+- Alle Anforderungen abgedeckt? [Ja/Nein]
+- Abhängigkeiten berücksichtigt? [Ja/Nein]
+- Risiken minimiert? [Ja/Nein]`,
+
+  coder: `
+## STRUKTURIERTES VORGEHEN (Chain-of-Thought)
+Bevor du Code schreibst, denke IMMER durch:
+
+**1. PROBLEM-ANALYSE** (Mental, nicht ausgeben)
+- Was genau soll implementiert werden?
+- Welche Komponenten sind betroffen?
+- Welche Edge-Cases gibt es?
+
+**2. LÖSUNGS-DESIGN** (Mental, nicht ausgeben)
+- Welcher Ansatz ist am saubersten?
+- Welche Patterns passen hier?
+- Wie halte ich den Code wartbar?
+
+**3. IMPLEMENTATION** (Code ausgeben)
+- Schreibe sauberen, lesbaren Code
+- Kommentiere komplexe Logik
+- Halte Funktionen klein und fokussiert
+
+**4. SELBST-REVIEW** (Mental, nicht ausgeben)
+- Kompiliert der Code?
+- Sind alle Imports vorhanden?
+- Behandle ich Fehler korrekt?`,
+
+  reviewer: `
+## STRUKTURIERTE REVIEW (Chain-of-Thought)
+Prüfe den Code in dieser Reihenfolge:
+
+**1. FUNKTIONALITÄT**
+- Erfüllt der Code die Anforderungen?
+- Funktioniert die Logik korrekt?
+- Werden Edge-Cases behandelt?
+
+**2. CODE-QUALITÄT**
+- Ist der Code lesbar und wartbar?
+- Werden Best Practices eingehalten?
+- Gibt es Code-Duplikation?
+
+**3. SICHERHEIT**
+- Gibt es offensichtliche Sicherheitslücken?
+- Werden User-Inputs validiert?
+- Sind sensible Daten geschützt?
+
+**4. PERFORMANCE**
+- Gibt es offensichtliche Performance-Probleme?
+- Werden unnötige Re-Renders vermieden?
+- Sind teure Operationen optimiert?`,
+
+  security: `
+## STRUKTURIERTE SICHERHEITSANALYSE (Chain-of-Thought)
+Analysiere systematisch:
+
+**1. INPUT-VALIDIERUNG**
+- Werden alle User-Inputs validiert?
+- Gibt es Injection-Risiken (XSS, SQL)?
+- Werden Datei-Uploads geprüft?
+
+**2. AUTHENTIFIZIERUNG**
+- Ist Auth korrekt implementiert?
+- Werden Sessions sicher verwaltet?
+- Gibt es Token-Schwachstellen?
+
+**3. DATEN-SCHUTZ**
+- Sind sensible Daten verschlüsselt?
+- Werden Secrets sicher gespeichert?
+- Gibt es Logging von sensiblen Daten?
+
+**4. ABHÄNGIGKEITEN**
+- Gibt es bekannte Vulnerabilities?
+- Sind Dependencies aktuell?
+- Werden nur vertrauenswürdige Quellen genutzt?`,
+}
+
+// Hole Chain-of-Thought Erweiterung
+export const getChainOfThoughtPrompt = (agent: AgentType): string => {
+  return chainOfThoughtPrompts[agent as keyof typeof chainOfThoughtPrompts] || ""
+}
+
 // Default Agent Configs
 const createDefaultAgentConfig = (type: AgentType): AgentConfig => {
   const configs: Record<AgentType, Omit<AgentConfig, "tools">> = {
