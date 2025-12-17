@@ -426,6 +426,31 @@ export function WorkflowExecutionView({ workflow, initialPrompt, autoStart = fal
                               {result.metadata.errorsFound.length} Fehler
                             </Badge>
                           ) : null}
+                          {result.success && (
+                            <Badge variant="outline" className="text-xs h-5 border-green-500/50 text-green-500">
+                              ✓ Erfolgreich
+                            </Badge>
+                          )}
+                        </div>
+                      )}
+                      
+                      {/* Fehlerdetails anzeigen */}
+                      {result && !result.success && result.metadata?.errorsFound && result.metadata.errorsFound.length > 0 && (
+                        <div className="mt-2 p-2 rounded-md bg-orange-500/10 border border-orange-500/20">
+                          <p className="text-xs font-medium text-orange-600 mb-1">Gefundene Probleme:</p>
+                          <ul className="text-xs text-orange-500/80 space-y-1">
+                            {result.metadata.errorsFound.slice(0, 3).map((error, i) => (
+                              <li key={i} className="flex items-start gap-1">
+                                <span>•</span>
+                                <span className="line-clamp-2">{error}</span>
+                              </li>
+                            ))}
+                            {result.metadata.errorsFound.length > 3 && (
+                              <li className="text-orange-400">
+                                ... und {result.metadata.errorsFound.length - 3} weitere
+                              </li>
+                            )}
+                          </ul>
                         </div>
                       )}
 

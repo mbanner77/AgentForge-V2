@@ -627,6 +627,9 @@ export class WorkflowEngine {
     }
 
     const outputLower = output.toLowerCase()
+    
+    // Verbesserte Problemerkennung - nur echte Fehler zählen
+    const errorIndicators = this.detectIssues(output)
 
     for (const condition of node.data.conditions) {
       let matches = false
@@ -634,17 +637,16 @@ export class WorkflowEngine {
       // Expression-basierte Auswertung (für Auto-Fix Pipeline)
       if (condition.expression) {
         try {
-          // Sichere Auswertung der Expression
+          // Sichere Auswertung der Expression mit verbesserter Logik
           const evalContext = {
             output: outputLower,
-            hasErrors: outputLower.includes("error") || outputLower.includes("fehler"),
-            hasWarnings: outputLower.includes("warning") || outputLower.includes("warnung"),
-            hasIssues: outputLower.includes("problem") || outputLower.includes("issue") || 
-                       outputLower.includes("sollte") || outputLower.includes("verbessern") ||
-                       outputLower.includes("empfehlung") || outputLower.includes("könnte"),
-            isSuccess: outputLower.includes("erfolgreich") || outputLower.includes("success") ||
-                      outputLower.includes("korrekt") || outputLower.includes("gut"),
+            hasErrors: errorIndicators.hasErrors,
+            hasWarnings: errorIndicators.hasWarnings,
+            hasIssues: errorIndicators.hasIssues,
+            isSuccess: errorIndicators.isSuccess,
             fileCount: (output.match(/```/g) || []).length / 2,
+            issueCount: errorIndicators.issues.length,
+            issues: errorIndicators.issues,
           }
           
           // Ersetze Variablen in Expression
@@ -684,8 +686,7 @@ export class WorkflowEngine {
             matches = outputLower.includes("erfolgreich") || outputLower.includes("success")
             break
           case "has-issues":
-            matches = outputLower.includes("problem") || outputLower.includes("issue") ||
-                     outputLower.includes("sollte") || outputLower.includes("verbessern")
+            matches = errorIndicators.hasIssues
             break
           default:
             matches = false
@@ -694,14 +695,13 @@ export class WorkflowEngine {
         // Type ohne value (für error-occurred, success, has-issues)
         switch (condition.type) {
           case "error-occurred":
-            matches = outputLower.includes("error") || outputLower.includes("fehler")
+            matches = errorIndicators.hasErrors
             break
           case "success":
-            matches = outputLower.includes("erfolgreich") || outputLower.includes("success")
+            matches = errorIndicators.isSuccess
             break
           case "has-issues":
-            matches = outputLower.includes("problem") || outputLower.includes("issue") ||
-                     outputLower.includes("sollte") || outputLower.includes("verbessern")
+            matches = errorIndicators.hasIssues
             break
           default:
             matches = false
@@ -710,6 +710,9 @@ export class WorkflowEngine {
 
       if (matches) {
         this.log(`Bedingung erfüllt: ${condition.label || condition.id}`, "debug")
+        if (errorIndicators.issues.length > 0) {
+          this.log(`Gefundene Issues: ${errorIndicators.issues.join(", ")}`, "info")
+        }
         const targetNode = condition.targetNodeId || condition.nextNodeId
         return targetNode ?? null
       }
@@ -717,6 +720,120 @@ export class WorkflowEngine {
 
     // Fallback: Default Edge
     return this.getNextNode(node.id)
+  }
+
+  // Verbesserte Issue-Erkennung - unterscheidet echte Probleme von normalen Textinhalten
+  private detectIssues(output: string): {
+    hasErrors: boolean
+    hasWarnings: boolean
+    hasIssues: boolean
+    isSuccess: boolean
+    issues: string[]
+  } {
+    const outputLower = output.toLowerCase()
+    const issues: string[] = []
+    
+    // Echte Fehler-Patterns (nicht nur das Wort "Fehler")
+    const errorPatterns = [
+      /error:\s*(.{10,80})/gi,
+      /fehler:\s*(.{10,80})/gi,
+      /exception:\s*(.{10,80})/gi,
+      /failed:\s*(.{10,80})/gi,
+      /cannot\s+(?:find|read|import|resolve)\s+(.{10,60})/gi,
+      /undefined\s+is\s+not/gi,
+      /null\s+is\s+not/gi,
+      /typeerror:\s*(.{10,80})/gi,
+      /syntaxerror:\s*(.{10,80})/gi,
+      /referenceerror:\s*(.{10,80})/gi,
+    ]
+    
+    // Warnungs-Patterns
+    const warningPatterns = [
+      /warning:\s*(.{10,80})/gi,
+      /warnung:\s*(.{10,80})/gi,
+      /deprecated:\s*(.{10,80})/gi,
+    ]
+    
+    // Kritische Issue-Patterns (echte Probleme, nicht nur Empfehlungen)
+    const issuePatterns = [
+      /kritisch:\s*(.{10,80})/gi,
+      /critical:\s*(.{10,80})/gi,
+      /schwerwiegend:\s*(.{10,80})/gi,
+      /sicherheitslücke:\s*(.{10,80})/gi,
+      /vulnerability:\s*(.{10,80})/gi,
+      /bug:\s*(.{10,60})/gi,
+      /fehler\s+gefunden:\s*(.{10,80})/gi,
+      /problem\s+gefunden:\s*(.{10,80})/gi,
+    ]
+    
+    // Erfolgs-Patterns
+    const successPatterns = [
+      /erfolgreich\s+(?:erstellt|generiert|abgeschlossen)/i,
+      /successfully\s+(?:created|generated|completed)/i,
+      /✓|✅|done|fertig|completed/i,
+      /code\s+(?:ist\s+)?(?:korrekt|funktioniert|läuft)/i,
+      /keine\s+(?:fehler|probleme|issues)\s+gefunden/i,
+      /no\s+(?:errors|issues|problems)\s+found/i,
+    ]
+    
+    let hasErrors = false
+    let hasWarnings = false
+    let hasIssues = false
+    
+    // Prüfe auf echte Fehler
+    for (const pattern of errorPatterns) {
+      const matches = output.match(pattern)
+      if (matches) {
+        hasErrors = true
+        matches.forEach(m => issues.push(m.trim().substring(0, 100)))
+      }
+    }
+    
+    // Prüfe auf Warnungen
+    for (const pattern of warningPatterns) {
+      if (pattern.test(output)) {
+        hasWarnings = true
+      }
+    }
+    
+    // Prüfe auf kritische Issues
+    for (const pattern of issuePatterns) {
+      const matches = output.match(pattern)
+      if (matches) {
+        hasIssues = true
+        matches.forEach(m => issues.push(m.trim().substring(0, 100)))
+      }
+    }
+    
+    // Prüfe auf Erfolg
+    let isSuccess = false
+    for (const pattern of successPatterns) {
+      if (pattern.test(output)) {
+        isSuccess = true
+        break
+      }
+    }
+    
+    // Wenn keine expliziten Fehler gefunden und Code generiert wurde, ist es wahrscheinlich OK
+    const hasGeneratedCode = (output.match(/```/g) || []).length >= 2
+    if (!hasErrors && !hasIssues && hasGeneratedCode) {
+      isSuccess = true
+    }
+    
+    // hasIssues nur true wenn echte Probleme gefunden (nicht nur Empfehlungen)
+    // "sollte", "könnte", "verbessern" sind KEINE echten Issues
+    hasIssues = hasIssues || hasErrors
+    
+    // Dedupliziere Issues
+    const uniqueIssues = [...new Set(issues)].slice(0, 5)
+    
+    return {
+      hasErrors,
+      hasWarnings,
+      hasIssues,
+      isSuccess: isSuccess && !hasErrors,
+      issues: uniqueIssues,
+    }
   }
 
   // Human Decision beantworten (von außen aufgerufen)
