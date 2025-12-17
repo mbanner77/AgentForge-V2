@@ -3182,3 +3182,680 @@ export class WorkflowRateLimiter {
     this.requests.clear()
   }
 }
+
+// === WORKFLOW CACHING SYSTEM ===
+
+export interface CacheEntry<T> {
+  value: T
+  timestamp: number
+  ttl: number
+  hits: number
+  key: string
+}
+
+export class WorkflowCache {
+  private cache: Map<string, CacheEntry<unknown>> = new Map()
+  private maxSize: number = 100
+  private defaultTTL: number = 10 * 60 * 1000 // 10 Minuten
+  
+  // Cache-Key aus Input generieren
+  private generateKey(nodeId: string, input: string): string {
+    // Einfacher Hash für Performance
+    let hash = 0
+    const str = `${nodeId}:${input}`
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i)
+      hash = ((hash << 5) - hash) + char
+      hash = hash & hash // Convert to 32bit integer
+    }
+    return `cache-${nodeId}-${Math.abs(hash).toString(36)}`
+  }
+  
+  // Wert speichern
+  set<T>(nodeId: string, input: string, value: T, ttl?: number): void {
+    const key = this.generateKey(nodeId, input)
+    
+    // LRU: Ältesten Eintrag entfernen wenn voll
+    if (this.cache.size >= this.maxSize) {
+      let oldest: string | null = null
+      let oldestTime = Infinity
+      
+      for (const [k, entry] of this.cache) {
+        if (entry.timestamp < oldestTime) {
+          oldestTime = entry.timestamp
+          oldest = k
+        }
+      }
+      
+      if (oldest) this.cache.delete(oldest)
+    }
+    
+    this.cache.set(key, {
+      value,
+      timestamp: Date.now(),
+      ttl: ttl || this.defaultTTL,
+      hits: 0,
+      key,
+    })
+  }
+  
+  // Wert abrufen
+  get<T>(nodeId: string, input: string): T | null {
+    const key = this.generateKey(nodeId, input)
+    const entry = this.cache.get(key)
+    
+    if (!entry) return null
+    
+    // TTL prüfen
+    if (Date.now() - entry.timestamp > entry.ttl) {
+      this.cache.delete(key)
+      return null
+    }
+    
+    // Hit zählen
+    entry.hits++
+    
+    return entry.value as T
+  }
+  
+  // Prüfen ob Eintrag existiert
+  has(nodeId: string, input: string): boolean {
+    return this.get(nodeId, input) !== null
+  }
+  
+  // Eintrag invalidieren
+  invalidate(nodeId: string, input?: string): void {
+    if (input) {
+      const key = this.generateKey(nodeId, input)
+      this.cache.delete(key)
+    } else {
+      // Alle Einträge für diesen Node löschen
+      for (const [key] of this.cache) {
+        if (key.includes(`cache-${nodeId}-`)) {
+          this.cache.delete(key)
+        }
+      }
+    }
+  }
+  
+  // Cache-Statistiken
+  getStats(): { size: number; hitRate: number; entries: { key: string; hits: number; age: number }[] } {
+    const entries = Array.from(this.cache.values()).map(e => ({
+      key: e.key,
+      hits: e.hits,
+      age: Date.now() - e.timestamp,
+    }))
+    
+    const totalHits = entries.reduce((sum, e) => sum + e.hits, 0)
+    
+    return {
+      size: this.cache.size,
+      hitRate: this.cache.size > 0 ? totalHits / this.cache.size : 0,
+      entries,
+    }
+  }
+  
+  // Alles löschen
+  clear(): void {
+    this.cache.clear()
+  }
+}
+
+// === MULTI-AGENT ORCHESTRATION ===
+
+export interface AgentTask {
+  id: string
+  agentId: string
+  input: string
+  priority: number
+  dependencies: string[] // Task IDs die zuerst abgeschlossen sein müssen
+  status: "pending" | "running" | "completed" | "failed"
+  result?: string
+  error?: string
+  startedAt?: Date
+  completedAt?: Date
+}
+
+export interface AgentCollaborationConfig {
+  maxParallel: number
+  timeout: number
+  onTaskStart?: (task: AgentTask) => void
+  onTaskComplete?: (task: AgentTask) => void
+  onTaskError?: (task: AgentTask, error: string) => void
+}
+
+export class MultiAgentOrchestrator {
+  private tasks: Map<string, AgentTask> = new Map()
+  private config: AgentCollaborationConfig
+  private runningTasks: Set<string> = new Set()
+  
+  constructor(config: Partial<AgentCollaborationConfig> = {}) {
+    this.config = {
+      maxParallel: 3,
+      timeout: 5 * 60 * 1000, // 5 Minuten
+      ...config,
+    }
+  }
+  
+  // Task hinzufügen
+  addTask(
+    agentId: string,
+    input: string,
+    options: { priority?: number; dependencies?: string[] } = {}
+  ): string {
+    const id = `task-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    
+    this.tasks.set(id, {
+      id,
+      agentId,
+      input,
+      priority: options.priority || 0,
+      dependencies: options.dependencies || [],
+      status: "pending",
+    })
+    
+    return id
+  }
+  
+  // Prüfen ob Task ausführbar ist
+  private canExecute(task: AgentTask): boolean {
+    if (task.status !== "pending") return false
+    if (this.runningTasks.size >= this.config.maxParallel) return false
+    
+    // Dependencies prüfen
+    for (const depId of task.dependencies) {
+      const dep = this.tasks.get(depId)
+      if (!dep || dep.status !== "completed") return false
+    }
+    
+    return true
+  }
+  
+  // Nächste ausführbare Tasks holen
+  private getExecutableTasks(): AgentTask[] {
+    return Array.from(this.tasks.values())
+      .filter(t => this.canExecute(t))
+      .sort((a, b) => b.priority - a.priority)
+      .slice(0, this.config.maxParallel - this.runningTasks.size)
+  }
+  
+  // Alle Tasks ausführen
+  async executeAll(
+    executor: (agentId: string, input: string) => Promise<string>
+  ): Promise<Map<string, AgentTask>> {
+    const results = new Map<string, AgentTask>()
+    
+    while (true) {
+      const executable = this.getExecutableTasks()
+      
+      if (executable.length === 0) {
+        // Prüfen ob noch Tasks laufen
+        if (this.runningTasks.size === 0) break
+        
+        // Warten bis ein Task fertig ist
+        await new Promise(resolve => setTimeout(resolve, 100))
+        continue
+      }
+      
+      // Tasks parallel starten
+      const promises = executable.map(async (task) => {
+        task.status = "running"
+        task.startedAt = new Date()
+        this.runningTasks.add(task.id)
+        this.config.onTaskStart?.(task)
+        
+        try {
+          // Timeout implementieren
+          const result = await Promise.race([
+            executor(task.agentId, task.input),
+            new Promise<never>((_, reject) => 
+              setTimeout(() => reject(new Error("Timeout")), this.config.timeout)
+            ),
+          ])
+          
+          task.result = result
+          task.status = "completed"
+          task.completedAt = new Date()
+          this.config.onTaskComplete?.(task)
+        } catch (error) {
+          task.error = (error as Error).message
+          task.status = "failed"
+          task.completedAt = new Date()
+          this.config.onTaskError?.(task, task.error)
+        } finally {
+          this.runningTasks.delete(task.id)
+          results.set(task.id, task)
+        }
+      })
+      
+      await Promise.all(promises)
+    }
+    
+    return results
+  }
+  
+  // Ergebnis eines Tasks holen
+  getResult(taskId: string): AgentTask | undefined {
+    return this.tasks.get(taskId)
+  }
+  
+  // Alle Ergebnisse zusammenfassen
+  combineResults(separator: string = "\n\n---\n\n"): string {
+    return Array.from(this.tasks.values())
+      .filter(t => t.status === "completed" && t.result)
+      .sort((a, b) => (a.startedAt?.getTime() || 0) - (b.startedAt?.getTime() || 0))
+      .map(t => `### ${t.agentId}\n${t.result}`)
+      .join(separator)
+  }
+  
+  // Reset
+  reset(): void {
+    this.tasks.clear()
+    this.runningTasks.clear()
+  }
+}
+
+// === WORKFLOW VALIDATION & AUTO-REPAIR ===
+
+export interface ValidationError {
+  type: "error" | "warning"
+  nodeId?: string
+  edgeId?: string
+  code: string
+  message: string
+  autoFixable: boolean
+}
+
+export interface ValidationResult {
+  valid: boolean
+  errors: ValidationError[]
+  warnings: ValidationError[]
+}
+
+export class WorkflowValidator {
+  // Workflow validieren
+  validate(workflow: { nodes: WorkflowNode[]; edges: WorkflowEdge[] }): ValidationResult {
+    const errors: ValidationError[] = []
+    const warnings: ValidationError[] = []
+    
+    // 1. Start-Node prüfen
+    const startNodes = workflow.nodes.filter(n => n.type === "start")
+    if (startNodes.length === 0) {
+      errors.push({
+        type: "error",
+        code: "NO_START_NODE",
+        message: "Workflow hat keinen Start-Node",
+        autoFixable: true,
+      })
+    } else if (startNodes.length > 1) {
+      errors.push({
+        type: "error",
+        code: "MULTIPLE_START_NODES",
+        message: `Workflow hat ${startNodes.length} Start-Nodes (nur einer erlaubt)`,
+        autoFixable: true,
+      })
+    }
+    
+    // 2. End-Node prüfen
+    const endNodes = workflow.nodes.filter(n => n.type === "end")
+    if (endNodes.length === 0) {
+      warnings.push({
+        type: "warning",
+        code: "NO_END_NODE",
+        message: "Workflow hat keinen End-Node (empfohlen)",
+        autoFixable: true,
+      })
+    }
+    
+    // 3. Verwaiste Nodes (keine eingehenden Edges außer Start)
+    for (const node of workflow.nodes) {
+      if (node.type === "start") continue
+      
+      const hasIncoming = workflow.edges.some(e => e.target === node.id)
+      if (!hasIncoming) {
+        errors.push({
+          type: "error",
+          nodeId: node.id,
+          code: "ORPHAN_NODE",
+          message: `Node "${node.data.label || node.id}" hat keine eingehenden Verbindungen`,
+          autoFixable: false,
+        })
+      }
+    }
+    
+    // 4. Dead-End Nodes (keine ausgehenden Edges außer End)
+    for (const node of workflow.nodes) {
+      if (node.type === "end") continue
+      
+      const hasOutgoing = workflow.edges.some(e => e.source === node.id)
+      if (!hasOutgoing) {
+        warnings.push({
+          type: "warning",
+          nodeId: node.id,
+          code: "DEAD_END_NODE",
+          message: `Node "${node.data.label || node.id}" hat keine ausgehenden Verbindungen`,
+          autoFixable: false,
+        })
+      }
+    }
+    
+    // 5. Ungültige Edge-Referenzen
+    for (const edge of workflow.edges) {
+      const sourceExists = workflow.nodes.some(n => n.id === edge.source)
+      const targetExists = workflow.nodes.some(n => n.id === edge.target)
+      
+      if (!sourceExists) {
+        errors.push({
+          type: "error",
+          edgeId: edge.id,
+          code: "INVALID_SOURCE",
+          message: `Edge "${edge.id}" referenziert nicht-existierenden Source-Node`,
+          autoFixable: true,
+        })
+      }
+      
+      if (!targetExists) {
+        errors.push({
+          type: "error",
+          edgeId: edge.id,
+          code: "INVALID_TARGET",
+          message: `Edge "${edge.id}" referenziert nicht-existierenden Target-Node`,
+          autoFixable: true,
+        })
+      }
+    }
+    
+    // 6. Agent-Node ohne AgentId
+    for (const node of workflow.nodes) {
+      if (node.type === "agent" && !node.data.agentId) {
+        errors.push({
+          type: "error",
+          nodeId: node.id,
+          code: "MISSING_AGENT_ID",
+          message: `Agent-Node "${node.data.label || node.id}" hat keine Agent-ID`,
+          autoFixable: false,
+        })
+      }
+    }
+    
+    // 7. Zyklus-Erkennung (einfach)
+    const visited = new Set<string>()
+    const recursionStack = new Set<string>()
+    
+    const hasCycle = (nodeId: string): boolean => {
+      visited.add(nodeId)
+      recursionStack.add(nodeId)
+      
+      const outgoing = workflow.edges.filter(e => e.source === nodeId)
+      for (const edge of outgoing) {
+        if (!visited.has(edge.target)) {
+          if (hasCycle(edge.target)) return true
+        } else if (recursionStack.has(edge.target)) {
+          return true
+        }
+      }
+      
+      recursionStack.delete(nodeId)
+      return false
+    }
+    
+    for (const node of workflow.nodes) {
+      if (!visited.has(node.id)) {
+        if (hasCycle(node.id)) {
+          warnings.push({
+            type: "warning",
+            code: "CYCLE_DETECTED",
+            message: "Workflow enthält möglicherweise einen Zyklus (könnte Endlosschleife verursachen)",
+            autoFixable: false,
+          })
+          break
+        }
+      }
+    }
+    
+    return {
+      valid: errors.length === 0,
+      errors,
+      warnings,
+    }
+  }
+  
+  // Auto-Repair versuchen
+  autoRepair(workflow: { nodes: WorkflowNode[]; edges: WorkflowEdge[] }): { 
+    workflow: { nodes: WorkflowNode[]; edges: WorkflowEdge[] }
+    repairs: string[]
+  } {
+    const repairs: string[] = []
+    let nodes = [...workflow.nodes]
+    let edges = [...workflow.edges]
+    
+    // 1. Start-Node hinzufügen wenn fehlt
+    const startNodes = nodes.filter(n => n.type === "start")
+    if (startNodes.length === 0) {
+      const startNode: WorkflowNode = {
+        id: `start-${Date.now()}`,
+        type: "start",
+        position: { x: 100, y: 100 },
+        data: { label: "Start" },
+      }
+      nodes.unshift(startNode)
+      repairs.push("Start-Node hinzugefügt")
+      
+      // Mit erstem Agent-Node verbinden
+      const firstAgent = nodes.find(n => n.type === "agent")
+      if (firstAgent) {
+        edges.push({
+          id: `edge-${Date.now()}`,
+          source: startNode.id,
+          target: firstAgent.id,
+        })
+        repairs.push(`Start-Node mit "${firstAgent.data.label}" verbunden`)
+      }
+    }
+    
+    // 2. Doppelte Start-Nodes entfernen
+    if (startNodes.length > 1) {
+      const [keep, ...remove] = startNodes
+      nodes = nodes.filter(n => !remove.some(r => r.id === n.id))
+      repairs.push(`${remove.length} zusätzliche Start-Nodes entfernt`)
+    }
+    
+    // 3. Ungültige Edges entfernen
+    const validNodeIds = new Set(nodes.map(n => n.id))
+    const invalidEdges = edges.filter(
+      e => !validNodeIds.has(e.source) || !validNodeIds.has(e.target)
+    )
+    if (invalidEdges.length > 0) {
+      edges = edges.filter(e => validNodeIds.has(e.source) && validNodeIds.has(e.target))
+      repairs.push(`${invalidEdges.length} ungültige Edges entfernt`)
+    }
+    
+    // 4. End-Node hinzufügen wenn fehlt
+    const endNodes = nodes.filter(n => n.type === "end")
+    if (endNodes.length === 0) {
+      // Letzten Node finden (höchste Y-Position)
+      const lastNode = [...nodes]
+        .filter(n => n.type !== "start")
+        .sort((a, b) => (b.position?.y || 0) - (a.position?.y || 0))[0]
+      
+      if (lastNode) {
+        const endNode: WorkflowNode = {
+          id: `end-${Date.now()}`,
+          type: "end",
+          position: { 
+            x: (lastNode.position?.x || 300), 
+            y: (lastNode.position?.y || 300) + 150 
+          },
+          data: { label: "Ende" },
+        }
+        nodes.push(endNode)
+        
+        // Mit letztem Node verbinden wenn keine ausgehenden Edges
+        const hasOutgoing = edges.some(e => e.source === lastNode.id)
+        if (!hasOutgoing) {
+          edges.push({
+            id: `edge-${Date.now() + 1}`,
+            source: lastNode.id,
+            target: endNode.id,
+          })
+        }
+        repairs.push("End-Node hinzugefügt")
+      }
+    }
+    
+    return { workflow: { nodes, edges }, repairs }
+  }
+}
+
+// === WORKFLOW TEMPLATES ERWEITERT ===
+
+export interface WorkflowTemplateCategory {
+  id: string
+  name: string
+  description: string
+  icon: string
+  templates: string[]
+}
+
+export const WORKFLOW_TEMPLATE_CATEGORIES: WorkflowTemplateCategory[] = [
+  {
+    id: "development",
+    name: "Entwicklung",
+    description: "Workflows für Software-Entwicklung",
+    icon: "Code",
+    templates: ["code-review", "bug-fix", "feature-development", "refactoring"],
+  },
+  {
+    id: "documentation",
+    name: "Dokumentation",
+    description: "Workflows für Dokumentationserstellung",
+    icon: "FileText",
+    templates: ["api-docs", "readme-generator", "changelog"],
+  },
+  {
+    id: "testing",
+    name: "Testing",
+    description: "Workflows für Test-Erstellung und QA",
+    icon: "TestTube",
+    templates: ["unit-tests", "integration-tests", "e2e-tests"],
+  },
+  {
+    id: "devops",
+    name: "DevOps",
+    description: "Workflows für CI/CD und Infrastruktur",
+    icon: "Cloud",
+    templates: ["ci-pipeline", "deployment", "monitoring-setup"],
+  },
+]
+
+// Erweiterte Templates
+export const EXTENDED_WORKFLOW_TEMPLATES: Record<string, {
+  name: string
+  description: string
+  category: string
+  difficulty: "beginner" | "intermediate" | "advanced"
+  estimatedTime: string
+  nodes: WorkflowNode[]
+  edges: WorkflowEdge[]
+}> = {
+  "unit-tests": {
+    name: "Unit-Test Generator",
+    description: "Generiert Unit-Tests für bestehenden Code",
+    category: "testing",
+    difficulty: "intermediate",
+    estimatedTime: "2-3 min",
+    nodes: [
+      { id: "start", type: "start", position: { x: 250, y: 50 }, data: { label: "Start" } },
+      { id: "analyzer", type: "agent", position: { x: 250, y: 150 }, data: { 
+        label: "Code Analyzer", 
+        agentId: "reviewer",
+        description: "Analysiert Code-Struktur für Testbarkeit"
+      }},
+      { id: "test-gen", type: "agent", position: { x: 250, y: 280 }, data: { 
+        label: "Test Generator", 
+        agentId: "coder",
+        description: "Generiert Unit-Tests"
+      }},
+      { id: "review", type: "agent", position: { x: 250, y: 410 }, data: { 
+        label: "Test Review", 
+        agentId: "reviewer",
+        description: "Prüft Test-Qualität und Coverage"
+      }},
+      { id: "end", type: "end", position: { x: 250, y: 540 }, data: { label: "Ende" } },
+    ],
+    edges: [
+      { id: "e1", source: "start", target: "analyzer" },
+      { id: "e2", source: "analyzer", target: "test-gen" },
+      { id: "e3", source: "test-gen", target: "review" },
+      { id: "e4", source: "review", target: "end" },
+    ],
+  },
+  "refactoring": {
+    name: "Code Refactoring",
+    description: "Automatisches Refactoring mit Best Practices",
+    category: "development",
+    difficulty: "advanced",
+    estimatedTime: "5-8 min",
+    nodes: [
+      { id: "start", type: "start", position: { x: 250, y: 50 }, data: { label: "Start" } },
+      { id: "smell-detect", type: "agent", position: { x: 250, y: 150 }, data: { 
+        label: "Code Smell Detection", 
+        agentId: "reviewer",
+        description: "Erkennt Code Smells und Anti-Patterns"
+      }},
+      { id: "decision", type: "human-decision", position: { x: 250, y: 280 }, data: { 
+        label: "Refactoring-Scope",
+        question: "Welchen Umfang soll das Refactoring haben?",
+        options: [
+          { id: "minimal", label: "Minimal", description: "Nur kritische Issues" },
+          { id: "standard", label: "Standard", description: "Alle empfohlenen Änderungen" },
+          { id: "comprehensive", label: "Umfassend", description: "Vollständiges Refactoring" },
+        ]
+      }},
+      { id: "refactor", type: "agent", position: { x: 250, y: 410 }, data: { 
+        label: "Refactoring", 
+        agentId: "coder",
+        description: "Führt Refactoring durch"
+      }},
+      { id: "verify", type: "agent", position: { x: 250, y: 540 }, data: { 
+        label: "Verification", 
+        agentId: "reviewer",
+        description: "Prüft Refactoring-Ergebnis"
+      }},
+      { id: "end", type: "end", position: { x: 250, y: 670 }, data: { label: "Ende" } },
+    ],
+    edges: [
+      { id: "e1", source: "start", target: "smell-detect" },
+      { id: "e2", source: "smell-detect", target: "decision" },
+      { id: "e3", source: "decision", target: "refactor" },
+      { id: "e4", source: "refactor", target: "verify" },
+      { id: "e5", source: "verify", target: "end" },
+    ],
+  },
+  "api-docs": {
+    name: "API Documentation",
+    description: "Generiert API-Dokumentation aus Code",
+    category: "documentation",
+    difficulty: "beginner",
+    estimatedTime: "1-2 min",
+    nodes: [
+      { id: "start", type: "start", position: { x: 250, y: 50 }, data: { label: "Start" } },
+      { id: "extract", type: "agent", position: { x: 250, y: 150 }, data: { 
+        label: "API Extractor", 
+        agentId: "researcher",
+        description: "Extrahiert API-Endpunkte und Schemas"
+      }},
+      { id: "document", type: "agent", position: { x: 250, y: 280 }, data: { 
+        label: "Doc Generator", 
+        agentId: "coder",
+        description: "Generiert Markdown-Dokumentation"
+      }},
+      { id: "end", type: "end", position: { x: 250, y: 410 }, data: { label: "Ende" } },
+    ],
+    edges: [
+      { id: "e1", source: "start", target: "extract" },
+      { id: "e2", source: "extract", target: "document" },
+      { id: "e3", source: "document", target: "end" },
+    ],
+  },
+}
