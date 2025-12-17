@@ -4415,3 +4415,706 @@ export function matchShortcut(
   
   return null
 }
+
+// === ADVANCED CONDITIONAL BRANCHING ===
+
+export interface ConditionalRule {
+  id: string
+  name: string
+  condition: ConditionalExpression
+  targetNodeId: string
+  priority: number
+}
+
+export type ConditionalExpression = 
+  | { type: "simple"; operator: ConditionalOperator; field: string; value: unknown }
+  | { type: "and"; conditions: ConditionalExpression[] }
+  | { type: "or"; conditions: ConditionalExpression[] }
+  | { type: "not"; condition: ConditionalExpression }
+  | { type: "custom"; evaluate: (context: EvaluationContext) => boolean }
+
+export type ConditionalOperator = 
+  | "equals" | "not-equals" 
+  | "contains" | "not-contains"
+  | "starts-with" | "ends-with"
+  | "greater-than" | "less-than"
+  | "greater-or-equal" | "less-or-equal"
+  | "matches-regex" | "is-empty" | "is-not-empty"
+  | "in-array" | "not-in-array"
+
+export interface EvaluationContext {
+  output: string
+  metadata?: Record<string, unknown>
+  variables: Record<string, unknown>
+  previousResults: Record<string, WorkflowStepResult>
+}
+
+export class ConditionalEvaluator {
+  // Regel auswerten
+  evaluate(expression: ConditionalExpression, context: EvaluationContext): boolean {
+    switch (expression.type) {
+      case "simple":
+        return this.evaluateSimple(expression, context)
+      case "and":
+        return expression.conditions.every(c => this.evaluate(c, context))
+      case "or":
+        return expression.conditions.some(c => this.evaluate(c, context))
+      case "not":
+        return !this.evaluate(expression.condition, context)
+      case "custom":
+        try {
+          return expression.evaluate(context)
+        } catch {
+          return false
+        }
+    }
+  }
+  
+  private evaluateSimple(
+    expr: { operator: ConditionalOperator; field: string; value: unknown },
+    context: EvaluationContext
+  ): boolean {
+    const fieldValue = this.getFieldValue(expr.field, context)
+    const compareValue = expr.value
+    
+    switch (expr.operator) {
+      case "equals":
+        return fieldValue === compareValue
+      case "not-equals":
+        return fieldValue !== compareValue
+      case "contains":
+        return String(fieldValue).toLowerCase().includes(String(compareValue).toLowerCase())
+      case "not-contains":
+        return !String(fieldValue).toLowerCase().includes(String(compareValue).toLowerCase())
+      case "starts-with":
+        return String(fieldValue).toLowerCase().startsWith(String(compareValue).toLowerCase())
+      case "ends-with":
+        return String(fieldValue).toLowerCase().endsWith(String(compareValue).toLowerCase())
+      case "greater-than":
+        return Number(fieldValue) > Number(compareValue)
+      case "less-than":
+        return Number(fieldValue) < Number(compareValue)
+      case "greater-or-equal":
+        return Number(fieldValue) >= Number(compareValue)
+      case "less-or-equal":
+        return Number(fieldValue) <= Number(compareValue)
+      case "matches-regex":
+        try {
+          return new RegExp(String(compareValue), "i").test(String(fieldValue))
+        } catch {
+          return false
+        }
+      case "is-empty":
+        return fieldValue === null || fieldValue === undefined || fieldValue === ""
+      case "is-not-empty":
+        return fieldValue !== null && fieldValue !== undefined && fieldValue !== ""
+      case "in-array":
+        return Array.isArray(compareValue) && compareValue.includes(fieldValue)
+      case "not-in-array":
+        return !Array.isArray(compareValue) || !compareValue.includes(fieldValue)
+      default:
+        return false
+    }
+  }
+  
+  private getFieldValue(field: string, context: EvaluationContext): unknown {
+    const parts = field.split(".")
+    let value: unknown = context
+    
+    for (const part of parts) {
+      if (value === null || value === undefined) return undefined
+      value = (value as Record<string, unknown>)[part]
+    }
+    
+    return value
+  }
+  
+  // Erste passende Regel finden
+  findMatchingRule(rules: ConditionalRule[], context: EvaluationContext): ConditionalRule | null {
+    const sorted = [...rules].sort((a, b) => b.priority - a.priority)
+    
+    for (const rule of sorted) {
+      if (this.evaluate(rule.condition, context)) {
+        return rule
+      }
+    }
+    
+    return null
+  }
+}
+
+// === AGENT OUTPUT PARSER ===
+
+export interface ParsedOutput {
+  type: "code" | "text" | "json" | "markdown" | "error" | "mixed"
+  content: string
+  codeBlocks: CodeBlock[]
+  sections: OutputSection[]
+  metadata: {
+    hasErrors: boolean
+    hasWarnings: boolean
+    filesGenerated: string[]
+    suggestionsCount: number
+    confidence?: number
+  }
+}
+
+export interface CodeBlock {
+  language: string
+  code: string
+  filename?: string
+  startLine: number
+  endLine: number
+}
+
+export interface OutputSection {
+  type: "heading" | "paragraph" | "list" | "code" | "quote"
+  content: string
+  level?: number
+}
+
+export class AgentOutputParser {
+  // Output parsen
+  parse(output: string): ParsedOutput {
+    const codeBlocks = this.extractCodeBlocks(output)
+    const sections = this.extractSections(output)
+    const metadata = this.extractMetadata(output, codeBlocks)
+    
+    // Typ bestimmen
+    let type: ParsedOutput["type"] = "text"
+    if (codeBlocks.length > 0 && sections.length > 0) {
+      type = "mixed"
+    } else if (codeBlocks.length > 0) {
+      type = "code"
+    } else if (output.trim().startsWith("{") || output.trim().startsWith("[")) {
+      type = "json"
+    } else if (output.includes("# ") || output.includes("## ")) {
+      type = "markdown"
+    }
+    
+    if (metadata.hasErrors) {
+      type = "error"
+    }
+    
+    return {
+      type,
+      content: output,
+      codeBlocks,
+      sections,
+      metadata,
+    }
+  }
+  
+  // Code-Blöcke extrahieren
+  private extractCodeBlocks(output: string): CodeBlock[] {
+    const blocks: CodeBlock[] = []
+    const regex = /```(\w+)?(?:\s+([^\n]+))?\n([\s\S]*?)```/g
+    let match
+    
+    while ((match = regex.exec(output)) !== null) {
+      const language = match[1] || "text"
+      const filenameHint = match[2]
+      const code = match[3].trim()
+      
+      // Filename aus Hint oder Code extrahieren
+      let filename: string | undefined
+      if (filenameHint) {
+        filename = filenameHint.trim()
+      } else {
+        // Versuche aus erstem Kommentar zu extrahieren
+        const commentMatch = code.match(/^(?:\/\/|#|<!--)\s*(?:file|filename):\s*(.+)/i)
+        if (commentMatch) {
+          filename = commentMatch[1].trim()
+        }
+      }
+      
+      // Zeilennummern berechnen
+      const beforeMatch = output.substring(0, match.index)
+      const startLine = beforeMatch.split("\n").length
+      const endLine = startLine + code.split("\n").length - 1
+      
+      blocks.push({
+        language,
+        code,
+        filename,
+        startLine,
+        endLine,
+      })
+    }
+    
+    return blocks
+  }
+  
+  // Sektionen extrahieren
+  private extractSections(output: string): OutputSection[] {
+    const sections: OutputSection[] = []
+    const lines = output.split("\n")
+    let currentSection: OutputSection | null = null
+    
+    for (const line of lines) {
+      // Heading
+      const headingMatch = line.match(/^(#{1,6})\s+(.+)/)
+      if (headingMatch) {
+        if (currentSection) sections.push(currentSection)
+        currentSection = {
+          type: "heading",
+          content: headingMatch[2],
+          level: headingMatch[1].length,
+        }
+        continue
+      }
+      
+      // List item
+      if (line.match(/^[-*+]\s+/) || line.match(/^\d+\.\s+/)) {
+        if (currentSection?.type !== "list") {
+          if (currentSection) sections.push(currentSection)
+          currentSection = { type: "list", content: "" }
+        }
+        currentSection.content += line + "\n"
+        continue
+      }
+      
+      // Quote
+      if (line.startsWith("> ")) {
+        if (currentSection?.type !== "quote") {
+          if (currentSection) sections.push(currentSection)
+          currentSection = { type: "quote", content: "" }
+        }
+        currentSection.content += line.substring(2) + "\n"
+        continue
+      }
+      
+      // Paragraph
+      if (line.trim()) {
+        if (currentSection?.type !== "paragraph") {
+          if (currentSection) sections.push(currentSection)
+          currentSection = { type: "paragraph", content: "" }
+        }
+        currentSection.content += line + " "
+      }
+    }
+    
+    if (currentSection) sections.push(currentSection)
+    
+    return sections.map(s => ({
+      ...s,
+      content: s.content.trim(),
+    }))
+  }
+  
+  // Metadata extrahieren
+  private extractMetadata(output: string, codeBlocks: CodeBlock[]): ParsedOutput["metadata"] {
+    const lower = output.toLowerCase()
+    
+    // Dateien aus Code-Blöcken
+    const filesGenerated = codeBlocks
+      .filter(b => b.filename)
+      .map(b => b.filename!)
+    
+    // Zusätzliche Dateinamen suchen
+    const fileMatches = output.match(/(?:erstellt|generiert|created|generated):\s*`?([^\s`]+\.\w+)`?/gi)
+    if (fileMatches) {
+      for (const match of fileMatches) {
+        const filename = match.match(/`?([^\s`]+\.\w+)`?$/)?.[1]
+        if (filename && !filesGenerated.includes(filename)) {
+          filesGenerated.push(filename)
+        }
+      }
+    }
+    
+    // Suggestions zählen
+    const suggestionPatterns = [
+      /(?:vorschlag|suggestion|empfehlung|tipp)(?:s)?:/gi,
+      /(?:sollte|should|könnte|could|würde|would)\s+\w+/gi,
+    ]
+    let suggestionsCount = 0
+    for (const pattern of suggestionPatterns) {
+      const matches = output.match(pattern)
+      if (matches) suggestionsCount += matches.length
+    }
+    
+    // Confidence aus Output extrahieren
+    let confidence: number | undefined
+    const confidenceMatch = output.match(/(?:confidence|sicherheit|zuversicht):\s*(\d+)%?/i)
+    if (confidenceMatch) {
+      confidence = parseInt(confidenceMatch[1]) / 100
+    }
+    
+    return {
+      hasErrors: lower.includes("error:") || lower.includes("fehler:") || 
+                 lower.includes("exception:") || lower.includes("failed:"),
+      hasWarnings: lower.includes("warning:") || lower.includes("warnung:"),
+      filesGenerated,
+      suggestionsCount: Math.min(suggestionsCount, 10),
+      confidence,
+    }
+  }
+  
+  // JSON aus Output extrahieren
+  extractJSON<T>(output: string): T | null {
+    // Versuche direktes Parsing
+    try {
+      return JSON.parse(output.trim())
+    } catch {}
+    
+    // Suche JSON in Code-Block
+    const jsonBlock = output.match(/```(?:json)?\s*([\s\S]*?)```/)
+    if (jsonBlock) {
+      try {
+        return JSON.parse(jsonBlock[1].trim())
+      } catch {}
+    }
+    
+    // Suche JSON-Objekt im Text
+    const jsonMatch = output.match(/\{[\s\S]*\}/)
+    if (jsonMatch) {
+      try {
+        return JSON.parse(jsonMatch[0])
+      } catch {}
+    }
+    
+    return null
+  }
+}
+
+// === WORKFLOW EXECUTION QUEUE ===
+
+export interface QueuedWorkflow {
+  id: string
+  workflowId: string
+  workflowName: string
+  input: string
+  priority: number
+  status: "queued" | "running" | "completed" | "failed" | "cancelled"
+  addedAt: Date
+  startedAt?: Date
+  completedAt?: Date
+  result?: string
+  error?: string
+  retryCount: number
+  maxRetries: number
+}
+
+export interface ExecutionQueueConfig {
+  maxConcurrent: number
+  defaultPriority: number
+  maxRetries: number
+  retryDelay: number
+  onStart?: (workflow: QueuedWorkflow) => void
+  onComplete?: (workflow: QueuedWorkflow) => void
+  onError?: (workflow: QueuedWorkflow, error: string) => void
+}
+
+export class WorkflowExecutionQueue {
+  private queue: QueuedWorkflow[] = []
+  private running: Map<string, QueuedWorkflow> = new Map()
+  private config: ExecutionQueueConfig
+  private isProcessing: boolean = false
+  private executor?: (workflowId: string, input: string) => Promise<string>
+  
+  constructor(config: Partial<ExecutionQueueConfig> = {}) {
+    this.config = {
+      maxConcurrent: 2,
+      defaultPriority: 5,
+      maxRetries: 2,
+      retryDelay: 5000,
+      ...config,
+    }
+  }
+  
+  // Executor setzen
+  setExecutor(executor: (workflowId: string, input: string) => Promise<string>): void {
+    this.executor = executor
+  }
+  
+  // Workflow zur Queue hinzufügen
+  enqueue(
+    workflowId: string,
+    workflowName: string,
+    input: string,
+    options: { priority?: number; maxRetries?: number } = {}
+  ): string {
+    const id = `queue-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    
+    const workflow: QueuedWorkflow = {
+      id,
+      workflowId,
+      workflowName,
+      input,
+      priority: options.priority ?? this.config.defaultPriority,
+      status: "queued",
+      addedAt: new Date(),
+      retryCount: 0,
+      maxRetries: options.maxRetries ?? this.config.maxRetries,
+    }
+    
+    this.queue.push(workflow)
+    this.sortQueue()
+    
+    // Automatisch starten
+    if (!this.isProcessing) {
+      this.processQueue()
+    }
+    
+    return id
+  }
+  
+  // Queue nach Priorität sortieren
+  private sortQueue(): void {
+    this.queue.sort((a, b) => b.priority - a.priority)
+  }
+  
+  // Queue verarbeiten
+  private async processQueue(): Promise<void> {
+    if (!this.executor) return
+    this.isProcessing = true
+    
+    while (this.queue.length > 0 || this.running.size > 0) {
+      // Neue Workflows starten wenn Kapazität frei
+      while (
+        this.queue.length > 0 && 
+        this.running.size < this.config.maxConcurrent
+      ) {
+        const workflow = this.queue.shift()!
+        this.running.set(workflow.id, workflow)
+        this.executeWorkflow(workflow)
+      }
+      
+      // Warten bevor nächste Iteration
+      await new Promise(resolve => setTimeout(resolve, 100))
+    }
+    
+    this.isProcessing = false
+  }
+  
+  // Einzelnen Workflow ausführen
+  private async executeWorkflow(workflow: QueuedWorkflow): Promise<void> {
+    workflow.status = "running"
+    workflow.startedAt = new Date()
+    this.config.onStart?.(workflow)
+    
+    try {
+      const result = await this.executor!(workflow.workflowId, workflow.input)
+      
+      workflow.status = "completed"
+      workflow.completedAt = new Date()
+      workflow.result = result
+      this.config.onComplete?.(workflow)
+    } catch (error) {
+      const errorMessage = (error as Error).message
+      
+      if (workflow.retryCount < workflow.maxRetries) {
+        // Retry
+        workflow.retryCount++
+        workflow.status = "queued"
+        
+        // Mit Delay wieder in Queue einfügen
+        setTimeout(() => {
+          this.queue.unshift(workflow)
+          this.sortQueue()
+        }, this.config.retryDelay)
+      } else {
+        workflow.status = "failed"
+        workflow.completedAt = new Date()
+        workflow.error = errorMessage
+        this.config.onError?.(workflow, errorMessage)
+      }
+    } finally {
+      this.running.delete(workflow.id)
+    }
+  }
+  
+  // Workflow abbrechen
+  cancel(id: string): boolean {
+    const queueIndex = this.queue.findIndex(w => w.id === id)
+    if (queueIndex >= 0) {
+      this.queue[queueIndex].status = "cancelled"
+      this.queue.splice(queueIndex, 1)
+      return true
+    }
+    
+    const running = this.running.get(id)
+    if (running) {
+      running.status = "cancelled"
+      return true
+    }
+    
+    return false
+  }
+  
+  // Status abrufen
+  getStatus(id: string): QueuedWorkflow | undefined {
+    const queued = this.queue.find(w => w.id === id)
+    if (queued) return queued
+    
+    return this.running.get(id)
+  }
+  
+  // Alle Workflows abrufen
+  getAll(): QueuedWorkflow[] {
+    return [
+      ...Array.from(this.running.values()),
+      ...this.queue,
+    ]
+  }
+  
+  // Queue-Statistiken
+  getStats(): {
+    queued: number
+    running: number
+    completed: number
+    failed: number
+    avgWaitTime: number
+  } {
+    const all = this.getAll()
+    const completed = all.filter(w => w.status === "completed")
+    
+    const avgWaitTime = completed.length > 0
+      ? completed.reduce((sum, w) => {
+          const wait = (w.startedAt?.getTime() || 0) - w.addedAt.getTime()
+          return sum + wait
+        }, 0) / completed.length
+      : 0
+    
+    return {
+      queued: this.queue.length,
+      running: this.running.size,
+      completed: completed.length,
+      failed: all.filter(w => w.status === "failed").length,
+      avgWaitTime,
+    }
+  }
+  
+  // Queue leeren
+  clear(): void {
+    this.queue = []
+  }
+  
+  // Priorität ändern
+  updatePriority(id: string, priority: number): boolean {
+    const workflow = this.queue.find(w => w.id === id)
+    if (workflow) {
+      workflow.priority = priority
+      this.sortQueue()
+      return true
+    }
+    return false
+  }
+}
+
+// === WORKFLOW DIFF & COMPARISON ===
+
+export interface WorkflowDiff {
+  addedNodes: WorkflowNode[]
+  removedNodes: WorkflowNode[]
+  modifiedNodes: { before: WorkflowNode; after: WorkflowNode; changes: string[] }[]
+  addedEdges: WorkflowEdge[]
+  removedEdges: WorkflowEdge[]
+}
+
+export function compareWorkflows(
+  before: { nodes: WorkflowNode[]; edges: WorkflowEdge[] },
+  after: { nodes: WorkflowNode[]; edges: WorkflowEdge[] }
+): WorkflowDiff {
+  const diff: WorkflowDiff = {
+    addedNodes: [],
+    removedNodes: [],
+    modifiedNodes: [],
+    addedEdges: [],
+    removedEdges: [],
+  }
+  
+  const beforeNodeIds = new Set(before.nodes.map(n => n.id))
+  const afterNodeIds = new Set(after.nodes.map(n => n.id))
+  
+  // Added nodes
+  diff.addedNodes = after.nodes.filter(n => !beforeNodeIds.has(n.id))
+  
+  // Removed nodes
+  diff.removedNodes = before.nodes.filter(n => !afterNodeIds.has(n.id))
+  
+  // Modified nodes
+  for (const afterNode of after.nodes) {
+    const beforeNode = before.nodes.find(n => n.id === afterNode.id)
+    if (!beforeNode) continue
+    
+    const changes: string[] = []
+    
+    if (beforeNode.data.label !== afterNode.data.label) {
+      changes.push(`label: "${beforeNode.data.label}" → "${afterNode.data.label}"`)
+    }
+    if (beforeNode.type !== afterNode.type) {
+      changes.push(`type: ${beforeNode.type} → ${afterNode.type}`)
+    }
+    if (beforeNode.data.agentId !== afterNode.data.agentId) {
+      changes.push(`agent: ${beforeNode.data.agentId} → ${afterNode.data.agentId}`)
+    }
+    if (JSON.stringify(beforeNode.position) !== JSON.stringify(afterNode.position)) {
+      changes.push("position geändert")
+    }
+    
+    if (changes.length > 0) {
+      diff.modifiedNodes.push({ before: beforeNode, after: afterNode, changes })
+    }
+  }
+  
+  const beforeEdgeIds = new Set(before.edges.map(e => e.id))
+  const afterEdgeIds = new Set(after.edges.map(e => e.id))
+  
+  // Added edges
+  diff.addedEdges = after.edges.filter(e => !beforeEdgeIds.has(e.id))
+  
+  // Removed edges
+  diff.removedEdges = before.edges.filter(e => !afterEdgeIds.has(e.id))
+  
+  return diff
+}
+
+// Diff als Text formatieren
+export function formatWorkflowDiff(diff: WorkflowDiff): string {
+  const lines: string[] = []
+  
+  if (diff.addedNodes.length > 0) {
+    lines.push(`## Hinzugefügte Nodes (${diff.addedNodes.length})`)
+    for (const node of diff.addedNodes) {
+      lines.push(`+ ${node.data.label || node.id} (${node.type})`)
+    }
+    lines.push("")
+  }
+  
+  if (diff.removedNodes.length > 0) {
+    lines.push(`## Entfernte Nodes (${diff.removedNodes.length})`)
+    for (const node of diff.removedNodes) {
+      lines.push(`- ${node.data.label || node.id} (${node.type})`)
+    }
+    lines.push("")
+  }
+  
+  if (diff.modifiedNodes.length > 0) {
+    lines.push(`## Geänderte Nodes (${diff.modifiedNodes.length})`)
+    for (const { after, changes } of diff.modifiedNodes) {
+      lines.push(`~ ${after.data.label || after.id}:`)
+      for (const change of changes) {
+        lines.push(`  - ${change}`)
+      }
+    }
+    lines.push("")
+  }
+  
+  if (diff.addedEdges.length > 0) {
+    lines.push(`## Hinzugefügte Verbindungen (${diff.addedEdges.length})`)
+    for (const edge of diff.addedEdges) {
+      lines.push(`+ ${edge.source} → ${edge.target}`)
+    }
+    lines.push("")
+  }
+  
+  if (diff.removedEdges.length > 0) {
+    lines.push(`## Entfernte Verbindungen (${diff.removedEdges.length})`)
+    for (const edge of diff.removedEdges) {
+      lines.push(`- ${edge.source} → ${edge.target}`)
+    }
+  }
+  
+  return lines.join("\n")
+}
