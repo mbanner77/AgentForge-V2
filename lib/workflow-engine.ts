@@ -1740,3 +1740,392 @@ export function mergeWorkflows(workflowA: WorkflowGraph, workflowB: WorkflowGrap
     updatedAt: new Date(),
   }
 }
+
+// === ERWEITERTE ANALYTICS ===
+
+export interface WorkflowAnalytics {
+  executionHistory: {
+    timestamp: Date
+    workflowId: string
+    duration: number
+    success: boolean
+    nodesExecuted: number
+  }[]
+  agentUsage: Record<string, { calls: number; avgDuration: number; successRate: number }>
+  bottlenecks: { nodeId: string; nodeName: string; avgDuration: number }[]
+  errorPatterns: { pattern: string; count: number; lastOccurred: Date }[]
+  recommendations: string[]
+}
+
+// Analytics-Tracker für Workflow-Optimierung
+export class WorkflowAnalyticsTracker {
+  private history: WorkflowAnalytics["executionHistory"] = []
+  private agentStats: Map<string, { calls: number; totalDuration: number; successes: number }> = new Map()
+  private nodeDurations: Map<string, number[]> = new Map()
+  private errors: Map<string, { count: number; lastOccurred: Date }> = new Map()
+  
+  // Workflow-Ausführung tracken
+  trackExecution(workflowId: string, duration: number, success: boolean, nodesExecuted: number): void {
+    this.history.push({
+      timestamp: new Date(),
+      workflowId,
+      duration,
+      success,
+      nodesExecuted,
+    })
+    
+    // Behalte nur die letzten 100 Einträge
+    if (this.history.length > 100) {
+      this.history = this.history.slice(-100)
+    }
+  }
+  
+  // Agent-Aufruf tracken
+  trackAgentCall(agentId: string, duration: number, success: boolean): void {
+    const stats = this.agentStats.get(agentId) || { calls: 0, totalDuration: 0, successes: 0 }
+    stats.calls++
+    stats.totalDuration += duration
+    if (success) stats.successes++
+    this.agentStats.set(agentId, stats)
+  }
+  
+  // Node-Duration tracken
+  trackNodeDuration(nodeId: string, duration: number): void {
+    const durations = this.nodeDurations.get(nodeId) || []
+    durations.push(duration)
+    if (durations.length > 50) durations.shift()
+    this.nodeDurations.set(nodeId, durations)
+  }
+  
+  // Fehler tracken
+  trackError(pattern: string): void {
+    const existing = this.errors.get(pattern) || { count: 0, lastOccurred: new Date() }
+    existing.count++
+    existing.lastOccurred = new Date()
+    this.errors.set(pattern, existing)
+  }
+  
+  // Analytics abrufen
+  getAnalytics(): WorkflowAnalytics {
+    // Agent-Usage berechnen
+    const agentUsage: WorkflowAnalytics["agentUsage"] = {}
+    this.agentStats.forEach((stats, agentId) => {
+      agentUsage[agentId] = {
+        calls: stats.calls,
+        avgDuration: stats.calls > 0 ? stats.totalDuration / stats.calls : 0,
+        successRate: stats.calls > 0 ? (stats.successes / stats.calls) * 100 : 0,
+      }
+    })
+    
+    // Bottlenecks identifizieren (Nodes mit höchster avg Duration)
+    const bottlenecks: WorkflowAnalytics["bottlenecks"] = []
+    this.nodeDurations.forEach((durations, nodeId) => {
+      const avg = durations.reduce((sum, d) => sum + d, 0) / durations.length
+      bottlenecks.push({ nodeId, nodeName: nodeId, avgDuration: avg })
+    })
+    bottlenecks.sort((a, b) => b.avgDuration - a.avgDuration)
+    
+    // Error-Patterns
+    const errorPatterns: WorkflowAnalytics["errorPatterns"] = []
+    this.errors.forEach((data, pattern) => {
+      errorPatterns.push({ pattern, count: data.count, lastOccurred: data.lastOccurred })
+    })
+    errorPatterns.sort((a, b) => b.count - a.count)
+    
+    // Recommendations generieren
+    const recommendations: string[] = []
+    
+    // Bottleneck-Empfehlungen
+    if (bottlenecks.length > 0 && bottlenecks[0].avgDuration > 30000) {
+      recommendations.push(`Node "${bottlenecks[0].nodeName}" ist langsam (${Math.round(bottlenecks[0].avgDuration / 1000)}s) - erwäge Optimierung oder Caching`)
+    }
+    
+    // Agent-Empfehlungen
+    Object.entries(agentUsage).forEach(([agentId, stats]) => {
+      if (stats.successRate < 80) {
+        recommendations.push(`Agent "${agentId}" hat niedrige Erfolgsrate (${stats.successRate.toFixed(1)}%) - prüfe Prompts`)
+      }
+    })
+    
+    // Error-Empfehlungen
+    if (errorPatterns.length > 0 && errorPatterns[0].count > 5) {
+      recommendations.push(`Häufiger Fehler: "${errorPatterns[0].pattern}" (${errorPatterns[0].count}x) - behebe Grundursache`)
+    }
+    
+    return {
+      executionHistory: this.history,
+      agentUsage,
+      bottlenecks: bottlenecks.slice(0, 5),
+      errorPatterns: errorPatterns.slice(0, 10),
+      recommendations,
+    }
+  }
+  
+  // Erfolgsrate berechnen
+  getSuccessRate(): number {
+    if (this.history.length === 0) return 100
+    const successes = this.history.filter(h => h.success).length
+    return (successes / this.history.length) * 100
+  }
+  
+  // Durchschnittliche Dauer
+  getAverageDuration(): number {
+    if (this.history.length === 0) return 0
+    return this.history.reduce((sum, h) => sum + h.duration, 0) / this.history.length
+  }
+}
+
+// === WORKFLOW SCHEDULER ===
+
+export interface ScheduledWorkflow {
+  id: string
+  workflowId: string
+  schedule: {
+    type: "once" | "recurring"
+    executeAt?: Date
+    interval?: number // in Millisekunden
+    cron?: string // z.B. "0 9 * * 1-5" für Werktage 9 Uhr
+  }
+  enabled: boolean
+  lastRun?: Date
+  nextRun?: Date
+  runCount: number
+}
+
+export class WorkflowScheduler {
+  private scheduledWorkflows: Map<string, ScheduledWorkflow> = new Map()
+  private timers: Map<string, NodeJS.Timeout> = new Map()
+  private onExecute: (workflowId: string) => Promise<void>
+  
+  constructor(onExecute: (workflowId: string) => Promise<void>) {
+    this.onExecute = onExecute
+  }
+  
+  // Workflow einplanen
+  schedule(workflowId: string, schedule: ScheduledWorkflow["schedule"]): string {
+    const id = `scheduled-${Date.now()}`
+    const scheduled: ScheduledWorkflow = {
+      id,
+      workflowId,
+      schedule,
+      enabled: true,
+      runCount: 0,
+    }
+    
+    this.scheduledWorkflows.set(id, scheduled)
+    this.setupTimer(scheduled)
+    
+    return id
+  }
+  
+  // Timer einrichten
+  private setupTimer(scheduled: ScheduledWorkflow): void {
+    if (!scheduled.enabled) return
+    
+    // Bestehenden Timer löschen
+    const existingTimer = this.timers.get(scheduled.id)
+    if (existingTimer) clearTimeout(existingTimer)
+    
+    let delay: number
+    
+    if (scheduled.schedule.type === "once" && scheduled.schedule.executeAt) {
+      delay = scheduled.schedule.executeAt.getTime() - Date.now()
+      if (delay < 0) return // Bereits vergangen
+      
+      scheduled.nextRun = scheduled.schedule.executeAt
+    } else if (scheduled.schedule.type === "recurring" && scheduled.schedule.interval) {
+      delay = scheduled.schedule.interval
+      scheduled.nextRun = new Date(Date.now() + delay)
+    } else {
+      return
+    }
+    
+    const timer = setTimeout(async () => {
+      await this.executeScheduled(scheduled)
+    }, delay)
+    
+    this.timers.set(scheduled.id, timer)
+  }
+  
+  // Geplanten Workflow ausführen
+  private async executeScheduled(scheduled: ScheduledWorkflow): Promise<void> {
+    scheduled.lastRun = new Date()
+    scheduled.runCount++
+    
+    try {
+      await this.onExecute(scheduled.workflowId)
+    } catch (error) {
+      console.error(`Scheduled workflow ${scheduled.workflowId} failed:`, error)
+    }
+    
+    // Bei recurring: nächste Ausführung planen
+    if (scheduled.schedule.type === "recurring" && scheduled.enabled) {
+      this.setupTimer(scheduled)
+    } else {
+      scheduled.enabled = false
+    }
+    
+    this.scheduledWorkflows.set(scheduled.id, scheduled)
+  }
+  
+  // Geplanten Workflow abbrechen
+  cancel(scheduleId: string): boolean {
+    const scheduled = this.scheduledWorkflows.get(scheduleId)
+    if (!scheduled) return false
+    
+    const timer = this.timers.get(scheduleId)
+    if (timer) clearTimeout(timer)
+    
+    scheduled.enabled = false
+    this.scheduledWorkflows.set(scheduleId, scheduled)
+    return true
+  }
+  
+  // Alle geplanten Workflows abrufen
+  getScheduled(): ScheduledWorkflow[] {
+    return Array.from(this.scheduledWorkflows.values())
+  }
+  
+  // Pause all schedules
+  pauseAll(): void {
+    this.timers.forEach((timer, id) => {
+      clearTimeout(timer)
+      const scheduled = this.scheduledWorkflows.get(id)
+      if (scheduled) {
+        scheduled.enabled = false
+        this.scheduledWorkflows.set(id, scheduled)
+      }
+    })
+    this.timers.clear()
+  }
+  
+  // Resume all schedules
+  resumeAll(): void {
+    this.scheduledWorkflows.forEach(scheduled => {
+      if (!scheduled.enabled) {
+        scheduled.enabled = true
+        this.setupTimer(scheduled)
+      }
+    })
+  }
+}
+
+// === AGENT FEEDBACK LOOP ===
+
+export interface AgentFeedback {
+  agentId: string
+  nodeId: string
+  rating: 1 | 2 | 3 | 4 | 5
+  feedbackType: "quality" | "speed" | "accuracy" | "relevance"
+  comment?: string
+  timestamp: Date
+  outputSnippet?: string
+}
+
+export class AgentFeedbackManager {
+  private feedback: AgentFeedback[] = []
+  private learnings: Map<string, string[]> = new Map()
+  
+  // Feedback hinzufügen
+  addFeedback(feedback: Omit<AgentFeedback, "timestamp">): void {
+    this.feedback.push({
+      ...feedback,
+      timestamp: new Date(),
+    })
+    
+    // Behalte nur die letzten 500 Feedbacks
+    if (this.feedback.length > 500) {
+      this.feedback = this.feedback.slice(-500)
+    }
+    
+    // Bei schlechtem Feedback: Learning erstellen
+    if (feedback.rating <= 2 && feedback.comment) {
+      this.addLearning(feedback.agentId, feedback.comment)
+    }
+  }
+  
+  // Learning für Agent hinzufügen
+  addLearning(agentId: string, learning: string): void {
+    const existing = this.learnings.get(agentId) || []
+    existing.push(learning)
+    
+    // Max 20 Learnings pro Agent
+    if (existing.length > 20) existing.shift()
+    this.learnings.set(agentId, existing)
+  }
+  
+  // Learnings für Agent abrufen (für Prompt-Erweiterung)
+  getLearnings(agentId: string): string[] {
+    return this.learnings.get(agentId) || []
+  }
+  
+  // Learnings als Prompt-Erweiterung
+  getLearningsPrompt(agentId: string): string {
+    const learnings = this.getLearnings(agentId)
+    if (learnings.length === 0) return ""
+    
+    return `
+## LEARNINGS AUS VORHERIGEM FEEDBACK
+Beachte diese Punkte basierend auf User-Feedback:
+${learnings.map((l, i) => `${i + 1}. ${l}`).join("\n")}
+`
+  }
+  
+  // Durchschnittliche Bewertung für Agent
+  getAverageRating(agentId: string): number {
+    const agentFeedback = this.feedback.filter(f => f.agentId === agentId)
+    if (agentFeedback.length === 0) return 0
+    
+    return agentFeedback.reduce((sum, f) => sum + f.rating, 0) / agentFeedback.length
+  }
+  
+  // Feedback-Zusammenfassung
+  getSummary(): {
+    totalFeedback: number
+    averageRating: number
+    byAgent: Record<string, { count: number; avgRating: number }>
+    byType: Record<string, { count: number; avgRating: number }>
+    recentIssues: string[]
+  } {
+    const byAgent: Record<string, { ratings: number[]; count: number }> = {}
+    const byType: Record<string, { ratings: number[]; count: number }> = {}
+    
+    this.feedback.forEach(f => {
+      // By Agent
+      if (!byAgent[f.agentId]) byAgent[f.agentId] = { ratings: [], count: 0 }
+      byAgent[f.agentId].ratings.push(f.rating)
+      byAgent[f.agentId].count++
+      
+      // By Type
+      if (!byType[f.feedbackType]) byType[f.feedbackType] = { ratings: [], count: 0 }
+      byType[f.feedbackType].ratings.push(f.rating)
+      byType[f.feedbackType].count++
+    })
+    
+    // Recent issues (low ratings with comments)
+    const recentIssues = this.feedback
+      .filter(f => f.rating <= 2 && f.comment)
+      .slice(-5)
+      .map(f => `${f.agentId}: ${f.comment}`)
+    
+    return {
+      totalFeedback: this.feedback.length,
+      averageRating: this.feedback.length > 0 
+        ? this.feedback.reduce((sum, f) => sum + f.rating, 0) / this.feedback.length 
+        : 0,
+      byAgent: Object.fromEntries(
+        Object.entries(byAgent).map(([id, data]) => [
+          id, 
+          { count: data.count, avgRating: data.ratings.reduce((s, r) => s + r, 0) / data.ratings.length }
+        ])
+      ),
+      byType: Object.fromEntries(
+        Object.entries(byType).map(([type, data]) => [
+          type, 
+          { count: data.count, avgRating: data.ratings.reduce((s, r) => s + r, 0) / data.ratings.length }
+        ])
+      ),
+      recentIssues,
+    }
+  }
+}
