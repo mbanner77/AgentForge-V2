@@ -8,6 +8,7 @@ import type {
   HumanDecisionOption,
   WorkflowStepResult,
   AgentType,
+  WorkflowMetrics,
 } from "./types"
 
 // Workflow Engine für nicht-lineare Workflow-Ausführung
@@ -83,6 +84,44 @@ export class WorkflowEngine {
     }
     
     return Object.keys(metadata).length > 0 ? metadata : undefined
+  }
+
+  // Metriken berechnen
+  private calculateMetrics(): WorkflowMetrics {
+    const results = Object.values(this.state.nodeResults)
+    const completedNodes = results.filter(r => r.success).length
+    const failedNodes = results.filter(r => !r.success).length
+    const totalDuration = results.reduce((sum, r) => sum + r.duration, 0)
+    const avgNodeDuration = results.length > 0 ? totalDuration / results.length : 0
+    
+    // Dateien und Fehler zählen
+    let filesGenerated = 0
+    let errorsDetected = 0
+    let suggestionsGenerated = 0
+    
+    for (const result of results) {
+      filesGenerated += result.metadata?.filesGenerated?.length || 0
+      errorsDetected += result.metadata?.errorsFound?.length || 0
+      suggestionsGenerated += result.metadata?.suggestionsCount || 0
+    }
+    
+    // Qualitäts-Scores berechnen
+    const codeQualityScore = failedNodes === 0 
+      ? Math.min(100, 70 + (filesGenerated * 5) - (errorsDetected * 10))
+      : Math.max(0, 50 - (failedNodes * 20))
+    
+    return {
+      totalNodes: this.workflow.nodes.length,
+      completedNodes,
+      failedNodes,
+      totalDuration,
+      avgNodeDuration: Math.round(avgNodeDuration),
+      filesGenerated,
+      errorsDetected,
+      suggestionsGenerated,
+      retryCount: 0,
+      codeQualityScore: Math.max(0, Math.min(100, codeQualityScore)),
+    }
   }
 
   // Vorheriges Ergebnis für Human-Decision abrufen
@@ -200,14 +239,19 @@ export class WorkflowEngine {
             duration: 0,
             timestamp: new Date(),
           }
+          
+          // Berechne finale Metriken
+          const finalMetrics = this.calculateMetrics()
+          
           this.state = {
             ...this.state,
             status: "completed",
             currentNodeId: null,
             completedAt: new Date(),
+            metrics: finalMetrics,
           }
           this.onStateChange(this.state)
-          this.log("Workflow abgeschlossen", "info")
+          this.log(`Workflow abgeschlossen - ${finalMetrics.filesGenerated} Dateien, ${finalMetrics.errorsDetected} Fehler, Qualität: ${finalMetrics.codeQualityScore}%`, "info")
           shouldContinue = false
           break
 

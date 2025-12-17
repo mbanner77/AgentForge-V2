@@ -301,6 +301,25 @@ export interface WorkflowExecutionState {
   startedAt?: Date
   completedAt?: Date
   error?: string
+  // Workflow-Metriken
+  metrics?: WorkflowMetrics
+}
+
+// Workflow-Metriken für Fortschritts-Tracking
+export interface WorkflowMetrics {
+  totalNodes: number
+  completedNodes: number
+  failedNodes: number
+  totalDuration: number // ms
+  avgNodeDuration: number // ms
+  filesGenerated: number
+  errorsDetected: number
+  suggestionsGenerated: number
+  retryCount: number
+  // Qualitäts-Scores
+  codeQualityScore?: number // 0-100
+  securityScore?: number // 0-100
+  performanceScore?: number // 0-100
 }
 
 // ============================================
