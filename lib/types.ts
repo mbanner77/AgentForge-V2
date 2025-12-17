@@ -161,6 +161,122 @@ export interface CustomAgent extends Omit<AgentConfig, "id"> {
   order: number // Position im Workflow
 }
 
+// ============================================
+// WORKFLOW MODELING TYPES
+// ============================================
+
+// Node-Typen im Workflow
+export type WorkflowNodeType = 
+  | "start"           // Startpunkt
+  | "end"             // Endpunkt  
+  | "agent"           // Agent-Ausführung
+  | "human-decision"  // Human-in-the-Loop Entscheidung
+  | "condition"       // Automatische Bedingung
+  | "parallel"        // Parallele Ausführung
+  | "merge"           // Zusammenführung paralleler Pfade
+  | "loop"            // Schleife
+  | "delay"           // Wartezeit
+
+// Position eines Nodes im Editor
+export interface NodePosition {
+  x: number
+  y: number
+}
+
+// Basis-Node im Workflow
+export interface WorkflowNode {
+  id: string
+  type: WorkflowNodeType
+  position: NodePosition
+  data: WorkflowNodeData
+}
+
+// Daten eines Workflow-Nodes
+export interface WorkflowNodeData {
+  label: string
+  description?: string
+  // Für Agent-Nodes
+  agentId?: string
+  agentConfig?: Partial<AgentConfig>
+  // Für Human-Decision-Nodes
+  question?: string
+  options?: HumanDecisionOption[]
+  timeout?: number // Sekunden bis Auto-Continue
+  defaultOption?: string
+  // Für Condition-Nodes
+  conditions?: WorkflowCondition[]
+  // Für Loop-Nodes
+  maxIterations?: number
+  exitCondition?: string
+  // Für Delay-Nodes
+  delaySeconds?: number
+}
+
+// Option für Human-in-the-Loop Entscheidung
+export interface HumanDecisionOption {
+  id: string
+  label: string
+  description?: string
+  icon?: string
+  color?: string
+  nextNodeId?: string // Wohin bei dieser Wahl
+}
+
+// Bedingung für automatische Verzweigung
+export interface WorkflowCondition {
+  id: string
+  label: string
+  type: "output-contains" | "output-matches" | "file-exists" | "error-occurred" | "custom"
+  value: string // Regex oder String
+  nextNodeId: string
+}
+
+// Verbindung zwischen Nodes
+export interface WorkflowEdge {
+  id: string
+  source: string // Node ID
+  target: string // Node ID
+  sourceHandle?: string // Für mehrere Ausgänge
+  targetHandle?: string
+  label?: string
+  condition?: string // Optional: Bedingung für diese Kante
+  animated?: boolean
+}
+
+// Kompletter Workflow-Graph
+export interface WorkflowGraph {
+  id: string
+  name: string
+  description?: string
+  nodes: WorkflowNode[]
+  edges: WorkflowEdge[]
+  version: number
+  createdAt: Date
+  updatedAt: Date
+}
+
+// Status während der Workflow-Ausführung
+export interface WorkflowExecutionState {
+  workflowId: string
+  currentNodeId: string | null
+  visitedNodes: string[]
+  nodeOutputs: Record<string, string>
+  status: "idle" | "running" | "paused" | "waiting-human" | "completed" | "error"
+  humanDecisionPending?: {
+    nodeId: string
+    question: string
+    options: HumanDecisionOption[]
+    timeoutAt?: Date
+  }
+  startedAt?: Date
+  completedAt?: Date
+  error?: string
+}
+
+// ============================================
+// EXISTING TYPES
+// ============================================
+
 // Agenten-Vorschlag für Human-in-the-Loop
 export interface AgentSuggestion {
   id: string
