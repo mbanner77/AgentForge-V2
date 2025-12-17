@@ -524,8 +524,41 @@ export class WorkflowEngine {
           if (selectedOption?.nextNodeId) {
             nextNodeId = selectedOption.nextNodeId
           } else {
-            // Fallback: Erste ausgehende Edge
-            nextNodeId = this.getNextNode(nodeId)
+            // Intelligente Fallback-Logik basierend auf Option-Label
+            const optionLabel = (selectedOption?.label || selectedOptionId).toLowerCase()
+            const isFinishOption = 
+              optionLabel.includes("fertig") || 
+              optionLabel.includes("abschließen") ||
+              optionLabel.includes("beenden") ||
+              optionLabel.includes("done") ||
+              optionLabel.includes("finish") ||
+              optionLabel.includes("complete") ||
+              optionLabel.includes("vollständig")
+            
+            if (isFinishOption) {
+              // Bei "Fertig"-Optionen: Suche End-Node
+              const endNode = this.workflow.nodes.find(n => n.type === "end")
+              if (endNode) {
+                nextNodeId = endNode.id
+                this.log(`"${selectedOption?.label}" gewählt → Ende`, "info")
+              } else {
+                nextNodeId = null // Workflow beenden
+              }
+            } else {
+              // Suche passende Edge basierend auf Label
+              const edges = this.workflow.edges.filter(e => e.source === nodeId)
+              const matchingEdge = edges.find(e => 
+                e.label?.toLowerCase().includes(optionLabel) ||
+                optionLabel.includes(e.label?.toLowerCase() || "")
+              )
+              
+              if (matchingEdge) {
+                nextNodeId = matchingEdge.target
+              } else {
+                // Fallback: Erste ausgehende Edge (nicht zu End wenn nicht "Fertig")
+                nextNodeId = this.getNextNode(nodeId)
+              }
+            }
           }
           
           this.state = {
