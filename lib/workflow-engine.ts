@@ -64,6 +64,31 @@ interface SharedAgentContext {
   sharedVariables: Record<string, unknown>
 }
 
+// Workflow-Hooks für Erweiterbarkeit
+export type WorkflowHookType = 
+  | "beforeNodeExecute"
+  | "afterNodeExecute"
+  | "beforeAgentCall"
+  | "afterAgentCall"
+  | "onError"
+  | "onRetry"
+  | "beforeWorkflowStart"
+  | "afterWorkflowComplete"
+
+export interface WorkflowHookContext {
+  nodeId?: string
+  nodeName?: string
+  agentId?: string
+  input?: string
+  output?: string
+  error?: Error
+  duration?: number
+  retryCount?: number
+  state: WorkflowExecutionState
+}
+
+export type WorkflowHook = (context: WorkflowHookContext) => Promise<void> | void
+
 export class WorkflowEngine {
   private workflow: WorkflowGraph
   private state: WorkflowExecutionState
@@ -87,6 +112,7 @@ export class WorkflowEngine {
   private cacheEnabled: boolean = true
   private cacheTTL: number = 600000 // 10 Minuten Cache-Gültigkeit
   private priorityQueue: { nodeId: string; priority: number }[] = []
+  private hooks: Map<WorkflowHookType, WorkflowHook[]> = new Map()
 
   constructor(
     workflow: WorkflowGraph,
@@ -1065,6 +1091,76 @@ export class WorkflowEngine {
   getState(): WorkflowExecutionState {
     return this.state
   }
+
+  // === HOOKS SYSTEM ===
+  
+  // Hook registrieren
+  registerHook(hookType: WorkflowHookType, hook: WorkflowHook): () => void {
+    if (!this.hooks.has(hookType)) {
+      this.hooks.set(hookType, [])
+    }
+    this.hooks.get(hookType)!.push(hook)
+    
+    // Return unregister function
+    return () => {
+      const hooks = this.hooks.get(hookType)
+      if (hooks) {
+        const index = hooks.indexOf(hook)
+        if (index > -1) hooks.splice(index, 1)
+      }
+    }
+  }
+
+  // Hooks ausführen
+  private async executeHooks(hookType: WorkflowHookType, context: Partial<WorkflowHookContext>): Promise<void> {
+    const hooks = this.hooks.get(hookType) || []
+    const fullContext: WorkflowHookContext = {
+      ...context,
+      state: this.state,
+    }
+    
+    for (const hook of hooks) {
+      try {
+        await hook(fullContext)
+      } catch (error) {
+        this.log(`Hook ${hookType} Fehler: ${error}`, "warn")
+      }
+    }
+  }
+
+  // Vordefinierte Hook-Plugins
+  useLoggingPlugin(): void {
+    this.registerHook("beforeNodeExecute", (ctx) => {
+      console.log(`[Plugin] Starting node: ${ctx.nodeName}`)
+    })
+    this.registerHook("afterNodeExecute", (ctx) => {
+      console.log(`[Plugin] Completed node: ${ctx.nodeName} in ${ctx.duration}ms`)
+    })
+    this.registerHook("onError", (ctx) => {
+      console.error(`[Plugin] Error in ${ctx.nodeName}: ${ctx.error?.message}`)
+    })
+  }
+
+  useMetricsPlugin(onMetrics: (metrics: { nodeId: string; duration: number; success: boolean }) => void): void {
+    this.registerHook("afterNodeExecute", (ctx) => {
+      if (ctx.nodeId && ctx.duration !== undefined) {
+        onMetrics({
+          nodeId: ctx.nodeId,
+          duration: ctx.duration,
+          success: !ctx.error,
+        })
+      }
+    })
+  }
+
+  useRetryPlugin(maxRetries: number = 3): void {
+    this.registerHook("onError", async (ctx) => {
+      if (ctx.retryCount && ctx.retryCount < maxRetries && ctx.nodeId) {
+        this.log(`Retry ${ctx.retryCount}/${maxRetries} für ${ctx.nodeName}`, "info")
+        await this.retryNode(ctx.nodeId)
+      }
+    })
+  }
 }
 
 // Default Workflow-Templates
@@ -1479,4 +1575,168 @@ export function createFromTemplate(templateId: string, customName?: string): Wor
   if (!template) return undefined
   
   return cloneWorkflow(template, customName)
+}
+
+// === EXPORT/IMPORT FUNKTIONEN ===
+
+// Workflow als JSON exportieren
+export function exportWorkflow(workflow: WorkflowGraph): string {
+  return JSON.stringify({
+    ...workflow,
+    exportedAt: new Date().toISOString(),
+    exportVersion: "1.0",
+  }, null, 2)
+}
+
+// Workflow aus JSON importieren
+export function importWorkflow(jsonString: string): { workflow?: WorkflowGraph; error?: string } {
+  try {
+    const parsed = JSON.parse(jsonString)
+    
+    // Validierung
+    if (!parsed.nodes || !Array.isArray(parsed.nodes)) {
+      return { error: "Ungültiges Format: 'nodes' fehlt oder ist kein Array" }
+    }
+    if (!parsed.edges || !Array.isArray(parsed.edges)) {
+      return { error: "Ungültiges Format: 'edges' fehlt oder ist kein Array" }
+    }
+    
+    const workflow: WorkflowGraph = {
+      id: parsed.id || `imported-${Date.now()}`,
+      name: parsed.name || "Importierter Workflow",
+      description: parsed.description || "",
+      nodes: parsed.nodes,
+      edges: parsed.edges,
+      version: parsed.version || 1,
+      createdAt: parsed.createdAt ? new Date(parsed.createdAt) : new Date(),
+      updatedAt: new Date(),
+    }
+    
+    // Validiere den importierten Workflow
+    const validation = validateWorkflow(workflow)
+    if (!validation.valid) {
+      return { error: `Validierung fehlgeschlagen: ${validation.errors.join(", ")}` }
+    }
+    
+    return { workflow }
+  } catch (e) {
+    return { error: `JSON Parse Fehler: ${e}` }
+  }
+}
+
+// Workflow als URL-Parameter exportieren (für Sharing)
+export function exportWorkflowToUrl(workflow: WorkflowGraph): string {
+  const minified = {
+    n: workflow.nodes.map(n => ({
+      i: n.id,
+      t: n.type,
+      p: n.position,
+      d: n.data,
+    })),
+    e: workflow.edges.map(e => ({
+      i: e.id,
+      s: e.source,
+      t: e.target,
+      l: e.label,
+    })),
+    m: { name: workflow.name, desc: workflow.description },
+  }
+  return btoa(JSON.stringify(minified))
+}
+
+// Workflow aus URL-Parameter importieren
+export function importWorkflowFromUrl(encoded: string): { workflow?: WorkflowGraph; error?: string } {
+  try {
+    const decoded = JSON.parse(atob(encoded))
+    
+    const workflow: WorkflowGraph = {
+      id: `url-import-${Date.now()}`,
+      name: decoded.m?.name || "URL Import",
+      description: decoded.m?.desc || "",
+      nodes: decoded.n.map((n: { i: string; t: string; p: { x: number; y: number }; d: Record<string, unknown> }) => ({
+        id: n.i,
+        type: n.t,
+        position: n.p,
+        data: n.d,
+      })),
+      edges: decoded.e.map((e: { i: string; s: string; t: string; l?: string }) => ({
+        id: e.i,
+        source: e.s,
+        target: e.t,
+        label: e.l,
+      })),
+      version: 1,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }
+    
+    return { workflow }
+  } catch (e) {
+    return { error: `URL Decode Fehler: ${e}` }
+  }
+}
+
+// Workflow-Diff: Zeigt Unterschiede zwischen zwei Workflows
+export function diffWorkflows(workflowA: WorkflowGraph, workflowB: WorkflowGraph): {
+  addedNodes: string[]
+  removedNodes: string[]
+  modifiedNodes: string[]
+  addedEdges: string[]
+  removedEdges: string[]
+} {
+  const nodeIdsA = new Set(workflowA.nodes.map(n => n.id))
+  const nodeIdsB = new Set(workflowB.nodes.map(n => n.id))
+  const edgeIdsA = new Set(workflowA.edges.map(e => e.id))
+  const edgeIdsB = new Set(workflowB.edges.map(e => e.id))
+  
+  const addedNodes = workflowB.nodes.filter(n => !nodeIdsA.has(n.id)).map(n => n.data.label)
+  const removedNodes = workflowA.nodes.filter(n => !nodeIdsB.has(n.id)).map(n => n.data.label)
+  
+  // Prüfe auf modifizierte Nodes (gleiche ID, aber andere Daten)
+  const modifiedNodes: string[] = []
+  for (const nodeB of workflowB.nodes) {
+    const nodeA = workflowA.nodes.find(n => n.id === nodeB.id)
+    if (nodeA && JSON.stringify(nodeA.data) !== JSON.stringify(nodeB.data)) {
+      modifiedNodes.push(nodeB.data.label)
+    }
+  }
+  
+  const addedEdges = workflowB.edges.filter(e => !edgeIdsA.has(e.id)).map(e => `${e.source} → ${e.target}`)
+  const removedEdges = workflowA.edges.filter(e => !edgeIdsB.has(e.id)).map(e => `${e.source} → ${e.target}`)
+  
+  return { addedNodes, removedNodes, modifiedNodes, addedEdges, removedEdges }
+}
+
+// Workflow-Merge: Kombiniert zwei Workflows
+export function mergeWorkflows(workflowA: WorkflowGraph, workflowB: WorkflowGraph, newName: string): WorkflowGraph {
+  // Präfix für B-Nodes um Konflikte zu vermeiden
+  const prefix = "merged-"
+  
+  const remappedNodes = workflowB.nodes.map(n => ({
+    ...n,
+    id: n.type === "start" || n.type === "end" ? n.id : `${prefix}${n.id}`,
+    position: { x: n.position.x + 500, y: n.position.y },
+  }))
+  
+  const remappedEdges = workflowB.edges.map(e => ({
+    ...e,
+    id: `${prefix}${e.id}`,
+    source: e.source === "start" || e.source === "end" ? e.source : `${prefix}${e.source}`,
+    target: e.target === "start" || e.target === "end" ? e.target : `${prefix}${e.target}`,
+  }))
+  
+  // Filtere doppelte Start/End Nodes
+  const filteredNodes = remappedNodes.filter(n => n.type !== "start" && n.type !== "end")
+  const filteredEdges = remappedEdges.filter(e => e.source !== "start")
+  
+  return {
+    id: `merged-${Date.now()}`,
+    name: newName,
+    description: `Merged: ${workflowA.name} + ${workflowB.name}`,
+    nodes: [...workflowA.nodes, ...filteredNodes],
+    edges: [...workflowA.edges, ...filteredEdges],
+    version: 1,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  }
 }
