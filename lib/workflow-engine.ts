@@ -13,6 +13,34 @@ import type {
   WorkflowStatistics,
 } from "./types"
 
+// Workflow-Event-Typen
+export type WorkflowEventType = 
+  | "workflow:started"
+  | "workflow:completed"
+  | "workflow:error"
+  | "workflow:paused"
+  | "workflow:resumed"
+  | "node:started"
+  | "node:completed"
+  | "node:failed"
+  | "node:skipped"
+  | "human:waiting"
+  | "human:decided"
+  | "agent:started"
+  | "agent:completed"
+  | "agent:retry"
+
+export interface WorkflowEvent {
+  type: WorkflowEventType
+  timestamp: Date
+  workflowId: string
+  nodeId?: string
+  nodeName?: string
+  data?: Record<string, unknown>
+}
+
+export type WorkflowEventListener = (event: WorkflowEvent) => void
+
 // Workflow Engine für nicht-lineare Workflow-Ausführung
 export class WorkflowEngine {
   private workflow: WorkflowGraph
@@ -21,6 +49,9 @@ export class WorkflowEngine {
   private onAgentExecute: (agentId: string, previousOutput?: string) => Promise<string>
   private onHumanDecision: (nodeId: string, question: string, options: HumanDecisionOption[]) => Promise<string>
   private onLog: (message: string, level: "info" | "warn" | "error" | "debug") => void
+  private eventListeners: Map<WorkflowEventType | "*", WorkflowEventListener[]> = new Map()
+  private snapshots: WorkflowSnapshot[] = []
+  private maxSnapshots: number = 10
 
   constructor(
     workflow: WorkflowGraph,
@@ -46,6 +77,64 @@ export class WorkflowEngine {
       nodeResults: {},
       status: "idle",
     }
+  }
+
+  // Event-System: Listener registrieren
+  on(eventType: WorkflowEventType | "*", listener: WorkflowEventListener): () => void {
+    if (!this.eventListeners.has(eventType)) {
+      this.eventListeners.set(eventType, [])
+    }
+    this.eventListeners.get(eventType)!.push(listener)
+    
+    // Return unsubscribe function
+    return () => {
+      const listeners = this.eventListeners.get(eventType)
+      if (listeners) {
+        const index = listeners.indexOf(listener)
+        if (index > -1) listeners.splice(index, 1)
+      }
+    }
+  }
+
+  // Event emittieren
+  private emit(type: WorkflowEventType, nodeId?: string, nodeName?: string, data?: Record<string, unknown>): void {
+    const event: WorkflowEvent = {
+      type,
+      timestamp: new Date(),
+      workflowId: this.workflow.id,
+      nodeId,
+      nodeName,
+      data,
+    }
+    
+    // Spezifische Listener
+    const listeners = this.eventListeners.get(type) || []
+    listeners.forEach(listener => listener(event))
+    
+    // Wildcard Listener
+    const wildcardListeners = this.eventListeners.get("*") || []
+    wildcardListeners.forEach(listener => listener(event))
+  }
+
+  // Automatisches Snapshot bei wichtigen Events
+  private autoSnapshot(): void {
+    const snapshot = this.createSnapshot()
+    this.snapshots.push(snapshot)
+    
+    // Limit Anzahl der Snapshots
+    if (this.snapshots.length > this.maxSnapshots) {
+      this.snapshots.shift()
+    }
+  }
+
+  // Alle Snapshots abrufen
+  getSnapshots(): WorkflowSnapshot[] {
+    return [...this.snapshots]
+  }
+
+  // Letzten Snapshot abrufen
+  getLastSnapshot(): WorkflowSnapshot | undefined {
+    return this.snapshots[this.snapshots.length - 1]
   }
 
   // Hilfsfunktion: Output analysieren und strukturierte Ergebnisse extrahieren
@@ -170,6 +259,8 @@ export class WorkflowEngine {
   // Workflow starten
   async start(): Promise<void> {
     this.log("Workflow gestartet", "info")
+    this.emit("workflow:started")
+    this.autoSnapshot()
     
     // Finde Start-Node
     const startNode = this.workflow.nodes.find(n => n.type === "start")
@@ -199,6 +290,7 @@ export class WorkflowEngine {
     }
 
     this.log(`Führe Node aus: ${node.data.label} (${node.type})`, "info")
+    this.emit("node:started", nodeId, node.data.label, { nodeType: node.type })
 
     // State aktualisieren
     this.state = {
@@ -254,6 +346,8 @@ export class WorkflowEngine {
           }
           this.onStateChange(this.state)
           this.log(`Workflow abgeschlossen - ${finalMetrics.filesGenerated} Dateien, ${finalMetrics.errorsDetected} Fehler, Qualität: ${finalMetrics.codeQualityScore}%`, "info")
+          this.emit("workflow:completed", nodeId, node.data.label, { metrics: finalMetrics })
+          this.autoSnapshot()
           shouldContinue = false
           break
 
@@ -265,6 +359,7 @@ export class WorkflowEngine {
           }
           
           const startTime = Date.now()
+          this.emit("agent:started", nodeId, node.data.label, { agentId: node.data.agentId })
           
           // Vorherigen Output als Kontext übergeben
           const previousOutput = this.getPreviousOutput(nodeId)
@@ -287,6 +382,14 @@ export class WorkflowEngine {
           this.state.nodeOutputs[nodeId] = output
           
           this.log(`Agent ${node.data.agentId} abgeschlossen: ${agentResult.metadata?.filesGenerated?.length || 0} Dateien, ${agentResult.metadata?.errorsFound?.length || 0} Fehler`, "info")
+          this.emit("agent:completed", nodeId, node.data.label, { 
+            agentId: node.data.agentId, 
+            duration, 
+            success: agentResult.success,
+            filesGenerated: agentResult.metadata?.filesGenerated?.length || 0,
+          })
+          this.emit("node:completed", nodeId, node.data.label, { success: agentResult.success })
+          this.autoSnapshot()
           
           nextNodeId = this.getNextNode(nodeId)
           break
