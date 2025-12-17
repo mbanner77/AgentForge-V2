@@ -249,10 +249,12 @@ export interface WorkflowStepResult {
 // Bedingung für automatische Verzweigung
 export interface WorkflowCondition {
   id: string
-  label: string
-  type: "output-contains" | "output-matches" | "file-exists" | "error-occurred" | "custom"
-  value: string // Regex oder String
-  nextNodeId: string
+  label?: string
+  type?: "output-contains" | "output-matches" | "file-exists" | "error-occurred" | "success" | "has-issues" | "custom"
+  value?: string // Regex oder String
+  nextNodeId?: string
+  targetNodeId?: string // Alias für nextNodeId
+  expression?: string // JavaScript-artige Expression für komplexe Bedingungen
 }
 
 // Verbindung zwischen Nodes

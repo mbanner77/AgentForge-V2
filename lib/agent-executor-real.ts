@@ -517,9 +517,26 @@ ${fileContexts.join("\n\n")}
         ? `\n\nProjekt: ${currentProject.name}\nBeschreibung: ${currentProject.description}`
         : ""
 
-      const previousContext = previousOutput
-        ? `\n\nOutput des vorherigen Agenten:\n${previousOutput}`
-        : ""
+      // Strukturierter Kontext vom vorherigen Agent
+      let previousContext = ""
+      if (previousOutput) {
+        // Erkenne Agent-Typ aus vorherigem Output
+        const isPlannerOutput = previousOutput.includes("## Plan") || previousOutput.includes("## Aufgaben") || previousOutput.includes("## Features")
+        const isCoderOutput = previousOutput.includes("```") && (previousOutput.includes("export") || previousOutput.includes("function") || previousOutput.includes("const"))
+        const isReviewerOutput = previousOutput.includes("## Review") || previousOutput.includes("Verbesserung") || previousOutput.includes("Problem")
+        
+        if (isPlannerOutput && agentType === "coder") {
+          previousContext = `\n\n## 📋 PLAN VOM PLANNER (Folge diesem Plan exakt!):\n${previousOutput}\n\n**WICHTIG:** Implementiere ALLE Punkte aus dem Plan. Erstelle vollständige, lauffähige Dateien.`
+        } else if (isCoderOutput && agentType === "reviewer") {
+          previousContext = `\n\n## 💻 CODE VOM CODER (Prüfe diesen Code):\n${previousOutput}\n\n**AUFGABE:** Analysiere den Code auf Bugs, Best Practices, Performance und Sicherheit.`
+        } else if (isReviewerOutput && agentType === "coder") {
+          previousContext = `\n\n## 🔍 FEEDBACK VOM REVIEWER (Setze diese Verbesserungen um!):\n${previousOutput}\n\n**WICHTIG:** Implementiere ALLE genannten Verbesserungen. Gib den vollständigen korrigierten Code aus.`
+        } else if (agentType === "security") {
+          previousContext = `\n\n## 📄 ZU PRÜFENDER CODE:\n${previousOutput}\n\n**AUFGABE:** Führe einen vollständigen Security-Audit durch.`
+        } else {
+          previousContext = `\n\n## Vorheriger Output:\n${previousOutput}`
+        }
+      }
 
       // MCP Server Kontext
       const mcpServerIds = customConfig?.mcpServers || (coreConfig as any)?.mcpServers || []

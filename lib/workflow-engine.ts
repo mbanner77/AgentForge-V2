@@ -396,36 +396,98 @@ export class WorkflowEngine {
     return this.state.nodeOutputs[incomingEdge.source]
   }
 
-  // Bedingungen auswerten
+  // Bedingungen auswerten (unterstützt verschiedene Formate)
   private evaluateConditions(node: WorkflowNode, output: string | undefined): string | null {
     if (!node.data.conditions || !output) {
       return this.getNextNode(node.id)
     }
 
+    const outputLower = output.toLowerCase()
+
     for (const condition of node.data.conditions) {
       let matches = false
       
-      switch (condition.type) {
-        case "output-contains":
-          matches = output.toLowerCase().includes(condition.value.toLowerCase())
-          break
-        case "output-matches":
-          try {
-            matches = new RegExp(condition.value).test(output)
-          } catch {
-            matches = false
+      // Expression-basierte Auswertung (für Auto-Fix Pipeline)
+      if (condition.expression) {
+        try {
+          // Sichere Auswertung der Expression
+          const evalContext = {
+            output: outputLower,
+            hasErrors: outputLower.includes("error") || outputLower.includes("fehler"),
+            hasWarnings: outputLower.includes("warning") || outputLower.includes("warnung"),
+            hasIssues: outputLower.includes("problem") || outputLower.includes("issue") || 
+                       outputLower.includes("sollte") || outputLower.includes("verbessern") ||
+                       outputLower.includes("empfehlung") || outputLower.includes("könnte"),
+            isSuccess: outputLower.includes("erfolgreich") || outputLower.includes("success") ||
+                      outputLower.includes("korrekt") || outputLower.includes("gut"),
+            fileCount: (output.match(/```/g) || []).length / 2,
           }
-          break
-        case "error-occurred":
-          matches = output.toLowerCase().includes("error") || output.toLowerCase().includes("fehler")
-          break
-        default:
+          
+          // Ersetze Variablen in Expression
+          let expr = condition.expression
+          expr = expr.replace(/output\.includes\(['"]([^'"]+)['"]\)/g, (_match: string, text: string) => 
+            String(outputLower.includes(text.toLowerCase()))
+          )
+          expr = expr.replace(/hasErrors/g, String(evalContext.hasErrors))
+          expr = expr.replace(/hasWarnings/g, String(evalContext.hasWarnings))
+          expr = expr.replace(/hasIssues/g, String(evalContext.hasIssues))
+          expr = expr.replace(/isSuccess/g, String(evalContext.isSuccess))
+          expr = expr.replace(/fileCount/g, String(evalContext.fileCount))
+          
+          // Auswertung
+          matches = expr === "true" || eval(expr) === true
+        } catch (e) {
+          this.log(`Expression-Fehler: ${e}`, "warn")
           matches = false
+        }
+      } else if (condition.type && condition.value) {
+        // Legacy-Formate mit type und value
+        switch (condition.type) {
+          case "output-contains":
+            matches = outputLower.includes(condition.value.toLowerCase())
+            break
+          case "output-matches":
+            try {
+              matches = new RegExp(condition.value, "i").test(output)
+            } catch {
+              matches = false
+            }
+            break
+          case "error-occurred":
+            matches = outputLower.includes("error") || outputLower.includes("fehler")
+            break
+          case "success":
+            matches = outputLower.includes("erfolgreich") || outputLower.includes("success")
+            break
+          case "has-issues":
+            matches = outputLower.includes("problem") || outputLower.includes("issue") ||
+                     outputLower.includes("sollte") || outputLower.includes("verbessern")
+            break
+          default:
+            matches = false
+        }
+      } else if (condition.type) {
+        // Type ohne value (für error-occurred, success, has-issues)
+        switch (condition.type) {
+          case "error-occurred":
+            matches = outputLower.includes("error") || outputLower.includes("fehler")
+            break
+          case "success":
+            matches = outputLower.includes("erfolgreich") || outputLower.includes("success")
+            break
+          case "has-issues":
+            matches = outputLower.includes("problem") || outputLower.includes("issue") ||
+                     outputLower.includes("sollte") || outputLower.includes("verbessern")
+            break
+          default:
+            matches = false
+        }
       }
 
       if (matches) {
-        this.log(`Bedingung erfüllt: ${condition.label}`, "debug")
-        return condition.nextNodeId
+        this.log(`Bedingung erfüllt: ${condition.label || condition.id}`, "debug")
+        const targetNode = condition.targetNodeId || condition.nextNodeId
+        return targetNode ?? null
       }
     }
 
@@ -606,6 +668,91 @@ export const WORKFLOW_TEMPLATES: Record<string, WorkflowGraph> = {
       { id: "e8", source: "security", target: "fix-decision" },
       { id: "e9", source: "fix-decision", target: "coder", label: "Fix" },
       { id: "e10", source: "fix-decision", target: "end", label: "OK" },
+    ],
+    version: 1,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  },
+
+  "auto-fix": {
+    id: "template-autofix",
+    name: "Auto-Fix Pipeline",
+    description: "Automatische Entwicklung mit Review und Fehlerkorrektur-Schleife",
+    nodes: [
+      { id: "start", type: "start", position: { x: 50, y: 200 }, data: { label: "Start" } },
+      { id: "planner", type: "agent", position: { x: 200, y: 200 }, data: { label: "Planner", agentId: "planner" } },
+      { id: "coder", type: "agent", position: { x: 400, y: 200 }, data: { label: "Coder", agentId: "coder" } },
+      { id: "reviewer", type: "agent", position: { x: 600, y: 200 }, data: { label: "Reviewer", agentId: "reviewer" } },
+      { 
+        id: "quality-check", 
+        type: "condition", 
+        position: { x: 800, y: 200 }, 
+        data: { 
+          label: "Qualität OK?",
+          conditions: [
+            { 
+              id: "has-issues", 
+              expression: "output.includes('Problem') || output.includes('Fehler') || output.includes('sollte') || output.includes('verbessern')",
+              targetNodeId: "fix-coder"
+            },
+            { 
+              id: "quality-ok", 
+              expression: "true",
+              targetNodeId: "security"
+            }
+          ]
+        } 
+      },
+      { id: "fix-coder", type: "agent", position: { x: 800, y: 50 }, data: { label: "Fix-Coder", agentId: "coder" } },
+      { id: "security", type: "agent", position: { x: 1000, y: 200 }, data: { label: "Security", agentId: "security" } },
+      { id: "end", type: "end", position: { x: 1200, y: 200 }, data: { label: "Ende" } },
+    ],
+    edges: [
+      { id: "e1", source: "start", target: "planner" },
+      { id: "e2", source: "planner", target: "coder" },
+      { id: "e3", source: "coder", target: "reviewer" },
+      { id: "e4", source: "reviewer", target: "quality-check" },
+      { id: "e5", source: "quality-check", target: "fix-coder", label: "Issues" },
+      { id: "e6", source: "quality-check", target: "security", label: "OK" },
+      { id: "e7", source: "fix-coder", target: "reviewer" },
+      { id: "e8", source: "security", target: "end" },
+    ],
+    version: 1,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  },
+
+  "iterative-dev": {
+    id: "template-iterative",
+    name: "Iterative Entwicklung",
+    description: "Schnelle Entwicklung mit Verbesserungsschleife",
+    nodes: [
+      { id: "start", type: "start", position: { x: 50, y: 200 }, data: { label: "Start" } },
+      { id: "coder", type: "agent", position: { x: 250, y: 200 }, data: { label: "Coder", agentId: "coder" } },
+      { 
+        id: "continue-decision", 
+        type: "human-decision", 
+        position: { x: 500, y: 200 }, 
+        data: { 
+          label: "Weiter?",
+          question: "Wie soll mit dem Code fortgefahren werden?",
+          options: [
+            { id: "improve", label: "Verbessern", description: "Code weiter optimieren", nextNodeId: "coder" },
+            { id: "review", label: "Review", description: "Code prüfen lassen", nextNodeId: "reviewer" },
+            { id: "done", label: "Fertig", description: "Code ist vollständig", nextNodeId: "end" },
+          ]
+        } 
+      },
+      { id: "reviewer", type: "agent", position: { x: 700, y: 100 }, data: { label: "Reviewer", agentId: "reviewer" } },
+      { id: "end", type: "end", position: { x: 750, y: 200 }, data: { label: "Ende" } },
+    ],
+    edges: [
+      { id: "e1", source: "start", target: "coder" },
+      { id: "e2", source: "coder", target: "continue-decision" },
+      { id: "e3", source: "continue-decision", target: "coder", label: "Verbessern" },
+      { id: "e4", source: "continue-decision", target: "reviewer", label: "Review" },
+      { id: "e5", source: "continue-decision", target: "end", label: "Fertig" },
+      { id: "e6", source: "reviewer", target: "continue-decision" },
     ],
     version: 1,
     createdAt: new Date(),
