@@ -72,11 +72,16 @@ export function BuilderInterface() {
   const handleSendMessage = async (content: string) => {
     // Wenn ein Workflow ausgewählt ist, starte diesen mit dem Chat-Auftrag
     if (selectedWorkflow) {
-      setWorkflowPrompt(content)
+      // Erst Prompt auf null setzen, dann neu setzen um useEffect zu triggern
+      setWorkflowPrompt(null)
       addMessage({
         role: "user",
         content,
       })
+      // Kurze Verzögerung damit State-Update durchläuft
+      setTimeout(() => {
+        setWorkflowPrompt(content)
+      }, 50)
       return
     }
     

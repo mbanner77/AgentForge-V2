@@ -230,10 +230,27 @@ export function WorkflowExecutionView({ workflow, initialPrompt, autoStart = fal
     }
   }
 
-  // Auto-Start nur wenn autoStart=true und initialPrompt vorhanden
+  // Auto-Start wenn autoStart=true und initialPrompt vorhanden
+  // Auch bei "completed" Status neu starten wenn neuer Prompt kommt
   useEffect(() => {
-    if (autoStart && initialPrompt && executionState.status === "idle") {
-      startWorkflow(initialPrompt)
+    if (autoStart && initialPrompt) {
+      if (executionState.status === "idle") {
+        startWorkflow(initialPrompt)
+      } else if (executionState.status === "completed") {
+        // Bei neuem Prompt nach Abschluss: Status zurücksetzen und neu starten
+        setExecutionState({
+          workflowId: workflow.id,
+          currentNodeId: null,
+          visitedNodes: [],
+          nodeOutputs: {},
+          nodeResults: {},
+          status: "idle",
+        })
+        // Kurze Verzögerung damit State-Update durchläuft
+        setTimeout(() => {
+          startWorkflow(initialPrompt)
+        }, 100)
+      }
     }
   }, [autoStart, initialPrompt]) // eslint-disable-line react-hooks/exhaustive-deps
 
