@@ -1172,8 +1172,10 @@ Korrigiere jetzt den Code:`
       userRequest: string,
       previousOutput?: string
     ): Promise<string> => {
+      const agentType = agentId as AgentType
+      
       try {
-        const result = await executeAgent(agentId as AgentType, userRequest, previousOutput)
+        const result = await executeAgent(agentType, userRequest, previousOutput)
         
         // Füge generierte Dateien hinzu
         if (result.files.length > 0) {
@@ -1187,13 +1189,75 @@ Korrigiere jetzt den Code:`
           }
         }
         
+        // Parse und füge Vorschläge hinzu (für Reviewer/Security Agents)
+        if (agentType === "reviewer" || agentType === "security") {
+          const existingFiles = getFiles()
+          const suggestions = parseSuggestionsFromResponse(result.content, agentType, existingFiles)
+          
+          if (suggestions.length > 0) {
+            for (const suggestion of suggestions) {
+              addSuggestion(suggestion)
+              addLog({
+                level: "info",
+                agent: agentType,
+                message: `Vorschlag hinzugefügt: ${suggestion.title}`,
+              })
+            }
+          } else {
+            // Fallback: Erstelle generische Vorschläge aus der Antwort
+            const hasImprovements = result.content.toLowerCase().includes("verbesser") || 
+                                   result.content.toLowerCase().includes("empfehl") ||
+                                   result.content.toLowerCase().includes("sollte") ||
+                                   result.content.toLowerCase().includes("könnte") ||
+                                   result.content.toLowerCase().includes("problem") ||
+                                   result.content.toLowerCase().includes("fehler")
+            
+            if (hasImprovements) {
+              const lines = result.content.split('\n').filter(l => l.trim().length > 20)
+              const bulletPoints = lines.filter(l => 
+                l.trim().startsWith('-') || 
+                l.trim().startsWith('•') || 
+                l.trim().startsWith('*') ||
+                /^\d+\./.test(l.trim())
+              ).slice(0, 5)
+              
+              if (bulletPoints.length > 0) {
+                for (const point of bulletPoints) {
+                  const cleanPoint = point.replace(/^[-•*\d.]+\s*/, '').trim()
+                  if (cleanPoint.length > 15) {
+                    addSuggestion({
+                      agent: agentType,
+                      type: "improvement",
+                      title: cleanPoint.substring(0, 80) + (cleanPoint.length > 80 ? '...' : ''),
+                      description: cleanPoint,
+                      affectedFiles: [],
+                      suggestedChanges: [],
+                      priority: "medium",
+                    })
+                  }
+                }
+              } else {
+                addSuggestion({
+                  agent: agentType,
+                  type: "improvement",
+                  title: `${agentType === 'reviewer' ? 'Code-Review' : 'Sicherheits'}-Empfehlungen`,
+                  description: `Der ${agentType === 'reviewer' ? 'Reviewer' : 'Security'}-Agent hat Verbesserungsvorschläge erstellt.`,
+                  affectedFiles: [],
+                  suggestedChanges: [],
+                  priority: "medium",
+                })
+              }
+            }
+          }
+        }
+        
         return result.content
       } catch (error) {
         const errMsg = error instanceof Error ? error.message : "Unbekannter Fehler"
         throw new Error(`Agent ${agentId} fehlgeschlagen: ${errMsg}`)
       }
     },
-    [executeAgent, addFile]
+    [executeAgent, addFile, addSuggestion, getFiles, addLog]
   )
 
   return { executeWorkflow, fixErrors, executeSingleAgent }

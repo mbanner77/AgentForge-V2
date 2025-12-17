@@ -236,6 +236,22 @@ export function WorkflowExecutionView({ workflow, initialPrompt, autoStart = fal
       startWorkflow(initialPrompt)
     }
   }, [autoStart, initialPrompt]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Dialog automatisch öffnen wenn Human-Decision wartet
+  useEffect(() => {
+    if (executionState.status === "waiting-human" && executionState.humanDecisionPending && !showHumanDecision) {
+      setPendingDecision({
+        nodeId: executionState.humanDecisionPending.nodeId,
+        question: executionState.humanDecisionPending.question,
+        options: executionState.humanDecisionPending.options,
+        resolve: (optionId: string) => {
+          // Diese Funktion wird durch den Engine-Callback ersetzt
+          console.log("Selected option:", optionId)
+        }
+      })
+      setShowHumanDecision(true)
+    }
+  }, [executionState.status, executionState.humanDecisionPending, showHumanDecision])
   
   // Expose startWithPrompt für externe Aufrufe
   useEffect(() => {
