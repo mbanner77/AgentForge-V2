@@ -46,8 +46,11 @@ import { useAgentExecutor } from "@/lib/agent-executor-real"
 
 interface WorkflowExecutionViewProps {
   workflow: WorkflowGraph
+  initialPrompt?: string // Der initiale Auftrag aus dem Chat
+  autoStart?: boolean // Ob der Workflow automatisch starten soll
   onComplete?: () => void
   onClose?: () => void
+  onStart?: () => void // Callback wenn Workflow gestartet wird
 }
 
 // Node-Typ Icons
@@ -81,7 +84,7 @@ const AGENT_COLORS: Record<string, string> = {
   executor: "bg-cyan-500",
 }
 
-export function WorkflowExecutionView({ workflow, onComplete, onClose }: WorkflowExecutionViewProps) {
+export function WorkflowExecutionView({ workflow, initialPrompt, autoStart = false, onComplete, onClose, onStart }: WorkflowExecutionViewProps) {
   const { addLog, addMessage, setWorkflowExecutionState, logs } = useAgentStore()
   const { executeWorkflow: executeAgentWorkflow } = useAgentExecutor()
   
@@ -132,11 +135,15 @@ export function WorkflowExecutionView({ workflow, onComplete, onClose }: Workflo
     }
   }
 
-  // Workflow starten
-  const startWorkflow = async () => {
+  // Workflow starten mit optionalem Auftrag
+  const startWorkflow = async (prompt?: string) => {
+    const taskPrompt = prompt || initialPrompt
+    
+    onStart?.()
+    
     addMessage({
       role: "assistant",
-      content: `🚀 Starte Workflow **"${workflow.name}"** mit ${workflow.nodes.length} Schritten...`,
+      content: `🚀 Starte Workflow **"${workflow.name}"** mit ${workflow.nodes.length} Schritten...${taskPrompt ? `\n\n**Auftrag:** ${taskPrompt}` : ""}`,
       agent: "system",
     })
 
@@ -152,11 +159,14 @@ export function WorkflowExecutionView({ workflow, onComplete, onClose }: Workflo
           message: `Führe Agent aus: ${agentId}`,
         })
         
+        // Der initiale Auftrag wird als Kontext an den ersten Agent übergeben
+        const contextForAgent = previousOutput || taskPrompt || ""
+        
         // Hier wird der echte Agent ausgeführt
         // Für jetzt simulieren wir das mit einer Verzögerung
         await new Promise(resolve => setTimeout(resolve, 1500))
         
-        const output = `Agent ${agentId} hat die Aufgabe erfolgreich bearbeitet.`
+        const output = `Agent ${agentId} hat die Aufgabe erfolgreich bearbeitet.\n\nAuftrag: ${contextForAgent}`
         
         addMessage({
           role: "assistant",
@@ -192,6 +202,13 @@ export function WorkflowExecutionView({ workflow, onComplete, onClose }: Workflo
       })
     }
   }
+  
+  // Externe Methode zum Starten mit Prompt
+  const startWithPrompt = (prompt: string) => {
+    if (executionState.status === "idle") {
+      startWorkflow(prompt)
+    }
+  }
 
   // Workflow stoppen
   const stopWorkflow = () => {
@@ -205,12 +222,21 @@ export function WorkflowExecutionView({ workflow, onComplete, onClose }: Workflo
     }
   }
 
-  // Auto-Start wenn idle
+  // Auto-Start nur wenn autoStart=true und initialPrompt vorhanden
   useEffect(() => {
-    if (executionState.status === "idle") {
-      startWorkflow()
+    if (autoStart && initialPrompt && executionState.status === "idle") {
+      startWorkflow(initialPrompt)
     }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [autoStart, initialPrompt]) // eslint-disable-line react-hooks/exhaustive-deps
+  
+  // Expose startWithPrompt für externe Aufrufe
+  useEffect(() => {
+    // Registriere die Start-Funktion im Window für Builder-Integration
+    (window as any).__workflowStartWithPrompt = startWithPrompt
+    return () => {
+      delete (window as any).__workflowStartWithPrompt
+    }
+  }, [executionState.status]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Status Badge
   const getStatusBadge = () => {

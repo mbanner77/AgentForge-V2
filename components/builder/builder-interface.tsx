@@ -35,6 +35,7 @@ import type { WorkflowGraph } from "@/lib/types"
 export function BuilderInterface() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [selectedWorkflow, setSelectedWorkflow] = useState<WorkflowGraph | null>(null)
+  const [workflowPrompt, setWorkflowPrompt] = useState<string | null>(null) // Chat-Auftrag für Workflow
   const [newProjectOpen, setNewProjectOpen] = useState(false)
   const [projectName, setProjectName] = useState("")
   const [projectDescription, setProjectDescription] = useState("")
@@ -69,6 +70,16 @@ export function BuilderInterface() {
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSendMessage = async (content: string) => {
+    // Wenn ein Workflow ausgewählt ist, starte diesen mit dem Chat-Auftrag
+    if (selectedWorkflow) {
+      setWorkflowPrompt(content)
+      addMessage({
+        role: "user",
+        content,
+      })
+      return
+    }
+    
     // Prüfe ob bereits Dateien existieren - dann ist es eine Iteration
     const existingFiles = getFiles()
     const isIteration = existingFiles.length > 0
@@ -453,10 +464,19 @@ ${f.content}
                   {selectedWorkflow ? (
                     <WorkflowExecutionView
                       workflow={selectedWorkflow}
+                      initialPrompt={workflowPrompt || undefined}
+                      autoStart={!!workflowPrompt}
                       onComplete={() => {
-                        // Optional: Workflow nach Abschluss behalten oder zurücksetzen
+                        // Workflow abgeschlossen - Prompt zurücksetzen
+                        setWorkflowPrompt(null)
                       }}
-                      onClose={() => setSelectedWorkflow(null)}
+                      onClose={() => {
+                        setSelectedWorkflow(null)
+                        setWorkflowPrompt(null)
+                      }}
+                      onStart={() => {
+                        // Workflow gestartet
+                      }}
                     />
                   ) : (
                     <BuilderWorkflow steps={workflowSteps} />
