@@ -153,6 +153,119 @@ interface ParsedSuggestion {
   newContent: string
 }
 
+// Intelligente Fehler-Erkennung im Agent-Output
+interface DetectedError {
+  type: "syntax" | "runtime" | "type" | "import" | "logic" | "security" | "unknown"
+  message: string
+  file?: string
+  line?: number
+  severity: "error" | "warning" | "info"
+  autoFixable: boolean
+  suggestedFix?: string
+}
+
+function detectErrorsInOutput(content: string): DetectedError[] {
+  const errors: DetectedError[] = []
+  const contentLower = content.toLowerCase()
+  
+  // TypeScript/JavaScript Syntax Errors
+  const syntaxPatterns = [
+    { regex: /SyntaxError:\s*(.+)/gi, type: "syntax" as const },
+    { regex: /Unexpected token\s*['"]?(\w+)['"]?/gi, type: "syntax" as const },
+    { regex: /Missing semicolon/gi, type: "syntax" as const },
+  ]
+  
+  // Type Errors
+  const typePatterns = [
+    { regex: /TypeError:\s*(.+)/gi, type: "type" as const },
+    { regex: /Type '(\w+)' is not assignable to type '(\w+)'/gi, type: "type" as const },
+    { regex: /Property '(\w+)' does not exist/gi, type: "type" as const },
+    { regex: /Cannot find name '(\w+)'/gi, type: "type" as const },
+  ]
+  
+  // Import Errors
+  const importPatterns = [
+    { regex: /Cannot find module ['"]([^'"]+)['"]/gi, type: "import" as const },
+    { regex: /Module not found:\s*(.+)/gi, type: "import" as const },
+    { regex: /Failed to resolve import/gi, type: "import" as const },
+  ]
+  
+  // Runtime Errors
+  const runtimePatterns = [
+    { regex: /ReferenceError:\s*(.+)/gi, type: "runtime" as const },
+    { regex: /is not defined/gi, type: "runtime" as const },
+    { regex: /Cannot read propert(y|ies) of (undefined|null)/gi, type: "runtime" as const },
+  ]
+  
+  // Alle Patterns durchsuchen
+  const allPatterns = [
+    ...syntaxPatterns.map(p => ({ ...p, severity: "error" as const, autoFixable: true })),
+    ...typePatterns.map(p => ({ ...p, severity: "error" as const, autoFixable: true })),
+    ...importPatterns.map(p => ({ ...p, severity: "error" as const, autoFixable: true })),
+    ...runtimePatterns.map(p => ({ ...p, severity: "error" as const, autoFixable: false })),
+  ]
+  
+  for (const pattern of allPatterns) {
+    const matches = content.matchAll(pattern.regex)
+    for (const match of matches) {
+      // Extrahiere Zeilennummer falls vorhanden
+      const lineMatch = content.slice(Math.max(0, match.index! - 50), match.index! + 100).match(/line\s*(\d+)/i)
+      const fileMatch = content.slice(Math.max(0, match.index! - 100), match.index! + 50).match(/([a-zA-Z0-9_-]+\.(tsx?|jsx?|ts|js))/i)
+      
+      errors.push({
+        type: pattern.type,
+        message: match[0],
+        file: fileMatch?.[1],
+        line: lineMatch ? parseInt(lineMatch[1]) : undefined,
+        severity: pattern.severity,
+        autoFixable: pattern.autoFixable,
+      })
+    }
+  }
+  
+  // Deduplizieren
+  const uniqueErrors = errors.filter((error, index, self) => 
+    index === self.findIndex(e => e.message === error.message && e.type === error.type)
+  )
+  
+  return uniqueErrors
+}
+
+// Generiere automatische Fix-Vorschläge basierend auf Fehlertyp
+function generateAutoFixSuggestion(error: DetectedError): string | undefined {
+  switch (error.type) {
+    case "import":
+      if (error.message.includes("Cannot find module")) {
+        const moduleName = error.message.match(/['"]([^'"]+)['"]/)?.[1]
+        if (moduleName) {
+          return `Installiere das fehlende Modul: npm install ${moduleName}`
+        }
+      }
+      return "Prüfe die Import-Pfade und stelle sicher, dass alle Module installiert sind"
+      
+    case "type":
+      if (error.message.includes("is not assignable")) {
+        return "Korrigiere den Typ oder füge eine Type-Assertion hinzu"
+      }
+      if (error.message.includes("does not exist")) {
+        return "Füge die fehlende Property zum Interface hinzu oder korrigiere den Property-Namen"
+      }
+      return "Überprüfe die TypeScript-Typen und korrigiere die Typisierung"
+      
+    case "syntax":
+      return "Korrigiere die Syntax (fehlende Klammern, Semikolons, etc.)"
+      
+    case "runtime":
+      if (error.message.includes("undefined") || error.message.includes("null")) {
+        return "Füge Null-Checks hinzu: variable?.property oder variable && variable.property"
+      }
+      return "Stelle sicher, dass alle Variablen vor Verwendung definiert sind"
+      
+    default:
+      return undefined
+  }
+}
+
 // Erstellt eine menschenlesbare Zusammenfassung der Agent-Ausgabe
 function createHumanReadableSummary(
   agentType: AgentType,
@@ -818,6 +931,18 @@ ${fileContexts.join("\n\n")}
       // Validiere Agent-Ergebnis
       const validation = validateAgentResult(agentType, response.content, files)
       
+      // Intelligente Fehler-Erkennung
+      const detectedErrors = detectErrorsInOutput(response.content)
+      if (detectedErrors.length > 0) {
+        console.log(`[Agent Executor] ${detectedErrors.length} Fehler erkannt:`, 
+          detectedErrors.map(e => `${e.type}: ${e.message}`))
+        
+        // Füge Fix-Vorschläge hinzu
+        for (const error of detectedErrors) {
+          error.suggestedFix = generateAutoFixSuggestion(error)
+        }
+      }
+      
       if (!validation.isValid) {
         console.warn(`[Agent Executor] Validierung für ${agentType} fehlgeschlagen:`, validation.issues)
         // Bei Coder: Versuche nochmal mit expliziterem Prompt
@@ -842,6 +967,39 @@ ${fileContexts.join("\n\n")}
           const retryFiles = parseCodeFromResponse(retryResponse.content)
           if (retryFiles.length > 0) {
             return { content: retryResponse.content, files: retryFiles }
+          }
+        }
+        
+        // Bei erkannten Fehlern: Automatischer Fix-Versuch
+        if (detectedErrors.some(e => e.autoFixable)) {
+          console.log(`[Agent Executor] Versuche automatische Fehlerkorrektur...`)
+          
+          const errorSummary = detectedErrors
+            .map(e => `- ${e.type}: ${e.message}${e.suggestedFix ? ` (Fix: ${e.suggestedFix})` : ''}`)
+            .join('\n')
+          
+          const fixMessages = [
+            ...messages,
+            { role: "assistant" as const, content: response.content },
+            { role: "user" as const, content: `Die folgende Fehler wurden erkannt:\n${errorSummary}\n\nBitte korrigiere ALLE Fehler und gib den VOLLSTÄNDIGEN, korrigierten Code aus.` }
+          ]
+          
+          const fixResponse = await sendChatRequest({
+            messages: fixMessages,
+            model: config.model,
+            temperature: 0.2,
+            maxTokens: config.maxTokens,
+            apiKey,
+            provider,
+          })
+          
+          const fixedFiles = parseCodeFromResponse(fixResponse.content)
+          const fixedErrors = detectErrorsInOutput(fixResponse.content)
+          
+          // Wenn weniger Fehler, verwende korrigierte Version
+          if (fixedErrors.length < detectedErrors.length || fixedFiles.length > files.length) {
+            console.log(`[Agent Executor] Fehlerkorrektur erfolgreich: ${detectedErrors.length} → ${fixedErrors.length} Fehler`)
+            return { content: fixResponse.content, files: fixedFiles }
           }
         }
       }
