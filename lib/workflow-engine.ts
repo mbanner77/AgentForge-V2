@@ -42,16 +42,47 @@ export interface WorkflowEvent {
 export type WorkflowEventListener = (event: WorkflowEvent) => void
 
 // Workflow Engine für nicht-lineare Workflow-Ausführung
+// Agent-Performance-Tracking
+interface AgentPerformance {
+  agentId: string
+  executionCount: number
+  totalDuration: number
+  avgDuration: number
+  successCount: number
+  failureCount: number
+  successRate: number
+  lastExecution?: Date
+  filesGeneratedTotal: number
+}
+
+// Shared Context für Agent-Kollaboration
+interface SharedAgentContext {
+  projectSummary?: string
+  keyDecisions: string[]
+  identifiedIssues: string[]
+  completedTasks: string[]
+  sharedVariables: Record<string, unknown>
+}
+
 export class WorkflowEngine {
   private workflow: WorkflowGraph
   private state: WorkflowExecutionState
   private onStateChange: (state: WorkflowExecutionState) => void
-  private onAgentExecute: (agentId: string, previousOutput?: string) => Promise<string>
+  private onAgentExecute: (agentId: string, previousOutput?: string, sharedContext?: SharedAgentContext) => Promise<string>
   private onHumanDecision: (nodeId: string, question: string, options: HumanDecisionOption[]) => Promise<string>
   private onLog: (message: string, level: "info" | "warn" | "error" | "debug") => void
   private eventListeners: Map<WorkflowEventType | "*", WorkflowEventListener[]> = new Map()
   private snapshots: WorkflowSnapshot[] = []
   private maxSnapshots: number = 10
+  private agentPerformance: Map<string, AgentPerformance> = new Map()
+  private sharedContext: SharedAgentContext = {
+    keyDecisions: [],
+    identifiedIssues: [],
+    completedTasks: [],
+    sharedVariables: {},
+  }
+  private nodeTimeouts: Map<string, NodeJS.Timeout> = new Map()
+  private defaultTimeout: number = 300000 // 5 Minuten
 
   constructor(
     workflow: WorkflowGraph,
@@ -361,9 +392,16 @@ export class WorkflowEngine {
           const startTime = Date.now()
           this.emit("agent:started", nodeId, node.data.label, { agentId: node.data.agentId })
           
+          // Timeout setzen
+          const nodeTimeout = node.data.timeout ? node.data.timeout * 1000 : this.defaultTimeout
+          this.setNodeTimeout(nodeId, nodeTimeout)
+          
           // Vorherigen Output als Kontext übergeben
           const previousOutput = this.getPreviousOutput(nodeId)
-          output = await this.onAgentExecute(node.data.agentId, previousOutput)
+          output = await this.onAgentExecute(node.data.agentId, previousOutput, this.sharedContext)
+          
+          // Timeout löschen nach erfolgreicher Ausführung
+          this.clearNodeTimeout(nodeId)
           
           const duration = Date.now() - startTime
           
@@ -381,12 +419,19 @@ export class WorkflowEngine {
           this.state.nodeResults[nodeId] = agentResult
           this.state.nodeOutputs[nodeId] = output
           
-          this.log(`Agent ${node.data.agentId} abgeschlossen: ${agentResult.metadata?.filesGenerated?.length || 0} Dateien, ${agentResult.metadata?.errorsFound?.length || 0} Fehler`, "info")
+          // Performance tracken
+          const filesGenerated = agentResult.metadata?.filesGenerated?.length || 0
+          this.trackAgentPerformance(node.data.agentId, duration, agentResult.success, filesGenerated)
+          
+          // Context für andere Agents extrahieren und teilen
+          this.extractAndShareContext(node.data.agentId, output)
+          
+          this.log(`Agent ${node.data.agentId} abgeschlossen: ${filesGenerated} Dateien, ${agentResult.metadata?.errorsFound?.length || 0} Fehler`, "info")
           this.emit("agent:completed", nodeId, node.data.label, { 
             agentId: node.data.agentId, 
             duration, 
             success: agentResult.success,
-            filesGenerated: agentResult.metadata?.filesGenerated?.length || 0,
+            filesGenerated,
           })
           this.emit("node:completed", nodeId, node.data.label, { success: agentResult.success })
           this.autoSnapshot()
@@ -774,6 +819,137 @@ export class WorkflowEngine {
     }
     this.onStateChange(this.state)
     this.log(message, "error")
+    this.emit("workflow:error", undefined, undefined, { error: message })
+  }
+
+  // Agent-Performance tracken
+  private trackAgentPerformance(
+    agentId: string, 
+    duration: number, 
+    success: boolean, 
+    filesGenerated: number
+  ): void {
+    const existing = this.agentPerformance.get(agentId) || {
+      agentId,
+      executionCount: 0,
+      totalDuration: 0,
+      avgDuration: 0,
+      successCount: 0,
+      failureCount: 0,
+      successRate: 0,
+      filesGeneratedTotal: 0,
+    }
+    
+    existing.executionCount++
+    existing.totalDuration += duration
+    existing.avgDuration = existing.totalDuration / existing.executionCount
+    existing.filesGeneratedTotal += filesGenerated
+    existing.lastExecution = new Date()
+    
+    if (success) {
+      existing.successCount++
+    } else {
+      existing.failureCount++
+    }
+    existing.successRate = existing.successCount / existing.executionCount * 100
+    
+    this.agentPerformance.set(agentId, existing)
+  }
+
+  // Agent-Performance abrufen
+  getAgentPerformance(agentId?: string): AgentPerformance | AgentPerformance[] | undefined {
+    if (agentId) {
+      return this.agentPerformance.get(agentId)
+    }
+    return Array.from(this.agentPerformance.values())
+  }
+
+  // Shared Context aktualisieren
+  updateSharedContext(updates: Partial<SharedAgentContext>): void {
+    if (updates.projectSummary) {
+      this.sharedContext.projectSummary = updates.projectSummary
+    }
+    if (updates.keyDecisions) {
+      this.sharedContext.keyDecisions.push(...updates.keyDecisions)
+    }
+    if (updates.identifiedIssues) {
+      this.sharedContext.identifiedIssues.push(...updates.identifiedIssues)
+    }
+    if (updates.completedTasks) {
+      this.sharedContext.completedTasks.push(...updates.completedTasks)
+    }
+    if (updates.sharedVariables) {
+      this.sharedContext.sharedVariables = {
+        ...this.sharedContext.sharedVariables,
+        ...updates.sharedVariables,
+      }
+    }
+  }
+
+  // Shared Context abrufen
+  getSharedContext(): SharedAgentContext {
+    return { ...this.sharedContext }
+  }
+
+  // Context aus Agent-Output extrahieren und teilen
+  private extractAndShareContext(agentId: string, output: string): void {
+    const outputLower = output.toLowerCase()
+    
+    // Entscheidungen extrahieren
+    if (outputLower.includes("entscheid") || outputLower.includes("gewählt") || outputLower.includes("verwende")) {
+      const decisions = output.match(/(?:entscheid|gewählt|verwende)[^.!?\n]{10,100}/gi)
+      if (decisions) {
+        this.sharedContext.keyDecisions.push(...decisions.slice(0, 3))
+      }
+    }
+    
+    // Issues extrahieren
+    if (outputLower.includes("problem") || outputLower.includes("fehler") || outputLower.includes("issue")) {
+      const issues = output.match(/(?:problem|fehler|issue)[^.!?\n]{10,100}/gi)
+      if (issues) {
+        this.sharedContext.identifiedIssues.push(...issues.slice(0, 3))
+      }
+    }
+    
+    // Abgeschlossene Tasks markieren
+    this.sharedContext.completedTasks.push(`${agentId}: Ausführung abgeschlossen`)
+  }
+
+  // Timeout für Node setzen
+  private setNodeTimeout(nodeId: string, timeout?: number): void {
+    const timeoutMs = timeout || this.defaultTimeout
+    
+    const timeoutHandle = setTimeout(() => {
+      this.log(`Node ${nodeId} Timeout nach ${timeoutMs / 1000}s`, "error")
+      this.emit("node:failed", nodeId, undefined, { reason: "timeout" })
+      // Setze Fehler-Status aber stoppe Workflow nicht komplett
+      this.state.nodeResults[nodeId] = {
+        nodeId,
+        nodeName: "Timeout",
+        nodeType: "agent",
+        output: `Timeout nach ${timeoutMs / 1000} Sekunden`,
+        success: false,
+        duration: timeoutMs,
+        timestamp: new Date(),
+      }
+    }, timeoutMs)
+    
+    this.nodeTimeouts.set(nodeId, timeoutHandle)
+  }
+
+  // Timeout für Node löschen
+  private clearNodeTimeout(nodeId: string): void {
+    const timeout = this.nodeTimeouts.get(nodeId)
+    if (timeout) {
+      clearTimeout(timeout)
+      this.nodeTimeouts.delete(nodeId)
+    }
+  }
+
+  // Alle Timeouts löschen
+  clearAllTimeouts(): void {
+    this.nodeTimeouts.forEach((timeout) => clearTimeout(timeout))
+    this.nodeTimeouts.clear()
   }
 
   // Logging
