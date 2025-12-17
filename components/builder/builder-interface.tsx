@@ -393,8 +393,9 @@ ${f.content}
               onSelectWorkflow={(workflow) => setSelectedWorkflow(workflow)}
             />
             <Link href="/builder/workflow">
-              <Button variant="ghost" size="sm" title="Workflow Designer öffnen">
-                <Settings className="h-4 w-4" />
+              <Button variant="outline" size="sm" title="Workflow Designer öffnen">
+                <Settings className="mr-2 h-4 w-4" />
+                Designer
               </Button>
             </Link>
             <KnowledgeBaseDialog
