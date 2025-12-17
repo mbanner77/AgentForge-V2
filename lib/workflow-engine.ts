@@ -3859,3 +3859,559 @@ export const EXTENDED_WORKFLOW_TEMPLATES: Record<string, {
     ],
   },
 }
+
+// === WORKFLOW HISTORY & UNDO/REDO ===
+
+export interface WorkflowHistoryEntry {
+  id: string
+  timestamp: Date
+  action: string
+  description: string
+  before: { nodes: WorkflowNode[]; edges: WorkflowEdge[] }
+  after: { nodes: WorkflowNode[]; edges: WorkflowEdge[] }
+}
+
+export class WorkflowHistoryManager {
+  private history: WorkflowHistoryEntry[] = []
+  private currentIndex: number = -1
+  private maxHistory: number = 50
+  private listeners: ((canUndo: boolean, canRedo: boolean) => void)[] = []
+  
+  // Änderung aufzeichnen
+  record(
+    action: string,
+    description: string,
+    before: { nodes: WorkflowNode[]; edges: WorkflowEdge[] },
+    after: { nodes: WorkflowNode[]; edges: WorkflowEdge[] }
+  ): void {
+    // Alles nach currentIndex entfernen (für neuen Branch)
+    this.history = this.history.slice(0, this.currentIndex + 1)
+    
+    const entry: WorkflowHistoryEntry = {
+      id: `hist-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      timestamp: new Date(),
+      action,
+      description,
+      before: this.deepClone(before),
+      after: this.deepClone(after),
+    }
+    
+    this.history.push(entry)
+    this.currentIndex = this.history.length - 1
+    
+    // Max History einhalten
+    if (this.history.length > this.maxHistory) {
+      this.history.shift()
+      this.currentIndex--
+    }
+    
+    this.notifyListeners()
+  }
+  
+  // Deep Clone für State
+  private deepClone<T>(obj: T): T {
+    return JSON.parse(JSON.stringify(obj))
+  }
+  
+  // Undo
+  undo(): { nodes: WorkflowNode[]; edges: WorkflowEdge[] } | null {
+    if (!this.canUndo()) return null
+    
+    const entry = this.history[this.currentIndex]
+    this.currentIndex--
+    this.notifyListeners()
+    
+    return this.deepClone(entry.before)
+  }
+  
+  // Redo
+  redo(): { nodes: WorkflowNode[]; edges: WorkflowEdge[] } | null {
+    if (!this.canRedo()) return null
+    
+    this.currentIndex++
+    const entry = this.history[this.currentIndex]
+    this.notifyListeners()
+    
+    return this.deepClone(entry.after)
+  }
+  
+  // Kann Undo?
+  canUndo(): boolean {
+    return this.currentIndex >= 0
+  }
+  
+  // Kann Redo?
+  canRedo(): boolean {
+    return this.currentIndex < this.history.length - 1
+  }
+  
+  // Listener für UI-Updates
+  subscribe(listener: (canUndo: boolean, canRedo: boolean) => void): () => void {
+    this.listeners.push(listener)
+    return () => {
+      const idx = this.listeners.indexOf(listener)
+      if (idx > -1) this.listeners.splice(idx, 1)
+    }
+  }
+  
+  private notifyListeners(): void {
+    this.listeners.forEach(l => l(this.canUndo(), this.canRedo()))
+  }
+  
+  // History abrufen
+  getHistory(): WorkflowHistoryEntry[] {
+    return [...this.history]
+  }
+  
+  // Zu bestimmtem Punkt springen
+  jumpTo(index: number): { nodes: WorkflowNode[]; edges: WorkflowEdge[] } | null {
+    if (index < 0 || index >= this.history.length) return null
+    
+    this.currentIndex = index
+    this.notifyListeners()
+    
+    return this.deepClone(this.history[index].after)
+  }
+  
+  // History löschen
+  clear(): void {
+    this.history = []
+    this.currentIndex = -1
+    this.notifyListeners()
+  }
+}
+
+// === AGENT MEMORY SYSTEM ===
+
+export interface AgentMemory {
+  id: string
+  agentId: string
+  type: "fact" | "preference" | "context" | "learning"
+  content: string
+  importance: number // 0-1
+  createdAt: Date
+  lastAccessedAt: Date
+  accessCount: number
+  metadata?: Record<string, unknown>
+}
+
+export interface AgentMemoryQuery {
+  agentId?: string
+  type?: AgentMemory["type"]
+  minImportance?: number
+  limit?: number
+  searchText?: string
+}
+
+export class AgentMemoryManager {
+  private memories: Map<string, AgentMemory> = new Map()
+  private maxMemoriesPerAgent: number = 100
+  
+  // Memory hinzufügen
+  addMemory(
+    agentId: string,
+    type: AgentMemory["type"],
+    content: string,
+    options: { importance?: number; metadata?: Record<string, unknown> } = {}
+  ): string {
+    const id = `mem-${agentId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    
+    const memory: AgentMemory = {
+      id,
+      agentId,
+      type,
+      content,
+      importance: options.importance || 0.5,
+      createdAt: new Date(),
+      lastAccessedAt: new Date(),
+      accessCount: 0,
+      metadata: options.metadata,
+    }
+    
+    this.memories.set(id, memory)
+    this.enforceLimit(agentId)
+    
+    return id
+  }
+  
+  // Limit pro Agent einhalten (unwichtigste entfernen)
+  private enforceLimit(agentId: string): void {
+    const agentMemories = Array.from(this.memories.values())
+      .filter(m => m.agentId === agentId)
+      .sort((a, b) => {
+        // Score basierend auf Importance und Zugriffshäufigkeit
+        const scoreA = a.importance * 0.6 + (a.accessCount / 100) * 0.4
+        const scoreB = b.importance * 0.6 + (b.accessCount / 100) * 0.4
+        return scoreA - scoreB
+      })
+    
+    while (agentMemories.length > this.maxMemoriesPerAgent) {
+      const toRemove = agentMemories.shift()
+      if (toRemove) this.memories.delete(toRemove.id)
+    }
+  }
+  
+  // Memory abrufen
+  getMemory(id: string): AgentMemory | undefined {
+    const memory = this.memories.get(id)
+    if (memory) {
+      memory.lastAccessedAt = new Date()
+      memory.accessCount++
+    }
+    return memory
+  }
+  
+  // Memories abfragen
+  query(query: AgentMemoryQuery): AgentMemory[] {
+    let results = Array.from(this.memories.values())
+    
+    if (query.agentId) {
+      results = results.filter(m => m.agentId === query.agentId)
+    }
+    
+    if (query.type) {
+      results = results.filter(m => m.type === query.type)
+    }
+    
+    if (query.minImportance !== undefined) {
+      results = results.filter(m => m.importance >= query.minImportance!)
+    }
+    
+    if (query.searchText) {
+      const search = query.searchText.toLowerCase()
+      results = results.filter(m => m.content.toLowerCase().includes(search))
+    }
+    
+    // Nach Relevanz sortieren
+    results.sort((a, b) => {
+      const scoreA = a.importance * 0.5 + (a.accessCount / 100) * 0.3 + 
+                     (1 - (Date.now() - a.lastAccessedAt.getTime()) / (24 * 60 * 60 * 1000)) * 0.2
+      const scoreB = b.importance * 0.5 + (b.accessCount / 100) * 0.3 +
+                     (1 - (Date.now() - b.lastAccessedAt.getTime()) / (24 * 60 * 60 * 1000)) * 0.2
+      return scoreB - scoreA
+    })
+    
+    if (query.limit) {
+      results = results.slice(0, query.limit)
+    }
+    
+    // Access zählen
+    results.forEach(m => {
+      m.lastAccessedAt = new Date()
+      m.accessCount++
+    })
+    
+    return results
+  }
+  
+  // Relevante Memories für Kontext zusammenfassen
+  getContextForAgent(agentId: string, maxTokens: number = 500): string {
+    const memories = this.query({ 
+      agentId, 
+      minImportance: 0.3,
+      limit: 10 
+    })
+    
+    if (memories.length === 0) return ""
+    
+    const parts: string[] = ["## Relevante Erinnerungen"]
+    let tokenCount = 0
+    
+    for (const memory of memories) {
+      const entry = `- [${memory.type}] ${memory.content}`
+      const entryTokens = entry.length / 4 // Grobe Schätzung
+      
+      if (tokenCount + entryTokens > maxTokens) break
+      
+      parts.push(entry)
+      tokenCount += entryTokens
+    }
+    
+    return parts.join("\n")
+  }
+  
+  // Memory aktualisieren
+  updateMemory(id: string, updates: Partial<Pick<AgentMemory, "content" | "importance" | "metadata">>): boolean {
+    const memory = this.memories.get(id)
+    if (!memory) return false
+    
+    if (updates.content !== undefined) memory.content = updates.content
+    if (updates.importance !== undefined) memory.importance = updates.importance
+    if (updates.metadata !== undefined) memory.metadata = { ...memory.metadata, ...updates.metadata }
+    
+    return true
+  }
+  
+  // Memory löschen
+  deleteMemory(id: string): boolean {
+    return this.memories.delete(id)
+  }
+  
+  // Alle Memories eines Agents löschen
+  clearAgent(agentId: string): void {
+    for (const [id, memory] of this.memories) {
+      if (memory.agentId === agentId) {
+        this.memories.delete(id)
+      }
+    }
+  }
+  
+  // Export für Persistenz
+  export(): AgentMemory[] {
+    return Array.from(this.memories.values())
+  }
+  
+  // Import
+  import(memories: AgentMemory[]): void {
+    for (const memory of memories) {
+      this.memories.set(memory.id, {
+        ...memory,
+        createdAt: new Date(memory.createdAt),
+        lastAccessedAt: new Date(memory.lastAccessedAt),
+      })
+    }
+  }
+}
+
+// === WORKFLOW METRICS DASHBOARD DATA ===
+
+export interface WorkflowMetricsSummary {
+  totalExecutions: number
+  successRate: number
+  avgDuration: number
+  totalNodesExecuted: number
+  totalAgentCalls: number
+  mostUsedAgents: { agentId: string; count: number }[]
+  mostFailedNodes: { nodeId: string; label: string; failures: number }[]
+  executionsByDay: { date: string; count: number; successRate: number }[]
+  avgNodesPerWorkflow: number
+  humanDecisionStats: {
+    totalDecisions: number
+    avgResponseTime: number
+    mostChosenOptions: { optionId: string; label: string; count: number }[]
+  }
+}
+
+export interface WorkflowExecutionRecord {
+  id: string
+  workflowId: string
+  workflowName: string
+  startedAt: Date
+  completedAt?: Date
+  status: "running" | "completed" | "failed" | "cancelled"
+  nodesExecuted: number
+  agentCalls: { agentId: string; duration: number; success: boolean }[]
+  humanDecisions: { optionId: string; label: string; responseTime: number }[]
+  error?: string
+}
+
+export class WorkflowMetricsCollector {
+  private executions: WorkflowExecutionRecord[] = []
+  private maxRecords: number = 1000
+  
+  // Execution starten
+  startExecution(workflowId: string, workflowName: string): string {
+    const id = `exec-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    
+    this.executions.push({
+      id,
+      workflowId,
+      workflowName,
+      startedAt: new Date(),
+      status: "running",
+      nodesExecuted: 0,
+      agentCalls: [],
+      humanDecisions: [],
+    })
+    
+    this.enforceLimit()
+    return id
+  }
+  
+  private enforceLimit(): void {
+    if (this.executions.length > this.maxRecords) {
+      this.executions = this.executions.slice(-this.maxRecords)
+    }
+  }
+  
+  // Agent-Call aufzeichnen
+  recordAgentCall(executionId: string, agentId: string, duration: number, success: boolean): void {
+    const execution = this.executions.find(e => e.id === executionId)
+    if (execution) {
+      execution.agentCalls.push({ agentId, duration, success })
+      execution.nodesExecuted++
+    }
+  }
+  
+  // Human Decision aufzeichnen
+  recordHumanDecision(executionId: string, optionId: string, label: string, responseTime: number): void {
+    const execution = this.executions.find(e => e.id === executionId)
+    if (execution) {
+      execution.humanDecisions.push({ optionId, label, responseTime })
+    }
+  }
+  
+  // Execution abschließen
+  completeExecution(executionId: string, status: "completed" | "failed" | "cancelled", error?: string): void {
+    const execution = this.executions.find(e => e.id === executionId)
+    if (execution) {
+      execution.completedAt = new Date()
+      execution.status = status
+      execution.error = error
+    }
+  }
+  
+  // Zusammenfassung generieren
+  getSummary(days: number = 30): WorkflowMetricsSummary {
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
+    const relevantExecs = this.executions.filter(e => e.startedAt >= cutoff)
+    
+    const completedExecs = relevantExecs.filter(e => e.status === "completed")
+    const failedExecs = relevantExecs.filter(e => e.status === "failed")
+    
+    // Agent-Nutzung zählen
+    const agentCounts: Record<string, number> = {}
+    const nodeFailures: Record<string, { label: string; count: number }> = {}
+    
+    for (const exec of relevantExecs) {
+      for (const call of exec.agentCalls) {
+        agentCounts[call.agentId] = (agentCounts[call.agentId] || 0) + 1
+        if (!call.success) {
+          if (!nodeFailures[call.agentId]) {
+            nodeFailures[call.agentId] = { label: call.agentId, count: 0 }
+          }
+          nodeFailures[call.agentId].count++
+        }
+      }
+    }
+    
+    // Executions nach Tag gruppieren
+    const byDay: Record<string, { count: number; success: number }> = {}
+    for (const exec of relevantExecs) {
+      const day = exec.startedAt.toISOString().split("T")[0]
+      if (!byDay[day]) byDay[day] = { count: 0, success: 0 }
+      byDay[day].count++
+      if (exec.status === "completed") byDay[day].success++
+    }
+    
+    // Human Decision Stats
+    const allDecisions = relevantExecs.flatMap(e => e.humanDecisions)
+    const optionCounts: Record<string, { label: string; count: number }> = {}
+    for (const decision of allDecisions) {
+      if (!optionCounts[decision.optionId]) {
+        optionCounts[decision.optionId] = { label: decision.label, count: 0 }
+      }
+      optionCounts[decision.optionId].count++
+    }
+    
+    return {
+      totalExecutions: relevantExecs.length,
+      successRate: relevantExecs.length > 0 
+        ? completedExecs.length / relevantExecs.length 
+        : 0,
+      avgDuration: completedExecs.length > 0
+        ? completedExecs.reduce((sum, e) => 
+            sum + ((e.completedAt?.getTime() || 0) - e.startedAt.getTime()), 0
+          ) / completedExecs.length
+        : 0,
+      totalNodesExecuted: relevantExecs.reduce((sum, e) => sum + e.nodesExecuted, 0),
+      totalAgentCalls: relevantExecs.reduce((sum, e) => sum + e.agentCalls.length, 0),
+      mostUsedAgents: Object.entries(agentCounts)
+        .map(([agentId, count]) => ({ agentId, count }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 5),
+      mostFailedNodes: Object.entries(nodeFailures)
+        .map(([nodeId, data]) => ({ nodeId, label: data.label, failures: data.count }))
+        .sort((a, b) => b.failures - a.failures)
+        .slice(0, 5),
+      executionsByDay: Object.entries(byDay)
+        .map(([date, data]) => ({
+          date,
+          count: data.count,
+          successRate: data.count > 0 ? data.success / data.count : 0,
+        }))
+        .sort((a, b) => a.date.localeCompare(b.date)),
+      avgNodesPerWorkflow: relevantExecs.length > 0
+        ? relevantExecs.reduce((sum, e) => sum + e.nodesExecuted, 0) / relevantExecs.length
+        : 0,
+      humanDecisionStats: {
+        totalDecisions: allDecisions.length,
+        avgResponseTime: allDecisions.length > 0
+          ? allDecisions.reduce((sum, d) => sum + d.responseTime, 0) / allDecisions.length
+          : 0,
+        mostChosenOptions: Object.entries(optionCounts)
+          .map(([optionId, data]) => ({ optionId, label: data.label, count: data.count }))
+          .sort((a, b) => b.count - a.count)
+          .slice(0, 5),
+      },
+    }
+  }
+  
+  // Export für Persistenz
+  export(): WorkflowExecutionRecord[] {
+    return [...this.executions]
+  }
+  
+  // Import
+  import(records: WorkflowExecutionRecord[]): void {
+    this.executions = records.map(r => ({
+      ...r,
+      startedAt: new Date(r.startedAt),
+      completedAt: r.completedAt ? new Date(r.completedAt) : undefined,
+    }))
+  }
+}
+
+// === WORKFLOW KEYBOARD SHORTCUTS ===
+
+export interface KeyboardShortcut {
+  key: string
+  modifiers: ("ctrl" | "shift" | "alt" | "meta")[]
+  action: string
+  description: string
+}
+
+export const WORKFLOW_KEYBOARD_SHORTCUTS: KeyboardShortcut[] = [
+  { key: "z", modifiers: ["ctrl"], action: "undo", description: "Rückgängig" },
+  { key: "z", modifiers: ["ctrl", "shift"], action: "redo", description: "Wiederholen" },
+  { key: "s", modifiers: ["ctrl"], action: "save", description: "Speichern" },
+  { key: "n", modifiers: ["ctrl"], action: "new-node", description: "Neuer Node" },
+  { key: "Delete", modifiers: [], action: "delete-selected", description: "Ausgewählte löschen" },
+  { key: "Backspace", modifiers: [], action: "delete-selected", description: "Ausgewählte löschen" },
+  { key: "a", modifiers: ["ctrl"], action: "select-all", description: "Alle auswählen" },
+  { key: "c", modifiers: ["ctrl"], action: "copy", description: "Kopieren" },
+  { key: "v", modifiers: ["ctrl"], action: "paste", description: "Einfügen" },
+  { key: "d", modifiers: ["ctrl"], action: "duplicate", description: "Duplizieren" },
+  { key: "g", modifiers: ["ctrl"], action: "group", description: "Gruppieren" },
+  { key: "Escape", modifiers: [], action: "deselect", description: "Auswahl aufheben" },
+  { key: " ", modifiers: [], action: "toggle-run", description: "Starten/Pausieren" },
+  { key: "f", modifiers: ["ctrl"], action: "search", description: "Suchen" },
+  { key: "+", modifiers: ["ctrl"], action: "zoom-in", description: "Reinzoomen" },
+  { key: "-", modifiers: ["ctrl"], action: "zoom-out", description: "Rauszoomen" },
+  { key: "0", modifiers: ["ctrl"], action: "zoom-reset", description: "Zoom zurücksetzen" },
+]
+
+// Shortcut-Matcher
+export function matchShortcut(
+  event: { key: string; ctrlKey: boolean; shiftKey: boolean; altKey: boolean; metaKey: boolean }
+): KeyboardShortcut | null {
+  for (const shortcut of WORKFLOW_KEYBOARD_SHORTCUTS) {
+    if (event.key.toLowerCase() !== shortcut.key.toLowerCase()) continue
+    
+    const hasCtrl = shortcut.modifiers.includes("ctrl")
+    const hasShift = shortcut.modifiers.includes("shift")
+    const hasAlt = shortcut.modifiers.includes("alt")
+    const hasMeta = shortcut.modifiers.includes("meta")
+    
+    if (
+      event.ctrlKey === hasCtrl &&
+      event.shiftKey === hasShift &&
+      event.altKey === hasAlt &&
+      event.metaKey === hasMeta
+    ) {
+      return shortcut
+    }
+  }
+  
+  return null
+}
