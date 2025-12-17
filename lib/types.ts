@@ -220,6 +220,30 @@ export interface HumanDecisionOption {
   icon?: string
   color?: string
   nextNodeId?: string // Wohin bei dieser Wahl
+  // Bedingung wann diese Option angezeigt wird (basierend auf vorherigem Output)
+  showCondition?: {
+    type: "always" | "output-contains" | "output-matches" | "has-errors" | "has-files"
+    value?: string
+  }
+}
+
+// Ergebnis eines Workflow-Schritts
+export interface WorkflowStepResult {
+  nodeId: string
+  nodeName: string
+  nodeType: WorkflowNodeType
+  output: string
+  success: boolean
+  duration: number
+  timestamp: Date
+  // Strukturierte Daten aus dem Output
+  metadata?: {
+    filesGenerated?: string[]
+    errorsFound?: string[]
+    suggestionsCount?: number
+    codeBlocks?: { language: string; path?: string }[]
+    summary?: string
+  }
 }
 
 // Bedingung für automatische Verzweigung
@@ -261,12 +285,16 @@ export interface WorkflowExecutionState {
   currentNodeId: string | null
   visitedNodes: string[]
   nodeOutputs: Record<string, string>
+  // Strukturierte Ergebnisse pro Node
+  nodeResults: Record<string, WorkflowStepResult>
   status: "idle" | "running" | "paused" | "waiting-human" | "completed" | "error"
   humanDecisionPending?: {
     nodeId: string
     question: string
     options: HumanDecisionOption[]
     timeoutAt?: Date
+    // Ergebnis des vorherigen Steps für kontextbasierte Entscheidungen
+    previousResult?: WorkflowStepResult
   }
   startedAt?: Date
   completedAt?: Date

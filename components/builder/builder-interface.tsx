@@ -6,7 +6,7 @@ import { BuilderWorkflow } from "./builder-workflow"
 import { BuilderOutput } from "./builder-output"
 import { BuilderSidebar } from "./builder-sidebar"
 import { Button } from "@/components/ui/button"
-import { Bot, PanelLeft, Download, FolderOpen, Plus, Rocket, Github, Loader2, ExternalLink, LogOut, Settings, GripHorizontal, Database } from "lucide-react"
+import { Bot, PanelLeft, Download, FolderOpen, Plus, Rocket, Github, Loader2, ExternalLink, LogOut, Settings, GripHorizontal, Database, GitBranch } from "lucide-react"
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels"
 import Link from "next/link"
 import { useAgentStore } from "@/lib/agent-store"
@@ -379,6 +379,12 @@ ${f.content}
               <Download className="mr-2 h-4 w-4" />
               Export
             </Button>
+            <Link href="/builder/workflow">
+              <Button variant="outline" size="sm" title="Workflow Designer">
+                <GitBranch className="mr-2 h-4 w-4" />
+                Workflow
+              </Button>
+            </Link>
             <KnowledgeBaseDialog
               trigger={
                 <Button variant="outline" size="sm" title="Knowledge Base verwalten">

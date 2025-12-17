@@ -340,23 +340,59 @@ export default function WorkflowPage() {
 
       {/* Human Decision Dialog */}
       <Dialog open={showHumanDecision} onOpenChange={setShowHumanDecision}>
-        <DialogContent>
+        <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Users className="h-5 w-5 text-purple-500" />
               Entscheidung erforderlich
             </DialogTitle>
-            <DialogDescription>
-              {pendingDecision?.question}
-            </DialogDescription>
           </DialogHeader>
           
-          <div className="grid gap-3 py-4">
+          {/* Vorheriges Ergebnis anzeigen */}
+          {executionState?.humanDecisionPending?.previousResult && (
+            <div className="bg-muted/50 rounded-lg p-3 text-sm space-y-2">
+              <div className="font-medium text-muted-foreground">Ergebnis des vorherigen Schritts:</div>
+              <div className="flex flex-wrap gap-2">
+                {executionState.humanDecisionPending.previousResult.metadata?.filesGenerated?.length ? (
+                  <Badge variant="secondary" className="bg-green-500/20 text-green-600">
+                    {executionState.humanDecisionPending.previousResult.metadata.filesGenerated.length} Datei(en) generiert
+                  </Badge>
+                ) : null}
+                {executionState.humanDecisionPending.previousResult.metadata?.errorsFound?.length ? (
+                  <Badge variant="secondary" className="bg-red-500/20 text-red-600">
+                    {executionState.humanDecisionPending.previousResult.metadata.errorsFound.length} Fehler gefunden
+                  </Badge>
+                ) : null}
+                {executionState.humanDecisionPending.previousResult.success ? (
+                  <Badge variant="secondary" className="bg-green-500/20 text-green-600">
+                    <CheckCircle2 className="h-3 w-3 mr-1" />
+                    Erfolgreich
+                  </Badge>
+                ) : (
+                  <Badge variant="secondary" className="bg-orange-500/20 text-orange-600">
+                    <XCircle className="h-3 w-3 mr-1" />
+                    Mit Problemen
+                  </Badge>
+                )}
+              </div>
+              {executionState.humanDecisionPending.previousResult.metadata?.summary && (
+                <p className="text-xs text-muted-foreground italic">
+                  {executionState.humanDecisionPending.previousResult.metadata.summary}
+                </p>
+              )}
+            </div>
+          )}
+          
+          <DialogDescription className="whitespace-pre-wrap">
+            {pendingDecision?.question}
+          </DialogDescription>
+          
+          <div className="grid gap-3 py-2">
             {pendingDecision?.options.map((option) => (
               <Button
                 key={option.id}
                 variant="outline"
-                className="justify-start h-auto py-3 px-4"
+                className="justify-start h-auto py-3 px-4 hover:border-primary"
                 onClick={() => selectDecision(option.id)}
               >
                 <div className="text-left">

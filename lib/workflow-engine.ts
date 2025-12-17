@@ -6,6 +6,7 @@ import type {
   WorkflowEdge,
   WorkflowExecutionState,
   HumanDecisionOption,
+  WorkflowStepResult,
   AgentType,
 } from "./types"
 
@@ -39,8 +40,90 @@ export class WorkflowEngine {
       currentNodeId: null,
       visitedNodes: [],
       nodeOutputs: {},
+      nodeResults: {},
       status: "idle",
     }
+  }
+
+  // Hilfsfunktion: Output analysieren und strukturierte Ergebnisse extrahieren
+  private parseOutputMetadata(output: string): WorkflowStepResult["metadata"] {
+    const metadata: WorkflowStepResult["metadata"] = {}
+    
+    // Dateien aus Code-Blöcken extrahieren
+    const filePathMatches = output.match(/\/\/ filepath: ([^\n]+)/g)
+    if (filePathMatches) {
+      metadata.filesGenerated = filePathMatches.map(m => m.replace("// filepath: ", "").trim())
+    }
+    
+    // Fehler erkennen
+    const errorPatterns = [/error/gi, /fehler/gi, /failed/gi]
+    const errors: string[] = []
+    for (const pattern of errorPatterns) {
+      const matches = output.match(pattern)
+      if (matches) {
+        errors.push(...matches)
+      }
+    }
+    if (errors.length > 0) {
+      metadata.errorsFound = [...new Set(errors)]
+    }
+    
+    // Code-Blöcke zählen
+    const codeBlockMatches = output.match(/```(\w+)?/g)
+    if (codeBlockMatches) {
+      metadata.codeBlocks = codeBlockMatches.map(m => ({
+        language: m.replace("```", "") || "unknown"
+      }))
+    }
+    
+    // Erste Zeile als Summary
+    const firstLine = output.split("\n")[0]?.trim()
+    if (firstLine && firstLine.length < 200) {
+      metadata.summary = firstLine
+    }
+    
+    return Object.keys(metadata).length > 0 ? metadata : undefined
+  }
+
+  // Vorheriges Ergebnis für Human-Decision abrufen
+  private getPreviousResult(nodeId: string): WorkflowStepResult | undefined {
+    const incomingEdge = this.workflow.edges.find(e => e.target === nodeId)
+    if (!incomingEdge) return undefined
+    return this.state.nodeResults[incomingEdge.source]
+  }
+
+  // Optionen basierend auf vorherigem Output filtern
+  private filterOptionsByCondition(
+    options: HumanDecisionOption[],
+    previousResult?: WorkflowStepResult
+  ): HumanDecisionOption[] {
+    if (!previousResult) return options
+    
+    return options.filter(option => {
+      if (!option.showCondition || option.showCondition.type === "always") {
+        return true
+      }
+      
+      const output = previousResult.output.toLowerCase()
+      const value = option.showCondition.value?.toLowerCase() || ""
+      
+      switch (option.showCondition.type) {
+        case "output-contains":
+          return output.includes(value)
+        case "output-matches":
+          try {
+            return new RegExp(value, "i").test(previousResult.output)
+          } catch {
+            return false
+          }
+        case "has-errors":
+          return (previousResult.metadata?.errorsFound?.length || 0) > 0
+        case "has-files":
+          return (previousResult.metadata?.filesGenerated?.length || 0) > 0
+        default:
+          return true
+      }
+    })
   }
 
   // Workflow starten
@@ -108,32 +191,79 @@ export class WorkflowEngine {
           shouldContinue = false
           break
 
-        case "agent":
+        case "agent": {
           // Agent ausführen
           if (!node.data.agentId) {
             this.setError(`Agent-Node ${nodeId} hat keine agentId`)
             return
           }
           
+          const startTime = Date.now()
+          
           // Vorherigen Output als Kontext übergeben
           const previousOutput = this.getPreviousOutput(nodeId)
           output = await this.onAgentExecute(node.data.agentId, previousOutput)
+          
+          const duration = Date.now() - startTime
+          
+          // Strukturiertes Ergebnis speichern
+          const agentResult: WorkflowStepResult = {
+            nodeId,
+            nodeName: node.data.label,
+            nodeType: node.type,
+            output,
+            success: !output.toLowerCase().includes("error") && !output.toLowerCase().includes("fehler"),
+            duration,
+            timestamp: new Date(),
+            metadata: this.parseOutputMetadata(output),
+          }
+          this.state.nodeResults[nodeId] = agentResult
           this.state.nodeOutputs[nodeId] = output
+          
+          this.log(`Agent ${node.data.agentId} abgeschlossen: ${agentResult.metadata?.filesGenerated?.length || 0} Dateien, ${agentResult.metadata?.errorsFound?.length || 0} Fehler`, "info")
+          
           nextNodeId = this.getNextNode(nodeId)
           break
+        }
 
-        case "human-decision":
-          // Human-in-the-Loop Entscheidung
+        case "human-decision": {
+          // Vorheriges Ergebnis für kontextbasierte Entscheidung abrufen
+          const previousResult = this.getPreviousResult(nodeId)
+          
+          // Optionen basierend auf vorherigem Output filtern
+          const allOptions = node.data.options || []
+          const filteredOptions = this.filterOptionsByCondition(allOptions, previousResult)
+          
+          // Frage mit Kontext anreichern
+          let contextualQuestion = node.data.question || "Wie soll fortgefahren werden?"
+          if (previousResult?.metadata) {
+            const meta = previousResult.metadata
+            const contextParts: string[] = []
+            if (meta.filesGenerated?.length) {
+              contextParts.push(`${meta.filesGenerated.length} Datei(en) generiert`)
+            }
+            if (meta.errorsFound?.length) {
+              contextParts.push(`${meta.errorsFound.length} Fehler gefunden`)
+            }
+            if (meta.summary) {
+              contextParts.push(`Zusammenfassung: ${meta.summary}`)
+            }
+            if (contextParts.length > 0) {
+              contextualQuestion = `**Vorheriger Schritt:** ${contextParts.join(", ")}\n\n${contextualQuestion}`
+            }
+          }
+          
           this.state = {
             ...this.state,
             status: "waiting-human",
             humanDecisionPending: {
               nodeId,
-              question: node.data.question || "Wie soll fortgefahren werden?",
-              options: node.data.options || [],
+              question: contextualQuestion,
+              options: filteredOptions.length > 0 ? filteredOptions : allOptions,
               timeoutAt: node.data.timeout 
                 ? new Date(Date.now() + node.data.timeout * 1000)
                 : undefined,
+              previousResult,
             },
           }
           this.onStateChange(this.state)
@@ -141,12 +271,12 @@ export class WorkflowEngine {
           // Auf Entscheidung warten
           const selectedOptionId = await this.onHumanDecision(
             nodeId,
-            node.data.question || "Wie soll fortgefahren werden?",
-            node.data.options || []
+            contextualQuestion,
+            filteredOptions.length > 0 ? filteredOptions : allOptions
           )
           
           // Option finden und nächsten Node bestimmen
-          const selectedOption = node.data.options?.find(o => o.id === selectedOptionId)
+          const selectedOption = allOptions.find(o => o.id === selectedOptionId)
           if (selectedOption?.nextNodeId) {
             nextNodeId = selectedOption.nextNodeId
           } else {
@@ -161,6 +291,7 @@ export class WorkflowEngine {
           }
           this.state.nodeOutputs[nodeId] = selectedOptionId
           break
+        }
 
         case "condition":
           // Automatische Bedingungsprüfung
