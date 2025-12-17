@@ -2129,3 +2129,527 @@ ${learnings.map((l, i) => `${i + 1}. ${l}`).join("\n")}
     }
   }
 }
+
+// === WORKFLOW DEBUGGING TOOLS ===
+
+export interface WorkflowDebugState {
+  breakpoints: Set<string>
+  watchedVariables: Map<string, unknown>
+  stepMode: boolean
+  currentStep: number
+  executionLog: WorkflowDebugLogEntry[]
+  isPaused: boolean
+}
+
+export interface WorkflowDebugLogEntry {
+  timestamp: Date
+  type: "node-enter" | "node-exit" | "variable-change" | "error" | "decision" | "condition"
+  nodeId?: string
+  nodeName?: string
+  message: string
+  data?: Record<string, unknown>
+  duration?: number
+}
+
+export class WorkflowDebugger {
+  private state: WorkflowDebugState = {
+    breakpoints: new Set(),
+    watchedVariables: new Map(),
+    stepMode: false,
+    currentStep: 0,
+    executionLog: [],
+    isPaused: false,
+  }
+  private onPause?: (nodeId: string) => void
+  private onLogUpdate?: (log: WorkflowDebugLogEntry[]) => void
+  
+  constructor(options?: {
+    onPause?: (nodeId: string) => void
+    onLogUpdate?: (log: WorkflowDebugLogEntry[]) => void
+  }) {
+    this.onPause = options?.onPause
+    this.onLogUpdate = options?.onLogUpdate
+  }
+  
+  // Breakpoint setzen
+  setBreakpoint(nodeId: string): void {
+    this.state.breakpoints.add(nodeId)
+    this.log("breakpoint-set", `Breakpoint gesetzt: ${nodeId}`)
+  }
+  
+  // Breakpoint entfernen
+  removeBreakpoint(nodeId: string): void {
+    this.state.breakpoints.delete(nodeId)
+    this.log("breakpoint-removed", `Breakpoint entfernt: ${nodeId}`)
+  }
+  
+  // Alle Breakpoints abrufen
+  getBreakpoints(): string[] {
+    return Array.from(this.state.breakpoints)
+  }
+  
+  // Prüfen ob Node ein Breakpoint hat
+  hasBreakpoint(nodeId: string): boolean {
+    return this.state.breakpoints.has(nodeId)
+  }
+  
+  // Variable beobachten
+  watchVariable(name: string, initialValue?: unknown): void {
+    this.state.watchedVariables.set(name, initialValue)
+  }
+  
+  // Variable aktualisieren
+  updateVariable(name: string, value: unknown): void {
+    const oldValue = this.state.watchedVariables.get(name)
+    this.state.watchedVariables.set(name, value)
+    
+    this.addLogEntry({
+      timestamp: new Date(),
+      type: "variable-change",
+      message: `Variable "${name}" geändert`,
+      data: { name, oldValue, newValue: value },
+    })
+  }
+  
+  // Alle beobachteten Variablen
+  getWatchedVariables(): Record<string, unknown> {
+    return Object.fromEntries(this.state.watchedVariables)
+  }
+  
+  // Step-Modus aktivieren
+  enableStepMode(): void {
+    this.state.stepMode = true
+    this.log("step-mode", "Step-Modus aktiviert")
+  }
+  
+  // Step-Modus deaktivieren
+  disableStepMode(): void {
+    this.state.stepMode = false
+    this.log("step-mode", "Step-Modus deaktiviert")
+  }
+  
+  // Ist Step-Modus aktiv?
+  isStepMode(): boolean {
+    return this.state.stepMode
+  }
+  
+  // Node betreten
+  enterNode(nodeId: string, nodeName: string): boolean {
+    this.state.currentStep++
+    
+    this.addLogEntry({
+      timestamp: new Date(),
+      type: "node-enter",
+      nodeId,
+      nodeName,
+      message: `→ Node betreten: ${nodeName}`,
+    })
+    
+    // Prüfe auf Breakpoint oder Step-Modus
+    if (this.hasBreakpoint(nodeId) || this.state.stepMode) {
+      this.state.isPaused = true
+      this.onPause?.(nodeId)
+      return false // Execution should pause
+    }
+    
+    return true // Continue execution
+  }
+  
+  // Node verlassen
+  exitNode(nodeId: string, nodeName: string, duration: number, success: boolean): void {
+    this.addLogEntry({
+      timestamp: new Date(),
+      type: "node-exit",
+      nodeId,
+      nodeName,
+      message: `← Node verlassen: ${nodeName} (${success ? "✓" : "✗"})`,
+      duration,
+      data: { success },
+    })
+  }
+  
+  // Fehler loggen
+  logError(nodeId: string, nodeName: string, error: string): void {
+    this.addLogEntry({
+      timestamp: new Date(),
+      type: "error",
+      nodeId,
+      nodeName,
+      message: `❌ Fehler in ${nodeName}: ${error}`,
+      data: { error },
+    })
+  }
+  
+  // Entscheidung loggen
+  logDecision(nodeId: string, nodeName: string, decision: string): void {
+    this.addLogEntry({
+      timestamp: new Date(),
+      type: "decision",
+      nodeId,
+      nodeName,
+      message: `🔀 Entscheidung in ${nodeName}: ${decision}`,
+      data: { decision },
+    })
+  }
+  
+  // Bedingung loggen
+  logCondition(nodeId: string, nodeName: string, condition: string, result: boolean): void {
+    this.addLogEntry({
+      timestamp: new Date(),
+      type: "condition",
+      nodeId,
+      nodeName,
+      message: `❓ Bedingung in ${nodeName}: "${condition}" = ${result}`,
+      data: { condition, result },
+    })
+  }
+  
+  // Log-Eintrag hinzufügen
+  private addLogEntry(entry: WorkflowDebugLogEntry): void {
+    this.state.executionLog.push(entry)
+    
+    // Max 1000 Einträge behalten
+    if (this.state.executionLog.length > 1000) {
+      this.state.executionLog = this.state.executionLog.slice(-1000)
+    }
+    
+    this.onLogUpdate?.(this.state.executionLog)
+  }
+  
+  private log(type: string, message: string): void {
+    console.log(`[Debug:${type}] ${message}`)
+  }
+  
+  // Ausführung fortsetzen
+  continue(): void {
+    this.state.isPaused = false
+  }
+  
+  // Nächster Schritt
+  step(): void {
+    this.state.isPaused = false
+    this.state.stepMode = true
+  }
+  
+  // Ist pausiert?
+  isPaused(): boolean {
+    return this.state.isPaused
+  }
+  
+  // Execution Log abrufen
+  getExecutionLog(): WorkflowDebugLogEntry[] {
+    return [...this.state.executionLog]
+  }
+  
+  // Gefilterter Log
+  getFilteredLog(filter: {
+    type?: WorkflowDebugLogEntry["type"]
+    nodeId?: string
+    since?: Date
+  }): WorkflowDebugLogEntry[] {
+    return this.state.executionLog.filter(entry => {
+      if (filter.type && entry.type !== filter.type) return false
+      if (filter.nodeId && entry.nodeId !== filter.nodeId) return false
+      if (filter.since && entry.timestamp < filter.since) return false
+      return true
+    })
+  }
+  
+  // Log leeren
+  clearLog(): void {
+    this.state.executionLog = []
+    this.onLogUpdate?.([])
+  }
+  
+  // Aktueller Schritt
+  getCurrentStep(): number {
+    return this.state.currentStep
+  }
+  
+  // Debug-State exportieren
+  exportState(): WorkflowDebugState {
+    return {
+      ...this.state,
+      breakpoints: new Set(this.state.breakpoints),
+      watchedVariables: new Map(this.state.watchedVariables),
+      executionLog: [...this.state.executionLog],
+    }
+  }
+  
+  // State zurücksetzen
+  reset(): void {
+    this.state = {
+      breakpoints: this.state.breakpoints, // Breakpoints beibehalten
+      watchedVariables: new Map(),
+      stepMode: false,
+      currentStep: 0,
+      executionLog: [],
+      isPaused: false,
+    }
+  }
+}
+
+// === WORKFLOW EXECUTION CONTEXT ===
+
+export interface WorkflowExecutionContext {
+  workflowId: string
+  executionId: string
+  startedAt: Date
+  environment: "development" | "staging" | "production"
+  user?: { id: string; name: string }
+  variables: Record<string, unknown>
+  secrets: Record<string, string>
+  features: Record<string, boolean>
+}
+
+export class WorkflowContextManager {
+  private context: WorkflowExecutionContext
+  private history: { key: string; oldValue: unknown; newValue: unknown; timestamp: Date }[] = []
+  
+  constructor(workflowId: string, environment: "development" | "staging" | "production" = "development") {
+    this.context = {
+      workflowId,
+      executionId: `exec-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      startedAt: new Date(),
+      environment,
+      variables: {},
+      secrets: {},
+      features: {},
+    }
+  }
+  
+  // Variable setzen
+  setVariable(key: string, value: unknown): void {
+    const oldValue = this.context.variables[key]
+    this.context.variables[key] = value
+    
+    this.history.push({
+      key,
+      oldValue,
+      newValue: value,
+      timestamp: new Date(),
+    })
+  }
+  
+  // Variable abrufen
+  getVariable<T = unknown>(key: string, defaultValue?: T): T {
+    return (this.context.variables[key] as T) ?? (defaultValue as T)
+  }
+  
+  // Alle Variablen
+  getAllVariables(): Record<string, unknown> {
+    return { ...this.context.variables }
+  }
+  
+  // Secret setzen (nicht im Log)
+  setSecret(key: string, value: string): void {
+    this.context.secrets[key] = value
+  }
+  
+  // Secret abrufen
+  getSecret(key: string): string | undefined {
+    return this.context.secrets[key]
+  }
+  
+  // Feature Flag setzen
+  setFeature(key: string, enabled: boolean): void {
+    this.context.features[key] = enabled
+  }
+  
+  // Feature Flag prüfen
+  isFeatureEnabled(key: string): boolean {
+    return this.context.features[key] ?? false
+  }
+  
+  // User setzen
+  setUser(user: { id: string; name: string }): void {
+    this.context.user = user
+  }
+  
+  // User abrufen
+  getUser(): { id: string; name: string } | undefined {
+    return this.context.user
+  }
+  
+  // Kontext abrufen
+  getContext(): WorkflowExecutionContext {
+    return { ...this.context }
+  }
+  
+  // Execution ID
+  getExecutionId(): string {
+    return this.context.executionId
+  }
+  
+  // Environment
+  getEnvironment(): "development" | "staging" | "production" {
+    return this.context.environment
+  }
+  
+  // Ist Produktion?
+  isProduction(): boolean {
+    return this.context.environment === "production"
+  }
+  
+  // History abrufen
+  getVariableHistory(key?: string): typeof this.history {
+    if (key) {
+      return this.history.filter(h => h.key === key)
+    }
+    return [...this.history]
+  }
+  
+  // Template-String mit Variablen ersetzen
+  interpolate(template: string): string {
+    return template.replace(/\{\{(\w+)\}\}/g, (_, key) => {
+      const value = this.context.variables[key]
+      return value !== undefined ? String(value) : `{{${key}}}`
+    })
+  }
+  
+  // Kontext als JSON exportieren
+  export(): string {
+    return JSON.stringify({
+      ...this.context,
+      secrets: "[REDACTED]", // Secrets nicht exportieren
+    }, null, 2)
+  }
+  
+  // Kontext klonen für Sub-Workflows
+  clone(): WorkflowContextManager {
+    const cloned = new WorkflowContextManager(this.context.workflowId, this.context.environment)
+    cloned.context = {
+      ...this.context,
+      executionId: `exec-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      startedAt: new Date(),
+      variables: { ...this.context.variables },
+      secrets: { ...this.context.secrets },
+      features: { ...this.context.features },
+    }
+    return cloned
+  }
+}
+
+// === AGENT SPEZIALISIERUNG ===
+
+export interface AgentSpecialization {
+  id: string
+  name: string
+  baseAgent: "planner" | "coder" | "reviewer" | "security" | "executor"
+  promptExtensions: string[]
+  temperature?: number
+  focusAreas: string[]
+  avoidAreas: string[]
+  outputFormat?: "json" | "markdown" | "code" | "plain"
+  maxTokens?: number
+}
+
+export const AGENT_SPECIALIZATIONS: Record<string, AgentSpecialization> = {
+  "react-specialist": {
+    id: "react-specialist",
+    name: "React Spezialist",
+    baseAgent: "coder",
+    promptExtensions: [
+      "Du bist ein React-Experte mit tiefem Wissen über Hooks, Context, und moderne Patterns.",
+      "Bevorzuge funktionale Komponenten mit Hooks über Klassen-Komponenten.",
+      "Nutze TypeScript für type safety.",
+    ],
+    focusAreas: ["React", "Hooks", "State Management", "Component Design"],
+    avoidAreas: ["Backend", "Database"],
+    outputFormat: "code",
+  },
+  
+  "api-designer": {
+    id: "api-designer",
+    name: "API Designer",
+    baseAgent: "planner",
+    promptExtensions: [
+      "Du bist ein API-Design-Experte mit Fokus auf RESTful und GraphQL APIs.",
+      "Achte auf konsistente Namensgebung und HTTP-Status-Codes.",
+      "Dokumentiere Endpoints mit OpenAPI/Swagger-Format.",
+    ],
+    focusAreas: ["REST API", "GraphQL", "OpenAPI", "HTTP Methods"],
+    avoidAreas: ["Frontend", "UI"],
+    outputFormat: "json",
+  },
+  
+  "security-auditor": {
+    id: "security-auditor",
+    name: "Security Auditor",
+    baseAgent: "security",
+    promptExtensions: [
+      "Du führst tiefgehende Sicherheitsaudits durch.",
+      "Prüfe auf OWASP Top 10 Schwachstellen.",
+      "Bewerte Risiken nach CVSS-Standard.",
+    ],
+    focusAreas: ["OWASP", "Authentication", "Authorization", "Input Validation"],
+    avoidAreas: [],
+    temperature: 0.2,
+  },
+  
+  "performance-optimizer": {
+    id: "performance-optimizer",
+    name: "Performance Optimizer",
+    baseAgent: "reviewer",
+    promptExtensions: [
+      "Du analysierst Code auf Performance-Probleme.",
+      "Identifiziere N+1 Queries, Memory Leaks, und ineffiziente Algorithmen.",
+      "Schlage konkrete Optimierungen mit messbarem Impact vor.",
+    ],
+    focusAreas: ["Performance", "Memory", "Algorithms", "Caching"],
+    avoidAreas: ["Styling", "UI"],
+    temperature: 0.3,
+  },
+  
+  "test-writer": {
+    id: "test-writer",
+    name: "Test Writer",
+    baseAgent: "coder",
+    promptExtensions: [
+      "Du schreibst umfassende Tests für bestehenden Code.",
+      "Nutze Jest für Unit-Tests und Testing Library für Komponenten.",
+      "Erreiche hohe Code-Coverage mit sinnvollen Test-Cases.",
+    ],
+    focusAreas: ["Unit Tests", "Integration Tests", "Mocking", "Coverage"],
+    avoidAreas: ["Implementation"],
+    outputFormat: "code",
+  },
+  
+  "documentation-writer": {
+    id: "documentation-writer",
+    name: "Dokumentation Schreiber",
+    baseAgent: "planner",
+    promptExtensions: [
+      "Du erstellst klare, strukturierte technische Dokumentation.",
+      "Nutze Markdown mit Code-Beispielen.",
+      "Erkläre komplexe Konzepte verständlich.",
+    ],
+    focusAreas: ["Documentation", "README", "API Docs", "Examples"],
+    avoidAreas: ["Implementation"],
+    outputFormat: "markdown",
+  },
+}
+
+// Spezialisierung auf Agent anwenden
+export function applySpecialization(
+  basePrompt: string, 
+  specialization: AgentSpecialization
+): string {
+  const focusSection = specialization.focusAreas.length > 0
+    ? `\n\n## FOKUS-BEREICHE\nKonzentriere dich auf: ${specialization.focusAreas.join(", ")}`
+    : ""
+    
+  const avoidSection = specialization.avoidAreas.length > 0
+    ? `\n\n## VERMEIDE\nBehandele nicht: ${specialization.avoidAreas.join(", ")}`
+    : ""
+    
+  const formatSection = specialization.outputFormat
+    ? `\n\n## OUTPUT-FORMAT\nBevorzuge ${specialization.outputFormat}-Format für deine Ausgabe.`
+    : ""
+  
+  return `${basePrompt}
+
+## SPEZIALISIERUNG: ${specialization.name}
+${specialization.promptExtensions.join("\n")}
+${focusSection}${avoidSection}${formatSection}`
+}
