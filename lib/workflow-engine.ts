@@ -83,6 +83,10 @@ export class WorkflowEngine {
   }
   private nodeTimeouts: Map<string, NodeJS.Timeout> = new Map()
   private defaultTimeout: number = 300000 // 5 Minuten
+  private outputCache: Map<string, { output: string; timestamp: Date; hash: string }> = new Map()
+  private cacheEnabled: boolean = true
+  private cacheTTL: number = 600000 // 10 Minuten Cache-Gültigkeit
+  private priorityQueue: { nodeId: string; priority: number }[] = []
 
   constructor(
     workflow: WorkflowGraph,
@@ -950,6 +954,106 @@ export class WorkflowEngine {
   clearAllTimeouts(): void {
     this.nodeTimeouts.forEach((timeout) => clearTimeout(timeout))
     this.nodeTimeouts.clear()
+  }
+
+  // === OUTPUT CACHING ===
+  
+  // Cache-Key generieren basierend auf Agent und Input
+  private generateCacheKey(agentId: string, input: string): string {
+    // Einfacher Hash für Cache-Key
+    let hash = 0
+    const str = `${agentId}:${input.slice(0, 500)}`
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i)
+      hash = ((hash << 5) - hash) + char
+      hash = hash & hash
+    }
+    return `${agentId}-${Math.abs(hash).toString(16)}`
+  }
+
+  // Prüfe ob Cache-Eintrag gültig ist
+  private isCacheValid(cacheKey: string): boolean {
+    const cached = this.outputCache.get(cacheKey)
+    if (!cached) return false
+    
+    const age = Date.now() - cached.timestamp.getTime()
+    return age < this.cacheTTL
+  }
+
+  // Output aus Cache holen
+  getCachedOutput(agentId: string, input: string): string | undefined {
+    if (!this.cacheEnabled) return undefined
+    
+    const cacheKey = this.generateCacheKey(agentId, input)
+    if (this.isCacheValid(cacheKey)) {
+      const cached = this.outputCache.get(cacheKey)
+      this.log(`Cache-Hit für ${agentId}`, "debug")
+      return cached?.output
+    }
+    return undefined
+  }
+
+  // Output im Cache speichern
+  cacheOutput(agentId: string, input: string, output: string): void {
+    if (!this.cacheEnabled) return
+    
+    const cacheKey = this.generateCacheKey(agentId, input)
+    this.outputCache.set(cacheKey, {
+      output,
+      timestamp: new Date(),
+      hash: cacheKey,
+    })
+    
+    // Cache-Größe limitieren (max 50 Einträge)
+    if (this.outputCache.size > 50) {
+      const oldestKey = this.outputCache.keys().next().value
+      if (oldestKey) this.outputCache.delete(oldestKey)
+    }
+  }
+
+  // Cache leeren
+  clearCache(): void {
+    this.outputCache.clear()
+    this.log("Cache geleert", "info")
+  }
+
+  // Cache aktivieren/deaktivieren
+  setCacheEnabled(enabled: boolean): void {
+    this.cacheEnabled = enabled
+  }
+
+  // === PRIORITY QUEUE ===
+  
+  // Node zur Priority-Queue hinzufügen
+  addToPriorityQueue(nodeId: string, priority: number = 0): void {
+    this.priorityQueue.push({ nodeId, priority })
+    // Sortiere nach Priorität (höher = wichtiger)
+    this.priorityQueue.sort((a, b) => b.priority - a.priority)
+  }
+
+  // Nächsten Node aus Queue holen
+  getNextFromQueue(): string | undefined {
+    const next = this.priorityQueue.shift()
+    return next?.nodeId
+  }
+
+  // Queue-Länge
+  getQueueLength(): number {
+    return this.priorityQueue.length
+  }
+
+  // Queue leeren
+  clearQueue(): void {
+    this.priorityQueue = []
+  }
+
+  // Parallele Nodes zur Queue hinzufügen
+  queueParallelNodes(nodeIds: string[], basePriority: number = 0): void {
+    nodeIds.forEach((nodeId, index) => {
+      // Gleichmäßige Priorität für parallele Ausführung
+      this.addToPriorityQueue(nodeId, basePriority)
+    })
+    this.log(`${nodeIds.length} Nodes zur Queue hinzugefügt`, "debug")
   }
 
   // Logging
