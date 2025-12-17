@@ -2770,3 +2770,415 @@ export function applySpecialization(
 ${specialization.promptExtensions.join("\n")}
 ${focusSection}${avoidSection}${formatSection}`
 }
+
+// === WORKFLOW PROGRESS TRACKING ===
+
+export interface WorkflowProgress {
+  percentage: number
+  currentStep: number
+  totalSteps: number
+  currentNodeName: string
+  estimatedTimeRemaining: number // in ms
+  elapsedTime: number // in ms
+  status: "idle" | "running" | "paused" | "completed" | "error"
+  phase: "planning" | "execution" | "review" | "complete"
+}
+
+export class WorkflowProgressTracker {
+  private startTime: Date | null = null
+  private nodeDurations: Map<string, number> = new Map()
+  private completedNodes: number = 0
+  private totalNodes: number = 0
+  private currentNodeName: string = ""
+  private status: WorkflowProgress["status"] = "idle"
+  
+  // Tracker starten
+  start(totalNodes: number): void {
+    this.startTime = new Date()
+    this.totalNodes = totalNodes
+    this.completedNodes = 0
+    this.status = "running"
+  }
+  
+  // Node gestartet
+  nodeStarted(nodeName: string): void {
+    this.currentNodeName = nodeName
+  }
+  
+  // Node abgeschlossen
+  nodeCompleted(nodeId: string, duration: number): void {
+    this.nodeDurations.set(nodeId, duration)
+    this.completedNodes++
+  }
+  
+  // Status setzen
+  setStatus(status: WorkflowProgress["status"]): void {
+    this.status = status
+  }
+  
+  // Fortschritt berechnen
+  getProgress(): WorkflowProgress {
+    const elapsedTime = this.startTime 
+      ? Date.now() - this.startTime.getTime()
+      : 0
+    
+    const percentage = this.totalNodes > 0 
+      ? Math.round((this.completedNodes / this.totalNodes) * 100)
+      : 0
+    
+    // Geschätzte verbleibende Zeit basierend auf bisheriger Durchschnittszeit
+    const avgDuration = this.completedNodes > 0
+      ? Array.from(this.nodeDurations.values()).reduce((sum, d) => sum + d, 0) / this.completedNodes
+      : 30000 // Default: 30 Sekunden pro Node
+    
+    const remainingNodes = this.totalNodes - this.completedNodes
+    const estimatedTimeRemaining = remainingNodes * avgDuration
+    
+    // Phase basierend auf Fortschritt
+    let phase: WorkflowProgress["phase"] = "planning"
+    if (percentage > 0 && percentage < 30) phase = "planning"
+    else if (percentage >= 30 && percentage < 80) phase = "execution"
+    else if (percentage >= 80 && percentage < 100) phase = "review"
+    else if (percentage === 100) phase = "complete"
+    
+    return {
+      percentage,
+      currentStep: this.completedNodes,
+      totalSteps: this.totalNodes,
+      currentNodeName: this.currentNodeName,
+      estimatedTimeRemaining: Math.round(estimatedTimeRemaining),
+      elapsedTime,
+      status: this.status,
+      phase,
+    }
+  }
+  
+  // Formatierte Zeit
+  formatTime(ms: number): string {
+    const seconds = Math.floor(ms / 1000)
+    const minutes = Math.floor(seconds / 60)
+    const remainingSeconds = seconds % 60
+    
+    if (minutes > 0) {
+      return `${minutes}m ${remainingSeconds}s`
+    }
+    return `${remainingSeconds}s`
+  }
+  
+  // Reset
+  reset(): void {
+    this.startTime = null
+    this.nodeDurations.clear()
+    this.completedNodes = 0
+    this.totalNodes = 0
+    this.currentNodeName = ""
+    this.status = "idle"
+  }
+}
+
+// === RETRY MIT EXPONENTIAL BACKOFF ===
+
+export interface RetryConfig {
+  maxRetries: number
+  initialDelay: number // ms
+  maxDelay: number // ms
+  backoffMultiplier: number
+  retryableErrors: string[]
+  onRetry?: (attempt: number, error: string, delay: number) => void
+}
+
+export const DEFAULT_RETRY_CONFIG: RetryConfig = {
+  maxRetries: 3,
+  initialDelay: 1000,
+  maxDelay: 30000,
+  backoffMultiplier: 2,
+  retryableErrors: [
+    "timeout",
+    "rate limit",
+    "503",
+    "502",
+    "network",
+    "ECONNRESET",
+    "ETIMEDOUT",
+  ],
+}
+
+export async function retryWithBackoff<T>(
+  operation: () => Promise<T>,
+  config: Partial<RetryConfig> = {}
+): Promise<T> {
+  const fullConfig: RetryConfig = { ...DEFAULT_RETRY_CONFIG, ...config }
+  let lastError: Error | null = null
+  
+  for (let attempt = 0; attempt <= fullConfig.maxRetries; attempt++) {
+    try {
+      return await operation()
+    } catch (error) {
+      lastError = error as Error
+      const errorMessage = lastError.message.toLowerCase()
+      
+      // Prüfen ob Fehler retry-fähig ist
+      const isRetryable = fullConfig.retryableErrors.some(
+        e => errorMessage.includes(e.toLowerCase())
+      )
+      
+      if (!isRetryable || attempt >= fullConfig.maxRetries) {
+        throw lastError
+      }
+      
+      // Exponential backoff berechnen
+      const delay = Math.min(
+        fullConfig.initialDelay * Math.pow(fullConfig.backoffMultiplier, attempt),
+        fullConfig.maxDelay
+      )
+      
+      // Callback aufrufen
+      fullConfig.onRetry?.(attempt + 1, lastError.message, delay)
+      
+      // Warten
+      await new Promise(resolve => setTimeout(resolve, delay))
+    }
+  }
+  
+  throw lastError
+}
+
+// === WORKFLOW NOTIFICATIONS ===
+
+export type NotificationType = 
+  | "workflow-started"
+  | "workflow-completed"
+  | "workflow-error"
+  | "node-completed"
+  | "node-error"
+  | "human-decision-required"
+  | "retry-attempt"
+  | "progress-milestone"
+
+export interface WorkflowNotification {
+  id: string
+  type: NotificationType
+  title: string
+  message: string
+  timestamp: Date
+  severity: "info" | "success" | "warning" | "error"
+  data?: Record<string, unknown>
+  read: boolean
+}
+
+export class WorkflowNotificationManager {
+  private notifications: WorkflowNotification[] = []
+  private listeners: ((notification: WorkflowNotification) => void)[] = []
+  private maxNotifications: number = 100
+  
+  // Listener registrieren
+  subscribe(listener: (notification: WorkflowNotification) => void): () => void {
+    this.listeners.push(listener)
+    return () => {
+      const index = this.listeners.indexOf(listener)
+      if (index > -1) this.listeners.splice(index, 1)
+    }
+  }
+  
+  // Notification erstellen
+  private createNotification(
+    type: NotificationType,
+    title: string,
+    message: string,
+    severity: WorkflowNotification["severity"],
+    data?: Record<string, unknown>
+  ): WorkflowNotification {
+    const notification: WorkflowNotification = {
+      id: `notif-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      type,
+      title,
+      message,
+      timestamp: new Date(),
+      severity,
+      data,
+      read: false,
+    }
+    
+    this.notifications.push(notification)
+    
+    // Max Notifications einhalten
+    if (this.notifications.length > this.maxNotifications) {
+      this.notifications = this.notifications.slice(-this.maxNotifications)
+    }
+    
+    // Listener benachrichtigen
+    this.listeners.forEach(listener => listener(notification))
+    
+    return notification
+  }
+  
+  // Workflow-Start
+  notifyWorkflowStarted(workflowName: string): WorkflowNotification {
+    return this.createNotification(
+      "workflow-started",
+      "Workflow gestartet",
+      `"${workflowName}" wurde gestartet.`,
+      "info",
+      { workflowName }
+    )
+  }
+  
+  // Workflow-Abschluss
+  notifyWorkflowCompleted(workflowName: string, duration: number): WorkflowNotification {
+    return this.createNotification(
+      "workflow-completed",
+      "Workflow abgeschlossen",
+      `"${workflowName}" wurde in ${Math.round(duration / 1000)}s erfolgreich abgeschlossen.`,
+      "success",
+      { workflowName, duration }
+    )
+  }
+  
+  // Workflow-Fehler
+  notifyWorkflowError(workflowName: string, error: string): WorkflowNotification {
+    return this.createNotification(
+      "workflow-error",
+      "Workflow-Fehler",
+      `Fehler in "${workflowName}": ${error}`,
+      "error",
+      { workflowName, error }
+    )
+  }
+  
+  // Node abgeschlossen
+  notifyNodeCompleted(nodeName: string, duration: number): WorkflowNotification {
+    return this.createNotification(
+      "node-completed",
+      "Schritt abgeschlossen",
+      `"${nodeName}" wurde in ${Math.round(duration / 1000)}s abgeschlossen.`,
+      "success",
+      { nodeName, duration }
+    )
+  }
+  
+  // Human Decision erforderlich
+  notifyHumanDecisionRequired(question: string): WorkflowNotification {
+    return this.createNotification(
+      "human-decision-required",
+      "Entscheidung erforderlich",
+      question,
+      "warning",
+      { question }
+    )
+  }
+  
+  // Retry-Versuch
+  notifyRetryAttempt(nodeName: string, attempt: number, maxRetries: number): WorkflowNotification {
+    return this.createNotification(
+      "retry-attempt",
+      "Wiederholungsversuch",
+      `"${nodeName}" wird wiederholt (Versuch ${attempt}/${maxRetries})`,
+      "warning",
+      { nodeName, attempt, maxRetries }
+    )
+  }
+  
+  // Progress-Meilenstein
+  notifyProgressMilestone(percentage: number): WorkflowNotification {
+    const milestoneMessages: Record<number, string> = {
+      25: "Ein Viertel geschafft!",
+      50: "Halbzeit erreicht!",
+      75: "Dreiviertel abgeschlossen!",
+      100: "Fertig!",
+    }
+    
+    return this.createNotification(
+      "progress-milestone",
+      `${percentage}% abgeschlossen`,
+      milestoneMessages[percentage] || `${percentage}% des Workflows abgeschlossen.`,
+      "info",
+      { percentage }
+    )
+  }
+  
+  // Alle Notifications abrufen
+  getAll(): WorkflowNotification[] {
+    return [...this.notifications]
+  }
+  
+  // Ungelesene Notifications
+  getUnread(): WorkflowNotification[] {
+    return this.notifications.filter(n => !n.read)
+  }
+  
+  // Als gelesen markieren
+  markAsRead(id: string): void {
+    const notification = this.notifications.find(n => n.id === id)
+    if (notification) notification.read = true
+  }
+  
+  // Alle als gelesen markieren
+  markAllAsRead(): void {
+    this.notifications.forEach(n => n.read = true)
+  }
+  
+  // Notification löschen
+  delete(id: string): void {
+    this.notifications = this.notifications.filter(n => n.id !== id)
+  }
+  
+  // Alle löschen
+  clearAll(): void {
+    this.notifications = []
+  }
+}
+
+// === WORKFLOW RATE LIMITER ===
+
+export class WorkflowRateLimiter {
+  private requests: Map<string, number[]> = new Map()
+  private limits: Map<string, { maxRequests: number; windowMs: number }> = new Map()
+  
+  // Limit für einen Agent setzen
+  setLimit(agentId: string, maxRequests: number, windowMs: number): void {
+    this.limits.set(agentId, { maxRequests, windowMs })
+  }
+  
+  // Prüfen ob Request erlaubt ist
+  async checkLimit(agentId: string): Promise<{ allowed: boolean; waitMs: number }> {
+    const limit = this.limits.get(agentId) || { maxRequests: 10, windowMs: 60000 }
+    const now = Date.now()
+    
+    // Alte Requests entfernen
+    const requests = (this.requests.get(agentId) || []).filter(
+      time => now - time < limit.windowMs
+    )
+    
+    if (requests.length >= limit.maxRequests) {
+      // Berechne Wartezeit
+      const oldestRequest = requests[0]
+      const waitMs = limit.windowMs - (now - oldestRequest)
+      return { allowed: false, waitMs }
+    }
+    
+    // Request hinzufügen
+    requests.push(now)
+    this.requests.set(agentId, requests)
+    
+    return { allowed: true, waitMs: 0 }
+  }
+  
+  // Warten bis Request erlaubt ist
+  async waitForLimit(agentId: string): Promise<void> {
+    const { allowed, waitMs } = await this.checkLimit(agentId)
+    
+    if (!allowed && waitMs > 0) {
+      await new Promise(resolve => setTimeout(resolve, waitMs))
+    }
+  }
+  
+  // Reset für Agent
+  reset(agentId: string): void {
+    this.requests.delete(agentId)
+  }
+  
+  // Reset all
+  resetAll(): void {
+    this.requests.clear()
+  }
+}
