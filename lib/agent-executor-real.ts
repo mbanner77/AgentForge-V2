@@ -1165,5 +1165,36 @@ Korrigiere jetzt den Code:`
     [agentConfigs, globalConfig, getFiles, addMessage, addLog, setIsProcessing, updateFileByPath]
   )
 
-  return { executeWorkflow, fixErrors }
+  // Einzelnen Agent ausführen (für Workflow-Engine)
+  const executeSingleAgent = useCallback(
+    async (
+      agentId: string,
+      userRequest: string,
+      previousOutput?: string
+    ): Promise<string> => {
+      try {
+        const result = await executeAgent(agentId as AgentType, userRequest, previousOutput)
+        
+        // Füge generierte Dateien hinzu
+        if (result.files.length > 0) {
+          for (const file of result.files) {
+            addFile({
+              path: file.path,
+              content: file.content,
+              language: file.language,
+              status: "created",
+            })
+          }
+        }
+        
+        return result.content
+      } catch (error) {
+        const errMsg = error instanceof Error ? error.message : "Unbekannter Fehler"
+        throw new Error(`Agent ${agentId} fehlgeschlagen: ${errMsg}`)
+      }
+    },
+    [executeAgent, addFile]
+  )
+
+  return { executeWorkflow, fixErrors, executeSingleAgent }
 }

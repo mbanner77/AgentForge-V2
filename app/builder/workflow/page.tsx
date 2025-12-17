@@ -37,8 +37,8 @@ import type {
 } from "@/lib/types"
 
 export default function WorkflowPage() {
-  const { addLog, addMessage } = useAgentStore()
-  const { executeWorkflow: executeAgentWorkflow } = useAgentExecutor()
+  const { addLog, addMessage, saveWorkflow, savedWorkflows } = useAgentStore()
+  const { executeSingleAgent } = useAgentExecutor()
   
   const [currentWorkflow, setCurrentWorkflow] = useState<WorkflowGraph | null>(null)
   const [executionState, setExecutionState] = useState<WorkflowExecutionState | null>(null)
@@ -87,11 +87,10 @@ export default function WorkflowPage() {
     setShowTemplates(false)
   }
 
-  // Workflow speichern
+  // Workflow speichern (im Store persistieren)
   const handleSave = (workflow: WorkflowGraph) => {
     setCurrentWorkflow(workflow)
-    // TODO: Persistenz in localStorage oder Server
-    localStorage.setItem(`workflow-${workflow.id}`, JSON.stringify(workflow))
+    saveWorkflow(workflow)
     addLog({
       level: "info",
       agent: "system",
@@ -120,12 +119,14 @@ export default function WorkflowPage() {
     }
   }
 
-  // Workflow ausführen
-  const handleExecute = async (workflow: WorkflowGraph) => {
+  // Workflow ausführen (mit echtem Agent-Executor)
+  const handleExecute = async (workflow: WorkflowGraph, userPrompt?: string) => {
     if (isExecuting) return
     
     setIsExecuting(true)
     setCurrentWorkflow(workflow)
+    
+    const taskPrompt = userPrompt || "Führe die zugewiesene Aufgabe aus."
     
     addMessage({
       role: "assistant",
@@ -133,7 +134,7 @@ export default function WorkflowPage() {
       agent: "system",
     })
 
-    // Erstelle Engine
+    // Erstelle Engine mit echtem Agent-Executor
     const newEngine = new WorkflowEngine(workflow, {
       onStateChange: (state) => {
         setExecutionState(state)
@@ -145,10 +146,24 @@ export default function WorkflowPage() {
           message: `Führe Agent aus: ${agentId}`,
         })
         
-        // Hier würde der eigentliche Agent ausgeführt werden
-        // Für jetzt simulieren wir das
-        await new Promise(resolve => setTimeout(resolve, 1000))
-        return `Output von ${agentId}: Aufgabe erfolgreich ausgeführt.`
+        try {
+          // Echte Agent-Ausführung
+          const output = await executeSingleAgent(agentId, taskPrompt, previousOutput || "")
+          addLog({
+            level: "info",
+            agent: "system",
+            message: `Agent ${agentId} erfolgreich abgeschlossen`,
+          })
+          return output
+        } catch (error) {
+          const errMsg = error instanceof Error ? error.message : "Unbekannter Fehler"
+          addLog({
+            level: "error",
+            agent: "system",
+            message: `Agent ${agentId} fehlgeschlagen: ${errMsg}`,
+          })
+          throw error
+        }
       },
       onHumanDecision: handleHumanDecision,
       onLog: (message, level) => {

@@ -86,7 +86,7 @@ const AGENT_COLORS: Record<string, string> = {
 
 export function WorkflowExecutionView({ workflow, initialPrompt, autoStart = false, onComplete, onClose, onStart }: WorkflowExecutionViewProps) {
   const { addLog, addMessage, setWorkflowExecutionState, logs } = useAgentStore()
-  const { executeWorkflow: executeAgentWorkflow } = useAgentExecutor()
+  const { executeSingleAgent } = useAgentExecutor()
   
   const [executionState, setExecutionState] = useState<WorkflowExecutionState>({
     workflowId: workflow.id,
@@ -160,21 +160,29 @@ export function WorkflowExecutionView({ workflow, initialPrompt, autoStart = fal
         })
         
         // Der initiale Auftrag wird als Kontext an den ersten Agent übergeben
-        const contextForAgent = previousOutput || taskPrompt || ""
+        const userRequest = taskPrompt || "Führe die zugewiesene Aufgabe aus."
+        const context = previousOutput || ""
         
-        // Hier wird der echte Agent ausgeführt
-        // Für jetzt simulieren wir das mit einer Verzögerung
-        await new Promise(resolve => setTimeout(resolve, 1500))
-        
-        const output = `Agent ${agentId} hat die Aufgabe erfolgreich bearbeitet.\n\nAuftrag: ${contextForAgent}`
-        
-        addMessage({
-          role: "assistant",
-          content: `✅ **${agentId}** abgeschlossen`,
-          agent: agentId as any,
-        })
-        
-        return output
+        try {
+          // Echte Agent-Ausführung über den Agent-Executor
+          const output = await executeSingleAgent(agentId, userRequest, context)
+          
+          addLog({
+            level: "info",
+            agent: "system",
+            message: `Agent ${agentId} erfolgreich abgeschlossen`,
+          })
+          
+          return output
+        } catch (error) {
+          const errMsg = error instanceof Error ? error.message : "Unbekannter Fehler"
+          addLog({
+            level: "error",
+            agent: "system",
+            message: `Agent ${agentId} fehlgeschlagen: ${errMsg}`,
+          })
+          throw error
+        }
       },
       onHumanDecision: handleHumanDecision,
       onLog: (message, level) => {
