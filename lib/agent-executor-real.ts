@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback } from "react"
-import { useAgentStore, getEnvironmentPrompt } from "./agent-store"
+import { useAgentStore, getEnvironmentPrompt, getIterationPrompt } from "./agent-store"
 import { sendChatRequest, getProviderFromModel } from "./api-client"
 import type { AgentType, Message, WorkflowStep, ProjectFile, AgentSuggestion } from "./types"
 import { marketplaceAgents } from "./marketplace-agents"
@@ -876,10 +876,19 @@ ${fileContexts.join("\n\n")}
         }
       }
 
+      // Iterations-Erkennung und spezialisierte Prompts
+      const isIterationMode = existingFiles.length > 0
+      let iterationContext = ""
+      
+      if (isIterationMode && (agentType === "planner" || agentType === "coder" || agentType === "reviewer")) {
+        iterationContext = getIterationPrompt(agentType as "planner" | "coder" | "reviewer")
+        console.log(`[Agent Executor] Iterations-Modus für ${agentType} aktiviert (${existingFiles.length} bestehende Dateien)`)
+      }
+
       const messages: { role: "system" | "user" | "assistant"; content: string }[] = [
         {
           role: "system",
-          content: config.systemPrompt + projectContext + filesContext + toolsContext + mcpContext + (ragContext ? `\n\n${ragContext}` : ""),
+          content: config.systemPrompt + iterationContext + projectContext + filesContext + toolsContext + mcpContext + (ragContext ? `\n\n${ragContext}` : ""),
         },
         {
           role: "user",

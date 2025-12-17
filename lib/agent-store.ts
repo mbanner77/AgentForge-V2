@@ -312,6 +312,62 @@ export const getEnvironmentPrompt = (agent: "planner" | "coder", environment: "s
   return environmentPrompts[environment][agent]
 }
 
+// Iterations-spezifische Prompt-Erweiterungen
+export const iterationPrompts = {
+  planner: `
+## ITERATIONS-MODUS AKTIV
+Du arbeitest an einer BESTEHENDEN Anwendung. KRITISCHE REGELN:
+
+1. **ANALYSE ZUERST**: Lies und verstehe den bestehenden Code VOLLSTÄNDIG
+2. **MINIMALE ÄNDERUNGEN**: Ändere NUR was nötig ist
+3. **STRUKTUR BEIBEHALTEN**: Behalte Dateistruktur und Naming bei
+4. **KEINE NEUSCHREIBUNG**: Schreibe NIEMALS alles neu
+
+AUSGABE-FORMAT FÜR ITERATIONEN:
+{
+  "iterationAnalysis": {
+    "existingComponents": ["Liste der vorhandenen Komponenten"],
+    "workingFeatures": ["Was funktioniert bereits"],
+    "targetChanges": ["Was genau geändert werden muss"],
+    "preserveCode": ["Was NICHT geändert werden darf"]
+  },
+  "tasks": [...]
+}`,
+
+  coder: `
+## ITERATIONS-MODUS AKTIV
+Du arbeitest an BESTEHENDEM Code. KRITISCHE REGELN:
+
+1. **BESTEHENDEN CODE ANALYSIEREN**: Lies den existierenden Code sorgfältig
+2. **INKREMENTELLE ÄNDERUNGEN**: Nur das ändern, was die Aufgabe erfordert
+3. **STIL BEIBEHALTEN**: Verwende den gleichen Code-Stil wie im bestehenden Code
+4. **TESTS NICHT BRECHEN**: Stelle sicher, dass bestehende Funktionalität erhalten bleibt
+
+BEI ITERATIONEN:
+- Gib die KOMPLETTE modifizierte Datei aus
+- Markiere Änderungen mit Kommentaren: // GEÄNDERT: Beschreibung
+- Behalte alle bestehenden Imports und Exports bei
+- Füge neue Imports ans ENDE der Import-Liste
+
+ANTI-PATTERNS (VERBOTEN):
+- Komplette Neuschreibung von funktionierendem Code
+- Ändern von Dateinamen oder Exportnamen
+- Entfernen von Features die nicht Teil der Aufgabe sind`,
+
+  reviewer: `
+## ITERATIONS-REVIEW
+Prüfe speziell bei Iterationen:
+- Wurden NUR die angefragten Änderungen gemacht?
+- Ist bestehende Funktionalität erhalten?
+- Wurde der Code-Stil beibehalten?
+- Sind unbeabsichtigte Seiteneffekte entstanden?`,
+}
+
+// Hole iteration-erweiterten Prompt
+export const getIterationPrompt = (agent: "planner" | "coder" | "reviewer"): string => {
+  return iterationPrompts[agent] || ""
+}
+
 // Default Agent Configs
 const createDefaultAgentConfig = (type: AgentType): AgentConfig => {
   const configs: Record<AgentType, Omit<AgentConfig, "tools">> = {
