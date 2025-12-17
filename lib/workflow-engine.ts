@@ -1267,4 +1267,216 @@ export const WORKFLOW_TEMPLATES: Record<string, WorkflowGraph> = {
     createdAt: new Date(),
     updatedAt: new Date(),
   },
+
+  "rapid-prototype": {
+    id: "template-rapid",
+    name: "Rapid Prototyping",
+    description: "Schneller Prototyp ohne Review - ideal für Experimente",
+    nodes: [
+      { id: "start", type: "start", position: { x: 50, y: 200 }, data: { label: "Start" } },
+      { id: "coder", type: "agent", position: { x: 250, y: 200 }, data: { label: "Coder", agentId: "coder", timeout: 120 } },
+      { id: "end", type: "end", position: { x: 450, y: 200 }, data: { label: "Ende" } },
+    ],
+    edges: [
+      { id: "e1", source: "start", target: "coder" },
+      { id: "e2", source: "coder", target: "end" },
+    ],
+    version: 1,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  },
+
+  "security-first": {
+    id: "template-security",
+    name: "Security-First Pipeline",
+    description: "Sicherheitsorientierte Entwicklung mit doppeltem Security-Check",
+    nodes: [
+      { id: "start", type: "start", position: { x: 50, y: 200 }, data: { label: "Start" } },
+      { id: "planner", type: "agent", position: { x: 200, y: 200 }, data: { label: "Planner", agentId: "planner" } },
+      { id: "security-pre", type: "agent", position: { x: 400, y: 200 }, data: { label: "Security (Architektur)", agentId: "security" } },
+      { id: "coder", type: "agent", position: { x: 600, y: 200 }, data: { label: "Coder", agentId: "coder" } },
+      { id: "security-post", type: "agent", position: { x: 800, y: 200 }, data: { label: "Security (Code)", agentId: "security" } },
+      { 
+        id: "security-decision", 
+        type: "condition", 
+        position: { x: 1000, y: 200 }, 
+        data: { 
+          label: "Sicher?",
+          conditions: [
+            { id: "has-vulnerabilities", expression: "hasErrors || output.includes('vulnerab') || output.includes('risiko')", targetNodeId: "coder" },
+            { id: "secure", expression: "true", targetNodeId: "end" }
+          ]
+        } 
+      },
+      { id: "end", type: "end", position: { x: 1200, y: 200 }, data: { label: "Ende" } },
+    ],
+    edges: [
+      { id: "e1", source: "start", target: "planner" },
+      { id: "e2", source: "planner", target: "security-pre" },
+      { id: "e3", source: "security-pre", target: "coder" },
+      { id: "e4", source: "coder", target: "security-post" },
+      { id: "e5", source: "security-post", target: "security-decision" },
+      { id: "e6", source: "security-decision", target: "coder", label: "Unsicher" },
+      { id: "e7", source: "security-decision", target: "end", label: "Sicher" },
+    ],
+    version: 1,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  },
+
+  "tdd-workflow": {
+    id: "template-tdd",
+    name: "Test-Driven Development",
+    description: "TDD-Ansatz: Erst Tests, dann Implementation",
+    nodes: [
+      { id: "start", type: "start", position: { x: 50, y: 200 }, data: { label: "Start" } },
+      { id: "planner", type: "agent", position: { x: 200, y: 200 }, data: { label: "Test-Planner", agentId: "planner" } },
+      { id: "test-coder", type: "agent", position: { x: 400, y: 200 }, data: { label: "Test-Coder", agentId: "coder" } },
+      { id: "impl-coder", type: "agent", position: { x: 600, y: 200 }, data: { label: "Implementation", agentId: "coder" } },
+      { id: "reviewer", type: "agent", position: { x: 800, y: 200 }, data: { label: "Test-Reviewer", agentId: "reviewer" } },
+      { 
+        id: "tests-pass", 
+        type: "condition", 
+        position: { x: 1000, y: 200 }, 
+        data: { 
+          label: "Tests OK?",
+          conditions: [
+            { id: "failing", expression: "hasErrors || output.includes('failed') || output.includes('fehler')", targetNodeId: "impl-coder" },
+            { id: "passing", expression: "true", targetNodeId: "end" }
+          ]
+        } 
+      },
+      { id: "end", type: "end", position: { x: 1200, y: 200 }, data: { label: "Ende" } },
+    ],
+    edges: [
+      { id: "e1", source: "start", target: "planner" },
+      { id: "e2", source: "planner", target: "test-coder" },
+      { id: "e3", source: "test-coder", target: "impl-coder" },
+      { id: "e4", source: "impl-coder", target: "reviewer" },
+      { id: "e5", source: "reviewer", target: "tests-pass" },
+      { id: "e6", source: "tests-pass", target: "impl-coder", label: "Fehlgeschlagen" },
+      { id: "e7", source: "tests-pass", target: "end", label: "Bestanden" },
+    ],
+    version: 1,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  },
+}
+
+// Workflow-Validierung
+export interface WorkflowValidationResult {
+  valid: boolean
+  errors: string[]
+  warnings: string[]
+}
+
+export function validateWorkflow(workflow: WorkflowGraph): WorkflowValidationResult {
+  const errors: string[] = []
+  const warnings: string[] = []
+  
+  // Prüfe auf Start-Node
+  const startNodes = workflow.nodes.filter(n => n.type === "start")
+  if (startNodes.length === 0) {
+    errors.push("Workflow hat keinen Start-Node")
+  } else if (startNodes.length > 1) {
+    errors.push("Workflow hat mehrere Start-Nodes (nur einer erlaubt)")
+  }
+  
+  // Prüfe auf End-Node
+  const endNodes = workflow.nodes.filter(n => n.type === "end")
+  if (endNodes.length === 0) {
+    errors.push("Workflow hat keinen End-Node")
+  }
+  
+  // Prüfe ob alle Nodes erreichbar sind
+  const reachableNodes = new Set<string>()
+  if (startNodes.length > 0) {
+    const queue = [startNodes[0].id]
+    while (queue.length > 0) {
+      const nodeId = queue.shift()!
+      if (reachableNodes.has(nodeId)) continue
+      reachableNodes.add(nodeId)
+      
+      // Finde alle ausgehenden Edges
+      const outgoing = workflow.edges.filter(e => e.source === nodeId)
+      outgoing.forEach(e => queue.push(e.target))
+    }
+  }
+  
+  const unreachableNodes = workflow.nodes.filter(n => !reachableNodes.has(n.id))
+  if (unreachableNodes.length > 0) {
+    warnings.push(`Nicht erreichbare Nodes: ${unreachableNodes.map(n => n.data.label).join(", ")}`)
+  }
+  
+  // Prüfe ob Agent-Nodes eine agentId haben
+  const agentNodes = workflow.nodes.filter(n => n.type === "agent")
+  agentNodes.forEach(node => {
+    if (!node.data.agentId) {
+      errors.push(`Agent-Node "${node.data.label}" hat keine agentId`)
+    }
+  })
+  
+  // Prüfe auf verwaiste Edges
+  const nodeIds = new Set(workflow.nodes.map(n => n.id))
+  workflow.edges.forEach(edge => {
+    if (!nodeIds.has(edge.source)) {
+      errors.push(`Edge "${edge.id}" hat ungültige Source: ${edge.source}`)
+    }
+    if (!nodeIds.has(edge.target)) {
+      errors.push(`Edge "${edge.id}" hat ungültiges Target: ${edge.target}`)
+    }
+  })
+  
+  // Prüfe Human-Decision Nodes
+  const humanDecisionNodes = workflow.nodes.filter(n => n.type === "human-decision")
+  humanDecisionNodes.forEach(node => {
+    if (!node.data.options || node.data.options.length === 0) {
+      errors.push(`Human-Decision "${node.data.label}" hat keine Optionen`)
+    }
+    if (!node.data.question) {
+      warnings.push(`Human-Decision "${node.data.label}" hat keine Frage definiert`)
+    }
+  })
+  
+  // Prüfe Condition Nodes
+  const conditionNodes = workflow.nodes.filter(n => n.type === "condition")
+  conditionNodes.forEach(node => {
+    if (!node.data.conditions || node.data.conditions.length === 0) {
+      errors.push(`Condition-Node "${node.data.label}" hat keine Bedingungen`)
+    }
+  })
+  
+  // Warnungen für Best Practices
+  if (workflow.nodes.length > 15) {
+    warnings.push("Workflow hat viele Nodes (>15) - erwäge Aufteilung in Sub-Workflows")
+  }
+  
+  if (!workflow.description || workflow.description.length < 10) {
+    warnings.push("Workflow sollte eine aussagekräftige Beschreibung haben")
+  }
+  
+  return {
+    valid: errors.length === 0,
+    errors,
+    warnings,
+  }
+}
+
+// Workflow klonen
+export function cloneWorkflow(workflow: WorkflowGraph, newName?: string): WorkflowGraph {
+  return {
+    ...JSON.parse(JSON.stringify(workflow)),
+    id: `workflow-${Date.now()}`,
+    name: newName || `${workflow.name} (Kopie)`,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  }
+}
+
+// Workflow aus Template erstellen
+export function createFromTemplate(templateId: string, customName?: string): WorkflowGraph | undefined {
+  const template = WORKFLOW_TEMPLATES[templateId]
+  if (!template) return undefined
+  
+  return cloneWorkflow(template, customName)
 }
