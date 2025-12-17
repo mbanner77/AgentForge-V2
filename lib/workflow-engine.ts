@@ -6657,3 +6657,643 @@ export class WorkflowImporter {
     }
   }
 }
+
+// === WORKFLOW VERSIONING & CHANGELOG ===
+
+export interface WorkflowVersion {
+  version: string
+  timestamp: Date
+  author?: string
+  message: string
+  workflow: { nodes: WorkflowNode[]; edges: WorkflowEdge[] }
+  parentVersion?: string
+}
+
+export interface ChangelogEntry {
+  version: string
+  timestamp: Date
+  author?: string
+  message: string
+  changes: {
+    nodesAdded: number
+    nodesRemoved: number
+    nodesModified: number
+    edgesAdded: number
+    edgesRemoved: number
+  }
+}
+
+export class WorkflowVersionControl {
+  private versions: Map<string, WorkflowVersion> = new Map()
+  private currentVersion: string = "0.0.0"
+  
+  // Version erstellen
+  commit(
+    workflow: { nodes: WorkflowNode[]; edges: WorkflowEdge[] },
+    message: string,
+    options: { author?: string; bumpType?: "major" | "minor" | "patch" } = {}
+  ): string {
+    const parentVersion = this.currentVersion
+    const newVersion = this.bumpVersion(parentVersion, options.bumpType || "patch")
+    
+    this.versions.set(newVersion, {
+      version: newVersion,
+      timestamp: new Date(),
+      author: options.author,
+      message,
+      workflow: JSON.parse(JSON.stringify(workflow)),
+      parentVersion: parentVersion !== "0.0.0" ? parentVersion : undefined,
+    })
+    
+    this.currentVersion = newVersion
+    return newVersion
+  }
+  
+  // Version erhöhen
+  private bumpVersion(version: string, type: "major" | "minor" | "patch"): string {
+    const parts = version.split(".").map(Number)
+    
+    switch (type) {
+      case "major":
+        return `${parts[0] + 1}.0.0`
+      case "minor":
+        return `${parts[0]}.${parts[1] + 1}.0`
+      case "patch":
+      default:
+        return `${parts[0]}.${parts[1]}.${parts[2] + 1}`
+    }
+  }
+  
+  // Version abrufen
+  getVersion(version: string): WorkflowVersion | undefined {
+    return this.versions.get(version)
+  }
+  
+  // Aktuelle Version
+  getCurrentVersion(): string {
+    return this.currentVersion
+  }
+  
+  // Alle Versionen
+  getAllVersions(): WorkflowVersion[] {
+    return Array.from(this.versions.values())
+      .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
+  }
+  
+  // Zu Version wechseln
+  checkout(version: string): { nodes: WorkflowNode[]; edges: WorkflowEdge[] } | null {
+    const v = this.versions.get(version)
+    if (!v) return null
+    
+    this.currentVersion = version
+    return JSON.parse(JSON.stringify(v.workflow))
+  }
+  
+  // Changelog generieren
+  getChangelog(): ChangelogEntry[] {
+    const entries: ChangelogEntry[] = []
+    const versions = this.getAllVersions()
+    
+    for (const version of versions) {
+      let changes = { nodesAdded: 0, nodesRemoved: 0, nodesModified: 0, edgesAdded: 0, edgesRemoved: 0 }
+      
+      if (version.parentVersion) {
+        const parent = this.versions.get(version.parentVersion)
+        if (parent) {
+          const diff = compareWorkflows(parent.workflow, version.workflow)
+          changes = {
+            nodesAdded: diff.addedNodes.length,
+            nodesRemoved: diff.removedNodes.length,
+            nodesModified: diff.modifiedNodes.length,
+            edgesAdded: diff.addedEdges.length,
+            edgesRemoved: diff.removedEdges.length,
+          }
+        }
+      }
+      
+      entries.push({
+        version: version.version,
+        timestamp: version.timestamp,
+        author: version.author,
+        message: version.message,
+        changes,
+      })
+    }
+    
+    return entries
+  }
+  
+  // Changelog als Markdown
+  formatChangelog(): string {
+    const entries = this.getChangelog()
+    const lines: string[] = ["# Changelog", ""]
+    
+    for (const entry of entries) {
+      const date = entry.timestamp.toISOString().split("T")[0]
+      lines.push(`## [${entry.version}] - ${date}`)
+      if (entry.author) lines.push(`*Autor: ${entry.author}*`)
+      lines.push("")
+      lines.push(entry.message)
+      lines.push("")
+      
+      if (entry.changes.nodesAdded || entry.changes.nodesRemoved || entry.changes.nodesModified) {
+        lines.push("### Änderungen")
+        if (entry.changes.nodesAdded) lines.push(`- ${entry.changes.nodesAdded} Node(s) hinzugefügt`)
+        if (entry.changes.nodesRemoved) lines.push(`- ${entry.changes.nodesRemoved} Node(s) entfernt`)
+        if (entry.changes.nodesModified) lines.push(`- ${entry.changes.nodesModified} Node(s) geändert`)
+        if (entry.changes.edgesAdded) lines.push(`- ${entry.changes.edgesAdded} Verbindung(en) hinzugefügt`)
+        if (entry.changes.edgesRemoved) lines.push(`- ${entry.changes.edgesRemoved} Verbindung(en) entfernt`)
+        lines.push("")
+      }
+    }
+    
+    return lines.join("\n")
+  }
+  
+  // Tags
+  private tags: Map<string, string> = new Map()
+  
+  tag(name: string, version?: string): void {
+    this.tags.set(name, version || this.currentVersion)
+  }
+  
+  getTag(name: string): string | undefined {
+    return this.tags.get(name)
+  }
+  
+  // Export
+  export(): { versions: WorkflowVersion[]; currentVersion: string; tags: [string, string][] } {
+    return {
+      versions: Array.from(this.versions.values()),
+      currentVersion: this.currentVersion,
+      tags: Array.from(this.tags.entries()),
+    }
+  }
+  
+  // Import
+  import(data: { versions: WorkflowVersion[]; currentVersion: string; tags: [string, string][] }): void {
+    this.versions.clear()
+    for (const v of data.versions) {
+      this.versions.set(v.version, {
+        ...v,
+        timestamp: new Date(v.timestamp),
+      })
+    }
+    this.currentVersion = data.currentVersion
+    this.tags = new Map(data.tags)
+  }
+}
+
+// === AGENT PROMPT TEMPLATES ===
+
+export interface PromptTemplate {
+  id: string
+  name: string
+  description?: string
+  template: string
+  variables: PromptVariable[]
+  category: string
+  tags: string[]
+}
+
+export interface PromptVariable {
+  name: string
+  type: "string" | "number" | "boolean" | "select" | "multiline"
+  description?: string
+  default?: unknown
+  required: boolean
+  options?: string[] // Für select
+}
+
+export class PromptTemplateManager {
+  private templates: Map<string, PromptTemplate> = new Map()
+  
+  // Template registrieren
+  register(template: PromptTemplate): void {
+    this.templates.set(template.id, template)
+  }
+  
+  // Template abrufen
+  get(id: string): PromptTemplate | undefined {
+    return this.templates.get(id)
+  }
+  
+  // Alle Templates
+  getAll(): PromptTemplate[] {
+    return Array.from(this.templates.values())
+  }
+  
+  // Nach Kategorie filtern
+  getByCategory(category: string): PromptTemplate[] {
+    return this.getAll().filter(t => t.category === category)
+  }
+  
+  // Nach Tags filtern
+  getByTags(tags: string[]): PromptTemplate[] {
+    return this.getAll().filter(t => 
+      tags.some(tag => t.tags.includes(tag))
+    )
+  }
+  
+  // Template rendern
+  render(id: string, variables: Record<string, unknown>): string | null {
+    const template = this.templates.get(id)
+    if (!template) return null
+    
+    let result = template.template
+    
+    // Variablen ersetzen
+    for (const variable of template.variables) {
+      const value = variables[variable.name] ?? variable.default ?? ""
+      const pattern = new RegExp(`\\{\\{\\s*${variable.name}\\s*\\}\\}`, "g")
+      result = result.replace(pattern, String(value))
+    }
+    
+    // Conditionals verarbeiten: {{#if var}}...{{/if}}
+    result = result.replace(/\{\{#if\s+(\w+)\}\}([\s\S]*?)\{\{\/if\}\}/g, 
+      (_, varName, content) => {
+        const value = variables[varName]
+        return value ? content : ""
+      }
+    )
+    
+    // Loops verarbeiten: {{#each items}}...{{/each}}
+    result = result.replace(/\{\{#each\s+(\w+)\}\}([\s\S]*?)\{\{\/each\}\}/g,
+      (_, varName, content) => {
+        const items = variables[varName]
+        if (!Array.isArray(items)) return ""
+        return items.map((item, index) => {
+          let itemContent = content
+          itemContent = itemContent.replace(/\{\{\s*this\s*\}\}/g, String(item))
+          itemContent = itemContent.replace(/\{\{\s*@index\s*\}\}/g, String(index))
+          return itemContent
+        }).join("")
+      }
+    )
+    
+    return result.trim()
+  }
+  
+  // Variablen aus Template extrahieren
+  extractVariables(template: string): string[] {
+    const matches = template.match(/\{\{\s*(\w+)\s*\}\}/g) || []
+    const variables = matches.map(m => m.replace(/\{\{\s*|\s*\}\}/g, ""))
+    return [...new Set(variables)]
+  }
+  
+  // Template validieren
+  validate(id: string, variables: Record<string, unknown>): { valid: boolean; missing: string[] } {
+    const template = this.templates.get(id)
+    if (!template) return { valid: false, missing: [] }
+    
+    const missing = template.variables
+      .filter(v => v.required && variables[v.name] === undefined)
+      .map(v => v.name)
+    
+    return { valid: missing.length === 0, missing }
+  }
+}
+
+// Vordefinierte Templates
+export const DEFAULT_PROMPT_TEMPLATES: PromptTemplate[] = [
+  {
+    id: "code-review",
+    name: "Code Review",
+    description: "Template für Code-Reviews",
+    category: "review",
+    tags: ["code", "review", "quality"],
+    template: `
+Analysiere den folgenden {{language}} Code:
+
+\`\`\`{{language}}
+{{code}}
+\`\`\`
+
+{{#if focusAreas}}
+Fokussiere besonders auf:
+{{#each focusAreas}}- {{this}}
+{{/each}}
+{{/if}}
+
+Prüfe auf:
+1. Code-Qualität und Best Practices
+2. Potenzielle Bugs oder Fehler
+3. Performance-Probleme
+4. Sicherheitslücken
+{{#if additionalChecks}}
+5. {{additionalChecks}}
+{{/if}}
+
+Gib konkrete Verbesserungsvorschläge.
+    `,
+    variables: [
+      { name: "language", type: "string", required: true, default: "typescript" },
+      { name: "code", type: "multiline", required: true },
+      { name: "focusAreas", type: "string", required: false },
+      { name: "additionalChecks", type: "string", required: false },
+    ]
+  },
+  {
+    id: "implement-feature",
+    name: "Feature implementieren",
+    description: "Template für Feature-Implementierung",
+    category: "coding",
+    tags: ["code", "feature", "implementation"],
+    template: `
+Implementiere das folgende Feature:
+
+## Anforderung
+{{requirement}}
+
+## Technischer Kontext
+- Sprache: {{language}}
+- Framework: {{framework}}
+{{#if existingCode}}
+## Bestehender Code
+\`\`\`{{language}}
+{{existingCode}}
+\`\`\`
+{{/if}}
+
+## Anforderungen
+{{#each requirements}}- {{this}}
+{{/each}}
+
+Erstelle produktionsreifen Code mit:
+- Fehlerbehandlung
+- TypeScript Types
+- Dokumentation
+    `,
+    variables: [
+      { name: "requirement", type: "multiline", required: true },
+      { name: "language", type: "select", required: true, options: ["typescript", "javascript", "python"], default: "typescript" },
+      { name: "framework", type: "string", required: false, default: "React" },
+      { name: "existingCode", type: "multiline", required: false },
+      { name: "requirements", type: "string", required: false },
+    ]
+  },
+  {
+    id: "bug-fix",
+    name: "Bug Fix",
+    description: "Template für Bug-Behebung",
+    category: "debugging",
+    tags: ["bug", "fix", "debug"],
+    template: `
+Behebe den folgenden Bug:
+
+## Problem
+{{problem}}
+
+## Fehlermeldung
+\`\`\`
+{{errorMessage}}
+\`\`\`
+
+## Betroffener Code
+\`\`\`{{language}}
+{{code}}
+\`\`\`
+
+{{#if expectedBehavior}}
+## Erwartetes Verhalten
+{{expectedBehavior}}
+{{/if}}
+
+{{#if actualBehavior}}
+## Aktuelles Verhalten
+{{actualBehavior}}
+{{/if}}
+
+Analysiere die Ursache und erstelle einen Fix.
+    `,
+    variables: [
+      { name: "problem", type: "multiline", required: true },
+      { name: "errorMessage", type: "multiline", required: true },
+      { name: "code", type: "multiline", required: true },
+      { name: "language", type: "string", required: true, default: "typescript" },
+      { name: "expectedBehavior", type: "multiline", required: false },
+      { name: "actualBehavior", type: "multiline", required: false },
+    ]
+  }
+]
+
+// === WORKFLOW SEARCH & FILTERING ===
+
+export interface WorkflowSearchQuery {
+  text?: string
+  nodeTypes?: string[]
+  agentIds?: string[]
+  hasHumanDecision?: boolean
+  minNodes?: number
+  maxNodes?: number
+  tags?: string[]
+  createdAfter?: Date
+  createdBefore?: Date
+}
+
+export interface WorkflowSearchResult {
+  workflow: { id: string; name: string; nodes: WorkflowNode[]; edges: WorkflowEdge[] }
+  score: number
+  matches: {
+    field: string
+    value: string
+    highlight?: string
+  }[]
+}
+
+export class WorkflowSearchEngine {
+  private workflows: Map<string, { 
+    id: string
+    name: string
+    description?: string
+    nodes: WorkflowNode[]
+    edges: WorkflowEdge[]
+    tags?: string[]
+    createdAt?: Date
+  }> = new Map()
+  
+  // Workflow indexieren
+  index(id: string, workflow: {
+    name: string
+    description?: string
+    nodes: WorkflowNode[]
+    edges: WorkflowEdge[]
+    tags?: string[]
+    createdAt?: Date
+  }): void {
+    this.workflows.set(id, { id, ...workflow })
+  }
+  
+  // Workflow entfernen
+  remove(id: string): void {
+    this.workflows.delete(id)
+  }
+  
+  // Suche
+  search(query: WorkflowSearchQuery): WorkflowSearchResult[] {
+    const results: WorkflowSearchResult[] = []
+    
+    for (const [id, workflow] of this.workflows) {
+      const matches: WorkflowSearchResult["matches"] = []
+      let score = 0
+      
+      // Text-Suche
+      if (query.text) {
+        const searchText = query.text.toLowerCase()
+        
+        // Name
+        if (workflow.name.toLowerCase().includes(searchText)) {
+          matches.push({ field: "name", value: workflow.name })
+          score += 10
+        }
+        
+        // Beschreibung
+        if (workflow.description?.toLowerCase().includes(searchText)) {
+          matches.push({ field: "description", value: workflow.description })
+          score += 5
+        }
+        
+        // Node Labels
+        for (const node of workflow.nodes) {
+          if (node.data.label?.toLowerCase().includes(searchText)) {
+            matches.push({ field: "node", value: node.data.label })
+            score += 2
+          }
+        }
+      }
+      
+      // Node-Typ Filter
+      if (query.nodeTypes && query.nodeTypes.length > 0) {
+        const hasType = workflow.nodes.some(n => query.nodeTypes!.includes(n.type))
+        if (!hasType) continue
+        score += 3
+      }
+      
+      // Agent-ID Filter
+      if (query.agentIds && query.agentIds.length > 0) {
+        const hasAgent = workflow.nodes.some(n => 
+          n.data.agentId && query.agentIds!.includes(n.data.agentId)
+        )
+        if (!hasAgent) continue
+        score += 3
+      }
+      
+      // Human Decision Filter
+      if (query.hasHumanDecision !== undefined) {
+        const hasHuman = workflow.nodes.some(n => n.type === "human-decision")
+        if (hasHuman !== query.hasHumanDecision) continue
+        score += 2
+      }
+      
+      // Node Count Filter
+      if (query.minNodes && workflow.nodes.length < query.minNodes) continue
+      if (query.maxNodes && workflow.nodes.length > query.maxNodes) continue
+      
+      // Tags Filter
+      if (query.tags && query.tags.length > 0 && workflow.tags) {
+        const hasTag = query.tags.some(t => workflow.tags!.includes(t))
+        if (!hasTag) continue
+        score += 4
+      }
+      
+      // Datum Filter
+      if (query.createdAfter && workflow.createdAt && workflow.createdAt < query.createdAfter) continue
+      if (query.createdBefore && workflow.createdAt && workflow.createdAt > query.createdBefore) continue
+      
+      // Nur hinzufügen wenn Matches gefunden (bei Text-Suche) oder keine Text-Suche
+      if (!query.text || matches.length > 0) {
+        results.push({
+          workflow,
+          score,
+          matches,
+        })
+      }
+    }
+    
+    // Nach Score sortieren
+    return results.sort((a, b) => b.score - a.score)
+  }
+  
+  // Schnellsuche nur nach Name
+  quickSearch(text: string, limit: number = 10): WorkflowSearchResult[] {
+    return this.search({ text }).slice(0, limit)
+  }
+  
+  // Ähnliche Workflows finden
+  findSimilar(workflowId: string, limit: number = 5): WorkflowSearchResult[] {
+    const workflow = this.workflows.get(workflowId)
+    if (!workflow) return []
+    
+    const results: WorkflowSearchResult[] = []
+    const nodeTypes = new Set(workflow.nodes.map(n => n.type))
+    const agentIds = new Set(workflow.nodes.map(n => n.data.agentId).filter(Boolean))
+    
+    for (const [id, other] of this.workflows) {
+      if (id === workflowId) continue
+      
+      let score = 0
+      
+      // Node-Typ Übereinstimmung
+      const otherTypes = new Set(other.nodes.map(n => n.type))
+      for (const type of nodeTypes) {
+        if (otherTypes.has(type)) score += 2
+      }
+      
+      // Agent-ID Übereinstimmung
+      const otherAgents = new Set(other.nodes.map(n => n.data.agentId).filter(Boolean))
+      for (const agentId of agentIds) {
+        if (otherAgents.has(agentId as string)) score += 3
+      }
+      
+      // Ähnliche Größe
+      const sizeDiff = Math.abs(workflow.nodes.length - other.nodes.length)
+      if (sizeDiff <= 2) score += 2
+      
+      if (score > 0) {
+        results.push({
+          workflow: other,
+          score,
+          matches: [],
+        })
+      }
+    }
+    
+    return results.sort((a, b) => b.score - a.score).slice(0, limit)
+  }
+  
+  // Statistiken
+  getStats(): {
+    totalWorkflows: number
+    avgNodes: number
+    mostUsedAgents: { agentId: string; count: number }[]
+    mostUsedNodeTypes: { type: string; count: number }[]
+  } {
+    const agentCounts: Record<string, number> = {}
+    const typeCounts: Record<string, number> = {}
+    let totalNodes = 0
+    
+    for (const workflow of this.workflows.values()) {
+      totalNodes += workflow.nodes.length
+      
+      for (const node of workflow.nodes) {
+        typeCounts[node.type] = (typeCounts[node.type] || 0) + 1
+        if (node.data.agentId) {
+          agentCounts[node.data.agentId] = (agentCounts[node.data.agentId] || 0) + 1
+        }
+      }
+    }
+    
+    return {
+      totalWorkflows: this.workflows.size,
+      avgNodes: this.workflows.size > 0 ? Math.round(totalNodes / this.workflows.size) : 0,
+      mostUsedAgents: Object.entries(agentCounts)
+        .map(([agentId, count]) => ({ agentId, count }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 5),
+      mostUsedNodeTypes: Object.entries(typeCounts)
+        .map(([type, count]) => ({ type, count }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 5),
+    }
+  }
+}
