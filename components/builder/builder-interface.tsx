@@ -28,9 +28,13 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { toast } from "sonner"
 import { KnowledgeBaseDialog } from "@/components/knowledge-base-dialog"
+import { WorkflowSelectorDialog } from "@/components/workflow-selector-dialog"
+import { WorkflowExecutionView } from "@/components/workflow-execution-view"
+import type { WorkflowGraph } from "@/lib/types"
 
 export function BuilderInterface() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [selectedWorkflow, setSelectedWorkflow] = useState<WorkflowGraph | null>(null)
   const [newProjectOpen, setNewProjectOpen] = useState(false)
   const [projectName, setProjectName] = useState("")
   const [projectDescription, setProjectDescription] = useState("")
@@ -379,10 +383,18 @@ ${f.content}
               <Download className="mr-2 h-4 w-4" />
               Export
             </Button>
+            <WorkflowSelectorDialog
+              trigger={
+                <Button variant="outline" size="sm" title="Workflow auswählen">
+                  <GitBranch className="mr-2 h-4 w-4" />
+                  Workflow
+                </Button>
+              }
+              onSelectWorkflow={(workflow) => setSelectedWorkflow(workflow)}
+            />
             <Link href="/builder/workflow">
-              <Button variant="outline" size="sm" title="Workflow Designer">
-                <GitBranch className="mr-2 h-4 w-4" />
-                Workflow
+              <Button variant="ghost" size="sm" title="Workflow Designer öffnen">
+                <Settings className="h-4 w-4" />
               </Button>
             </Link>
             <KnowledgeBaseDialog
@@ -436,7 +448,18 @@ ${f.content}
             <PanelGroup direction="vertical" className="flex-1">
               <Panel defaultSize={40} minSize={20}>
                 <div className="h-full overflow-auto p-4">
-                  <BuilderWorkflow steps={workflowSteps} />
+                  {/* Zeige Workflow-Execution wenn ein Workflow ausgewählt ist */}
+                  {selectedWorkflow ? (
+                    <WorkflowExecutionView
+                      workflow={selectedWorkflow}
+                      onComplete={() => {
+                        // Optional: Workflow nach Abschluss behalten oder zurücksetzen
+                      }}
+                      onClose={() => setSelectedWorkflow(null)}
+                    />
+                  ) : (
+                    <BuilderWorkflow steps={workflowSteps} />
+                  )}
                 </div>
               </Panel>
               

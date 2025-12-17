@@ -13,6 +13,8 @@ import type {
   LogEntry,
   Tool,
   AgentSuggestion,
+  WorkflowGraph,
+  WorkflowExecutionState,
 } from "./types"
 
 // Konfiguration für Custom-Agenten (Marketplace)
@@ -531,6 +533,11 @@ interface AgentStore {
   workflowOrder: string[] // Reihenfolge der Agenten im Workflow
   installedMcpServers: string[] // IDs der installierten MCP Server
   customAgentConfigs: Record<string, CustomAgentConfig> // Konfiguration für Custom-Agenten
+  
+  // Saved Workflows State
+  savedWorkflows: WorkflowGraph[] // Gespeicherte Workflows
+  activeWorkflow: WorkflowGraph | null // Aktuell aktiver Workflow
+  workflowExecutionState: WorkflowExecutionState | null // Ausführungsstatus
 
   // Global Config Actions
   updateGlobalConfig: (config: Partial<GlobalConfig>) => void
@@ -596,6 +603,13 @@ interface AgentStore {
   // Export/Import
   exportConfig: () => string
   importConfig: (json: string) => void
+  
+  // Workflow Actions
+  saveWorkflow: (workflow: WorkflowGraph) => void
+  deleteWorkflow: (workflowId: string) => void
+  setActiveWorkflow: (workflow: WorkflowGraph | null) => void
+  setWorkflowExecutionState: (state: WorkflowExecutionState | null) => void
+  getSavedWorkflows: () => WorkflowGraph[]
 }
 
 export const useAgentStore = create<AgentStore>()(
@@ -626,6 +640,11 @@ export const useAgentStore = create<AgentStore>()(
       workflowOrder: ["planner", "coder", "reviewer", "security", "executor"],
       installedMcpServers: [],
       customAgentConfigs: {}, // Konfiguration für Custom-Agenten
+      
+      // Workflow State
+      savedWorkflows: [],
+      activeWorkflow: null,
+      workflowExecutionState: null,
 
       // Global Config Actions
       updateGlobalConfig: (config) =>
@@ -1053,6 +1072,35 @@ export const useAgentStore = create<AgentStore>()(
 
       clearSuggestions: () =>
         set({ pendingSuggestions: [] }),
+
+      // Workflow Actions
+      saveWorkflow: (workflow) =>
+        set((state) => {
+          const existingIndex = state.savedWorkflows.findIndex(w => w.id === workflow.id)
+          if (existingIndex >= 0) {
+            // Update existing
+            const updated = [...state.savedWorkflows]
+            updated[existingIndex] = { ...workflow, updatedAt: new Date() }
+            return { savedWorkflows: updated }
+          } else {
+            // Add new
+            return { savedWorkflows: [...state.savedWorkflows, { ...workflow, createdAt: new Date(), updatedAt: new Date() }] }
+          }
+        }),
+
+      deleteWorkflow: (workflowId) =>
+        set((state) => ({
+          savedWorkflows: state.savedWorkflows.filter(w => w.id !== workflowId),
+          activeWorkflow: state.activeWorkflow?.id === workflowId ? null : state.activeWorkflow,
+        })),
+
+      setActiveWorkflow: (workflow) =>
+        set({ activeWorkflow: workflow }),
+
+      setWorkflowExecutionState: (executionState) =>
+        set({ workflowExecutionState: executionState }),
+
+      getSavedWorkflows: () => get().savedWorkflows,
     }),
     {
       name: "agentforge-storage",
@@ -1060,6 +1108,7 @@ export const useAgentStore = create<AgentStore>()(
         globalConfig: state.globalConfig,
         agentConfigs: state.agentConfigs,
         projects: state.projects,
+        savedWorkflows: state.savedWorkflows,
       }),
     },
   ),
