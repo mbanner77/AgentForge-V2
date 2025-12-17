@@ -9,6 +9,8 @@ import type {
   WorkflowStepResult,
   AgentType,
   WorkflowMetrics,
+  WorkflowSnapshot,
+  WorkflowStatistics,
 } from "./types"
 
 // Workflow Engine für nicht-lineare Workflow-Ausführung
@@ -578,6 +580,86 @@ export class WorkflowEngine {
     }
     this.onStateChange(this.state)
     this.log("Workflow gestoppt", "info")
+  }
+
+  // Snapshot erstellen für Rollback
+  createSnapshot(): WorkflowSnapshot {
+    return {
+      id: `snapshot-${Date.now()}`,
+      timestamp: new Date(),
+      state: JSON.parse(JSON.stringify(this.state)),
+      workflowId: this.workflow.id,
+    }
+  }
+
+  // Rollback zu einem Snapshot
+  restoreSnapshot(snapshot: WorkflowSnapshot): void {
+    if (snapshot.workflowId !== this.workflow.id) {
+      this.log("Snapshot gehört zu anderem Workflow", "error")
+      return
+    }
+    
+    this.state = JSON.parse(JSON.stringify(snapshot.state))
+    this.onStateChange(this.state)
+    this.log(`Rollback zu Snapshot ${snapshot.id}`, "info")
+  }
+
+  // Zu einem bestimmten Node springen (für Debugging/Retry)
+  async jumpToNode(nodeId: string): Promise<void> {
+    const node = this.workflow.nodes.find(n => n.id === nodeId)
+    if (!node) {
+      this.log(`Node ${nodeId} nicht gefunden`, "error")
+      return
+    }
+    
+    this.log(`Springe zu Node: ${node.data.label}`, "info")
+    this.state = {
+      ...this.state,
+      status: "running",
+      currentNodeId: nodeId,
+    }
+    this.onStateChange(this.state)
+    await this.executeNode(nodeId)
+  }
+
+  // Einen Node erneut ausführen
+  async retryNode(nodeId: string): Promise<void> {
+    const node = this.workflow.nodes.find(n => n.id === nodeId)
+    if (!node) {
+      this.log(`Node ${nodeId} nicht gefunden`, "error")
+      return
+    }
+    
+    // Entferne vorheriges Ergebnis
+    delete this.state.nodeResults[nodeId]
+    delete this.state.nodeOutputs[nodeId]
+    
+    // Entferne Node aus visited (damit er nochmal ausgeführt wird)
+    this.state.visitedNodes = this.state.visitedNodes.filter(id => id !== nodeId)
+    
+    this.log(`Node ${node.data.label} wird erneut ausgeführt`, "info")
+    await this.jumpToNode(nodeId)
+  }
+
+  // Workflow-Statistiken abrufen
+  getStatistics(): WorkflowStatistics {
+    const results = Object.values(this.state.nodeResults)
+    const durations = results.map(r => r.duration).filter(d => d > 0)
+    
+    return {
+      totalNodes: this.workflow.nodes.length,
+      executedNodes: this.state.visitedNodes.length,
+      successfulNodes: results.filter(r => r.success).length,
+      failedNodes: results.filter(r => !r.success).length,
+      pendingNodes: this.workflow.nodes.length - this.state.visitedNodes.length,
+      totalDuration: durations.reduce((sum, d) => sum + d, 0),
+      avgNodeDuration: durations.length > 0 ? durations.reduce((sum, d) => sum + d, 0) / durations.length : 0,
+      minNodeDuration: durations.length > 0 ? Math.min(...durations) : 0,
+      maxNodeDuration: durations.length > 0 ? Math.max(...durations) : 0,
+      filesGenerated: results.reduce((sum, r) => sum + (r.metadata?.filesGenerated?.length || 0), 0),
+      errorsDetected: results.reduce((sum, r) => sum + (r.metadata?.errorsFound?.length || 0), 0),
+      currentProgress: this.state.visitedNodes.length / this.workflow.nodes.length * 100,
+    }
   }
 
   // Fehler setzen

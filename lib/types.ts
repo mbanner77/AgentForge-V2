@@ -322,6 +322,30 @@ export interface WorkflowMetrics {
   performanceScore?: number // 0-100
 }
 
+// Workflow-Snapshot für Rollback-Funktionalität
+export interface WorkflowSnapshot {
+  id: string
+  timestamp: Date
+  state: WorkflowExecutionState
+  workflowId: string
+}
+
+// Workflow-Statistiken für Dashboard
+export interface WorkflowStatistics {
+  totalNodes: number
+  executedNodes: number
+  successfulNodes: number
+  failedNodes: number
+  pendingNodes: number
+  totalDuration: number
+  avgNodeDuration: number
+  minNodeDuration: number
+  maxNodeDuration: number
+  filesGenerated: number
+  errorsDetected: number
+  currentProgress: number // 0-100
+}
+
 // ============================================
 // EXISTING TYPES
 // ============================================
