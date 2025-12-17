@@ -5915,3 +5915,745 @@ function topologicalSort(nodes: WorkflowNode[], edges: WorkflowEdge[]): string[]
   
   return result
 }
+
+// === WORKFLOW LINTING & BEST PRACTICES ===
+
+export interface LintRule {
+  id: string
+  name: string
+  severity: "error" | "warning" | "info"
+  category: "structure" | "performance" | "security" | "maintainability"
+  check: (workflow: { nodes: WorkflowNode[]; edges: WorkflowEdge[] }) => LintResult[]
+}
+
+export interface LintResult {
+  ruleId: string
+  severity: "error" | "warning" | "info"
+  message: string
+  nodeId?: string
+  suggestion?: string
+}
+
+export const WORKFLOW_LINT_RULES: LintRule[] = [
+  {
+    id: "no-orphan-nodes",
+    name: "Keine verwaisten Nodes",
+    severity: "error",
+    category: "structure",
+    check: (workflow) => {
+      const results: LintResult[] = []
+      for (const node of workflow.nodes) {
+        if (node.type === "start") continue
+        const hasIncoming = workflow.edges.some(e => e.target === node.id)
+        if (!hasIncoming) {
+          results.push({
+            ruleId: "no-orphan-nodes",
+            severity: "error",
+            message: `Node "${node.data.label}" ist nicht erreichbar`,
+            nodeId: node.id,
+            suggestion: "Verbinden Sie diesen Node mit dem Workflow oder entfernen Sie ihn"
+          })
+        }
+      }
+      return results
+    }
+  },
+  {
+    id: "no-dead-ends",
+    name: "Keine Sackgassen",
+    severity: "warning",
+    category: "structure",
+    check: (workflow) => {
+      const results: LintResult[] = []
+      for (const node of workflow.nodes) {
+        if (node.type === "end") continue
+        const hasOutgoing = workflow.edges.some(e => e.source === node.id)
+        if (!hasOutgoing) {
+          results.push({
+            ruleId: "no-dead-ends",
+            severity: "warning",
+            message: `Node "${node.data.label}" hat keine ausgehende Verbindung`,
+            nodeId: node.id,
+            suggestion: "Verbinden Sie diesen Node mit einem nachfolgenden Node"
+          })
+        }
+      }
+      return results
+    }
+  },
+  {
+    id: "max-sequential-agents",
+    name: "Maximale sequentielle Agents",
+    severity: "warning",
+    category: "performance",
+    check: (workflow) => {
+      const results: LintResult[] = []
+      let maxSequence = 0
+      let currentSequence = 0
+      
+      const visited = new Set<string>()
+      const startNode = workflow.nodes.find(n => n.type === "start")
+      if (!startNode) return results
+      
+      function traverse(nodeId: string, depth: number): void {
+        if (visited.has(nodeId)) return
+        visited.add(nodeId)
+        
+        const node = workflow.nodes.find(n => n.id === nodeId)
+        if (node?.type === "agent") {
+          currentSequence = depth
+          maxSequence = Math.max(maxSequence, currentSequence)
+        }
+        
+        const outgoing = workflow.edges.filter(e => e.source === nodeId)
+        for (const edge of outgoing) {
+          traverse(edge.target, node?.type === "agent" ? depth + 1 : depth)
+        }
+      }
+      
+      traverse(startNode.id, 0)
+      
+      if (maxSequence > 5) {
+        results.push({
+          ruleId: "max-sequential-agents",
+          severity: "warning",
+          message: `${maxSequence} Agents in Folge - könnte parallelisiert werden`,
+          suggestion: "Prüfen Sie ob einige Agents parallel laufen könnten"
+        })
+      }
+      
+      return results
+    }
+  },
+  {
+    id: "reviewer-after-coder",
+    name: "Review nach Coder",
+    severity: "info",
+    category: "maintainability",
+    check: (workflow) => {
+      const results: LintResult[] = []
+      const coderNodes = workflow.nodes.filter(n => n.data.agentId === "coder")
+      
+      for (const coder of coderNodes) {
+        const outgoing = workflow.edges.filter(e => e.source === coder.id)
+        const hasReview = outgoing.some(edge => {
+          const target = workflow.nodes.find(n => n.id === edge.target)
+          return target?.data.agentId === "reviewer" || target?.type === "condition"
+        })
+        
+        if (!hasReview) {
+          results.push({
+            ruleId: "reviewer-after-coder",
+            severity: "info",
+            message: `Kein Review nach "${coder.data.label}"`,
+            nodeId: coder.id,
+            suggestion: "Fügen Sie einen Reviewer oder eine Bedingung hinzu"
+          })
+        }
+      }
+      
+      return results
+    }
+  },
+  {
+    id: "human-decision-timeout",
+    name: "Human-Decision Timeout",
+    severity: "warning",
+    category: "security",
+    check: (workflow) => {
+      const results: LintResult[] = []
+      const humanNodes = workflow.nodes.filter(n => n.type === "human-decision")
+      
+      for (const node of humanNodes) {
+        if (!node.data.timeout) {
+          results.push({
+            ruleId: "human-decision-timeout",
+            severity: "warning",
+            message: `Human-Decision "${node.data.label}" hat kein Timeout`,
+            nodeId: node.id,
+            suggestion: "Setzen Sie ein Timeout um endloses Warten zu vermeiden"
+          })
+        }
+      }
+      
+      return results
+    }
+  },
+  {
+    id: "descriptive-labels",
+    name: "Beschreibende Labels",
+    severity: "info",
+    category: "maintainability",
+    check: (workflow) => {
+      const results: LintResult[] = []
+      const genericLabels = ["agent", "node", "step", "task", "untitled"]
+      
+      for (const node of workflow.nodes) {
+        const label = (node.data.label || "").toLowerCase()
+        if (genericLabels.some(g => label === g || label.includes("node-"))) {
+          results.push({
+            ruleId: "descriptive-labels",
+            severity: "info",
+            message: `Node hat generischen Namen: "${node.data.label}"`,
+            nodeId: node.id,
+            suggestion: "Verwenden Sie einen beschreibenden Namen"
+          })
+        }
+      }
+      
+      return results
+    }
+  }
+]
+
+export class WorkflowLinter {
+  private rules: LintRule[] = WORKFLOW_LINT_RULES
+  
+  // Alle Regeln ausführen
+  lint(workflow: { nodes: WorkflowNode[]; edges: WorkflowEdge[] }): LintResult[] {
+    const results: LintResult[] = []
+    
+    for (const rule of this.rules) {
+      results.push(...rule.check(workflow))
+    }
+    
+    return results.sort((a, b) => {
+      const order = { error: 0, warning: 1, info: 2 }
+      return order[a.severity] - order[b.severity]
+    })
+  }
+  
+  // Nur bestimmte Kategorien
+  lintCategory(
+    workflow: { nodes: WorkflowNode[]; edges: WorkflowEdge[] },
+    category: LintRule["category"]
+  ): LintResult[] {
+    const rules = this.rules.filter(r => r.category === category)
+    const results: LintResult[] = []
+    
+    for (const rule of rules) {
+      results.push(...rule.check(workflow))
+    }
+    
+    return results
+  }
+  
+  // Zusammenfassung
+  getSummary(results: LintResult[]): { errors: number; warnings: number; info: number } {
+    return {
+      errors: results.filter(r => r.severity === "error").length,
+      warnings: results.filter(r => r.severity === "warning").length,
+      info: results.filter(r => r.severity === "info").length,
+    }
+  }
+  
+  // Regel hinzufügen
+  addRule(rule: LintRule): void {
+    this.rules.push(rule)
+  }
+  
+  // Regel entfernen
+  removeRule(ruleId: string): void {
+    this.rules = this.rules.filter(r => r.id !== ruleId)
+  }
+}
+
+// === AGENT PERFORMANCE PROFILER ===
+
+export interface PerformanceProfile {
+  agentId: string
+  executions: number
+  totalDuration: number
+  avgDuration: number
+  minDuration: number
+  maxDuration: number
+  successRate: number
+  errorRate: number
+  tokensUsed: number
+  costEstimate: number
+}
+
+export interface ExecutionTrace {
+  id: string
+  agentId: string
+  startTime: Date
+  endTime?: Date
+  duration?: number
+  success: boolean
+  inputLength: number
+  outputLength: number
+  tokensEstimate: number
+  error?: string
+}
+
+export class AgentPerformanceProfiler {
+  private traces: ExecutionTrace[] = []
+  private maxTraces: number = 1000
+  
+  // Execution starten
+  startTrace(agentId: string, input: string): string {
+    const id = `trace-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    
+    this.traces.push({
+      id,
+      agentId,
+      startTime: new Date(),
+      success: false,
+      inputLength: input.length,
+      outputLength: 0,
+      tokensEstimate: Math.ceil(input.length / 4),
+    })
+    
+    this.enforceLimit()
+    return id
+  }
+  
+  private enforceLimit(): void {
+    if (this.traces.length > this.maxTraces) {
+      this.traces = this.traces.slice(-this.maxTraces)
+    }
+  }
+  
+  // Execution beenden
+  endTrace(traceId: string, output: string, success: boolean, error?: string): void {
+    const trace = this.traces.find(t => t.id === traceId)
+    if (!trace) return
+    
+    trace.endTime = new Date()
+    trace.duration = trace.endTime.getTime() - trace.startTime.getTime()
+    trace.success = success
+    trace.outputLength = output.length
+    trace.tokensEstimate += Math.ceil(output.length / 4)
+    trace.error = error
+  }
+  
+  // Profil für Agent erstellen
+  getProfile(agentId: string): PerformanceProfile {
+    const agentTraces = this.traces.filter(t => t.agentId === agentId && t.duration)
+    
+    if (agentTraces.length === 0) {
+      return {
+        agentId,
+        executions: 0,
+        totalDuration: 0,
+        avgDuration: 0,
+        minDuration: 0,
+        maxDuration: 0,
+        successRate: 0,
+        errorRate: 0,
+        tokensUsed: 0,
+        costEstimate: 0,
+      }
+    }
+    
+    const durations = agentTraces.map(t => t.duration!)
+    const totalDuration = durations.reduce((sum, d) => sum + d, 0)
+    const totalTokens = agentTraces.reduce((sum, t) => sum + t.tokensEstimate, 0)
+    const successCount = agentTraces.filter(t => t.success).length
+    
+    return {
+      agentId,
+      executions: agentTraces.length,
+      totalDuration,
+      avgDuration: Math.round(totalDuration / agentTraces.length),
+      minDuration: Math.min(...durations),
+      maxDuration: Math.max(...durations),
+      successRate: successCount / agentTraces.length,
+      errorRate: (agentTraces.length - successCount) / agentTraces.length,
+      tokensUsed: totalTokens,
+      costEstimate: totalTokens * 0.00001, // Geschätzter Preis pro Token
+    }
+  }
+  
+  // Alle Profile
+  getAllProfiles(): PerformanceProfile[] {
+    const agentIds = [...new Set(this.traces.map(t => t.agentId))]
+    return agentIds.map(id => this.getProfile(id))
+  }
+  
+  // Langsamste Agents
+  getSlowestAgents(limit: number = 5): PerformanceProfile[] {
+    return this.getAllProfiles()
+      .sort((a, b) => b.avgDuration - a.avgDuration)
+      .slice(0, limit)
+  }
+  
+  // Fehleranfälligste Agents
+  getMostErrorProne(limit: number = 5): PerformanceProfile[] {
+    return this.getAllProfiles()
+      .filter(p => p.executions > 0)
+      .sort((a, b) => b.errorRate - a.errorRate)
+      .slice(0, limit)
+  }
+  
+  // Gesamt-Statistik
+  getTotalStats(): {
+    totalExecutions: number
+    totalDuration: number
+    avgDuration: number
+    totalTokens: number
+    totalCost: number
+  } {
+    const profiles = this.getAllProfiles()
+    const totalExecutions = profiles.reduce((sum, p) => sum + p.executions, 0)
+    const totalDuration = profiles.reduce((sum, p) => sum + p.totalDuration, 0)
+    const totalTokens = profiles.reduce((sum, p) => sum + p.tokensUsed, 0)
+    
+    return {
+      totalExecutions,
+      totalDuration,
+      avgDuration: totalExecutions > 0 ? Math.round(totalDuration / totalExecutions) : 0,
+      totalTokens,
+      totalCost: totalTokens * 0.00001,
+    }
+  }
+  
+  // Traces exportieren
+  exportTraces(): ExecutionTrace[] {
+    return [...this.traces]
+  }
+  
+  // Reset
+  reset(): void {
+    this.traces = []
+  }
+}
+
+// === WORKFLOW EXPORT FORMATS ===
+
+export type ExportFormat = "json" | "yaml" | "mermaid" | "markdown" | "dot"
+
+export class WorkflowExporter {
+  // Export in verschiedene Formate
+  export(
+    workflow: { nodes: WorkflowNode[]; edges: WorkflowEdge[] },
+    format: ExportFormat,
+    options: { name?: string; description?: string } = {}
+  ): string {
+    switch (format) {
+      case "json":
+        return this.toJSON(workflow, options)
+      case "yaml":
+        return this.toYAML(workflow, options)
+      case "mermaid":
+        return this.toMermaid(workflow, options)
+      case "markdown":
+        return this.toMarkdown(workflow, options)
+      case "dot":
+        return this.toDOT(workflow, options)
+      default:
+        return this.toJSON(workflow, options)
+    }
+  }
+  
+  // JSON Export
+  private toJSON(
+    workflow: { nodes: WorkflowNode[]; edges: WorkflowEdge[] },
+    options: { name?: string; description?: string }
+  ): string {
+    return JSON.stringify({
+      name: options.name || "Workflow",
+      description: options.description,
+      version: "1.0",
+      exportedAt: new Date().toISOString(),
+      nodes: workflow.nodes,
+      edges: workflow.edges,
+    }, null, 2)
+  }
+  
+  // YAML Export (vereinfacht)
+  private toYAML(
+    workflow: { nodes: WorkflowNode[]; edges: WorkflowEdge[] },
+    options: { name?: string; description?: string }
+  ): string {
+    const lines: string[] = [
+      `name: ${options.name || "Workflow"}`,
+      options.description ? `description: ${options.description}` : "",
+      `version: "1.0"`,
+      `exportedAt: ${new Date().toISOString()}`,
+      "",
+      "nodes:",
+    ]
+    
+    for (const node of workflow.nodes) {
+      lines.push(`  - id: ${node.id}`)
+      lines.push(`    type: ${node.type}`)
+      lines.push(`    label: "${node.data.label || ""}"`)
+      if (node.data.agentId) {
+        lines.push(`    agentId: ${node.data.agentId}`)
+      }
+      if (node.position) {
+        lines.push(`    position:`)
+        lines.push(`      x: ${node.position.x}`)
+        lines.push(`      y: ${node.position.y}`)
+      }
+    }
+    
+    lines.push("")
+    lines.push("edges:")
+    
+    for (const edge of workflow.edges) {
+      lines.push(`  - id: ${edge.id}`)
+      lines.push(`    source: ${edge.source}`)
+      lines.push(`    target: ${edge.target}`)
+      if (edge.label) {
+        lines.push(`    label: "${edge.label}"`)
+      }
+    }
+    
+    return lines.filter(l => l !== "").join("\n")
+  }
+  
+  // Mermaid Diagram
+  private toMermaid(
+    workflow: { nodes: WorkflowNode[]; edges: WorkflowEdge[] },
+    options: { name?: string }
+  ): string {
+    const lines: string[] = [
+      "```mermaid",
+      "flowchart TD",
+      options.name ? `    subgraph ${options.name.replace(/\s+/g, "_")}` : "",
+    ]
+    
+    // Node Definitionen
+    for (const node of workflow.nodes) {
+      const label = node.data.label || node.id
+      let shape: string
+      
+      switch (node.type) {
+        case "start":
+          shape = `((${label}))`
+          break
+        case "end":
+          shape = `(((${label})))`
+          break
+        case "condition":
+          shape = `{${label}}`
+          break
+        case "human-decision":
+          shape = `[/${label}\\]`
+          break
+        default:
+          shape = `[${label}]`
+      }
+      
+      lines.push(`    ${node.id}${shape}`)
+    }
+    
+    // Edge Definitionen
+    for (const edge of workflow.edges) {
+      const arrow = edge.label ? `-->|${edge.label}|` : "-->"
+      lines.push(`    ${edge.source} ${arrow} ${edge.target}`)
+    }
+    
+    if (options.name) {
+      lines.push("    end")
+    }
+    
+    lines.push("```")
+    
+    return lines.join("\n")
+  }
+  
+  // Markdown Dokumentation
+  private toMarkdown(
+    workflow: { nodes: WorkflowNode[]; edges: WorkflowEdge[] },
+    options: { name?: string; description?: string }
+  ): string {
+    const lines: string[] = [
+      `# ${options.name || "Workflow Dokumentation"}`,
+      "",
+      options.description ? `${options.description}` : "",
+      "",
+      "## Übersicht",
+      "",
+      `- **Nodes:** ${workflow.nodes.length}`,
+      `- **Verbindungen:** ${workflow.edges.length}`,
+      `- **Agents:** ${workflow.nodes.filter(n => n.type === "agent").length}`,
+      "",
+      "## Workflow-Schritte",
+      "",
+    ]
+    
+    // Sortierte Nodes
+    const sorted = topologicalSort(workflow.nodes, workflow.edges)
+    let stepNum = 1
+    
+    for (const nodeId of sorted) {
+      const node = workflow.nodes.find(n => n.id === nodeId)
+      if (!node) continue
+      
+      const typeEmoji: Record<string, string> = {
+        start: "🚀",
+        end: "🏁",
+        agent: "🤖",
+        condition: "🔀",
+        "human-decision": "👤",
+      }
+      
+      lines.push(`### ${stepNum}. ${typeEmoji[node.type] || "📦"} ${node.data.label || node.id}`)
+      lines.push("")
+      lines.push(`- **Typ:** ${node.type}`)
+      if (node.data.agentId) {
+        lines.push(`- **Agent:** ${node.data.agentId}`)
+      }
+      if (node.data.description) {
+        lines.push(`- **Beschreibung:** ${node.data.description}`)
+      }
+      
+      // Ausgehende Verbindungen
+      const outgoing = workflow.edges.filter(e => e.source === node.id)
+      if (outgoing.length > 0) {
+        lines.push(`- **Nächste Schritte:**`)
+        for (const edge of outgoing) {
+          const target = workflow.nodes.find(n => n.id === edge.target)
+          lines.push(`  - ${edge.label ? `(${edge.label})` : "→"} ${target?.data.label || edge.target}`)
+        }
+      }
+      
+      lines.push("")
+      stepNum++
+    }
+    
+    // Mermaid Diagramm anhängen
+    lines.push("## Diagramm")
+    lines.push("")
+    lines.push(this.toMermaid(workflow, options))
+    
+    return lines.join("\n")
+  }
+  
+  // DOT (Graphviz) Format
+  private toDOT(
+    workflow: { nodes: WorkflowNode[]; edges: WorkflowEdge[] },
+    options: { name?: string }
+  ): string {
+    const lines: string[] = [
+      `digraph ${(options.name || "Workflow").replace(/\s+/g, "_")} {`,
+      "  rankdir=TB;",
+      "  node [fontname=\"Arial\"];",
+      "",
+    ]
+    
+    // Node Styles
+    for (const node of workflow.nodes) {
+      const label = node.data.label || node.id
+      let attrs: string[] = [`label="${label}"`]
+      
+      switch (node.type) {
+        case "start":
+          attrs.push("shape=circle", "style=filled", "fillcolor=green")
+          break
+        case "end":
+          attrs.push("shape=doublecircle", "style=filled", "fillcolor=red")
+          break
+        case "condition":
+          attrs.push("shape=diamond", "style=filled", "fillcolor=yellow")
+          break
+        case "human-decision":
+          attrs.push("shape=parallelogram", "style=filled", "fillcolor=orange")
+          break
+        case "agent":
+          attrs.push("shape=box", "style=filled", "fillcolor=lightblue")
+          break
+        default:
+          attrs.push("shape=box")
+      }
+      
+      lines.push(`  ${node.id} [${attrs.join(", ")}];`)
+    }
+    
+    lines.push("")
+    
+    // Edges
+    for (const edge of workflow.edges) {
+      const label = edge.label ? ` [label="${edge.label}"]` : ""
+      lines.push(`  ${edge.source} -> ${edge.target}${label};`)
+    }
+    
+    lines.push("}")
+    
+    return lines.join("\n")
+  }
+}
+
+// === WORKFLOW IMPORT ===
+
+export class WorkflowImporter {
+  // Import aus JSON
+  fromJSON(json: string): { nodes: WorkflowNode[]; edges: WorkflowEdge[] } | null {
+    try {
+      const data = JSON.parse(json)
+      
+      if (data.nodes && data.edges) {
+        return {
+          nodes: data.nodes,
+          edges: data.edges,
+        }
+      }
+      
+      return null
+    } catch {
+      return null
+    }
+  }
+  
+  // Import aus YAML (vereinfacht)
+  fromYAML(yaml: string): { nodes: WorkflowNode[]; edges: WorkflowEdge[] } | null {
+    try {
+      const lines = yaml.split("\n")
+      const nodes: WorkflowNode[] = []
+      const edges: WorkflowEdge[] = []
+      
+      let section: "nodes" | "edges" | null = null
+      let currentItem: Record<string, unknown> = {}
+      
+      for (const line of lines) {
+        const trimmed = line.trim()
+        
+        if (trimmed === "nodes:") {
+          section = "nodes"
+          continue
+        }
+        if (trimmed === "edges:") {
+          section = "edges"
+          continue
+        }
+        
+        if (trimmed.startsWith("- ")) {
+          // Neues Item
+          if (Object.keys(currentItem).length > 0) {
+            if (section === "nodes") {
+              nodes.push(currentItem as unknown as WorkflowNode)
+            } else if (section === "edges") {
+              edges.push(currentItem as unknown as WorkflowEdge)
+            }
+          }
+          currentItem = {}
+          const match = trimmed.match(/^-\s+(\w+):\s*(.+)$/)
+          if (match) {
+            currentItem[match[1]] = match[2].replace(/^["']|["']$/g, "")
+          }
+        } else if (trimmed.includes(":")) {
+          const match = trimmed.match(/^(\w+):\s*(.+)$/)
+          if (match) {
+            currentItem[match[1]] = match[2].replace(/^["']|["']$/g, "")
+          }
+        }
+      }
+      
+      // Letztes Item
+      if (Object.keys(currentItem).length > 0) {
+        if (section === "nodes") {
+          nodes.push(currentItem as unknown as WorkflowNode)
+        } else if (section === "edges") {
+          edges.push(currentItem as unknown as WorkflowEdge)
+        }
+      }
+      
+      return { nodes, edges }
+    } catch {
+      return null
+    }
+  }
+}
