@@ -210,6 +210,38 @@ export interface WorkflowNodeData {
   exitCondition?: string
   // Für Delay-Nodes
   delaySeconds?: number
+  
+  // === Erweiterte Einstellungen ===
+  // Allgemein
+  priority?: "low" | "normal" | "high" | "critical"
+  
+  // Ausführung
+  delay?: number // Verzögerung vor Ausführung (ms)
+  cacheEnabled?: boolean
+  cacheTTL?: number // Cache-Gültigkeit in Minuten
+  parallelizable?: boolean
+  
+  // Retry & Fehler
+  retryEnabled?: boolean
+  maxRetries?: number
+  retryDelay?: number // ms
+  retryStrategy?: "linear" | "exponential" | "fixed"
+  onError?: "stop" | "skip" | "continue" | "fallback"
+  fallbackNodeId?: string
+  
+  // Agent-spezifisch (erweitert)
+  temperature?: number
+  maxTokens?: number
+  customPrompt?: string
+  
+  // Transformationen
+  inputTransform?: string
+  outputTransform?: string
+  validationCondition?: string
+  
+  // Metadaten
+  metadata?: Record<string, unknown>
+  debugMode?: boolean
 }
 
 // Option für Human-in-the-Loop Entscheidung

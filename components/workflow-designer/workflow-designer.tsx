@@ -920,6 +920,409 @@ export function WorkflowDesigner({ initialWorkflow, onSave, onExecute }: Workflo
           </Tabs>
         </DialogContent>
       </Dialog>
+
+      {/* Erweiterte Einstellungen Dialog */}
+      <Dialog open={showNodeDialog} onOpenChange={setShowNodeDialog}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Settings className="h-5 w-5" />
+              Erweiterte Einstellungen
+              {selectedNode && (
+                <Badge variant="outline" className="ml-2">
+                  {NODE_TYPES[selectedNode.type]?.label || selectedNode.type}
+                </Badge>
+              )}
+            </DialogTitle>
+            <DialogDescription>
+              Konfiguriere erweiterte Optionen für diesen Node
+            </DialogDescription>
+          </DialogHeader>
+          
+          {selectedNode && (
+            <Tabs defaultValue="general" className="mt-4">
+              <TabsList className="grid w-full grid-cols-4">
+                <TabsTrigger value="general">Allgemein</TabsTrigger>
+                <TabsTrigger value="execution">Ausführung</TabsTrigger>
+                <TabsTrigger value="retry">Retry & Fehler</TabsTrigger>
+                <TabsTrigger value="advanced">Erweitert</TabsTrigger>
+              </TabsList>
+              
+              {/* Allgemein Tab */}
+              <TabsContent value="general" className="space-y-4 mt-4">
+                <div className="space-y-2">
+                  <Label>Node ID</Label>
+                  <Input value={selectedNode.id} disabled className="bg-muted" />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label>Label</Label>
+                  <Input
+                    value={selectedNode.data.label || ""}
+                    onChange={(e) => updateNode(selectedNode.id, { label: e.target.value })}
+                    placeholder="Node-Bezeichnung"
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label>Beschreibung</Label>
+                  <Textarea
+                    value={selectedNode.data.description || ""}
+                    onChange={(e) => updateNode(selectedNode.id, { description: e.target.value })}
+                    placeholder="Beschreibe was dieser Node tut..."
+                    rows={3}
+                  />
+                </div>
+                
+                {selectedNode.type === "agent" && (
+                  <div className="space-y-2">
+                    <Label>Agent</Label>
+                    <Select
+                      value={selectedNode.data.agentId || ""}
+                      onValueChange={(value) => updateNode(selectedNode.id, { agentId: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Agent auswählen" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {allAgents.map(agent => (
+                          <SelectItem key={agent.id} value={agent.id}>
+                            {agent.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+                
+                <div className="space-y-2">
+                  <Label>Priorität</Label>
+                  <Select
+                    value={String(selectedNode.data.priority || "normal")}
+                    onValueChange={(value) => updateNode(selectedNode.id, { priority: value as "low" | "normal" | "high" | "critical" })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="low">Niedrig</SelectItem>
+                      <SelectItem value="normal">Normal</SelectItem>
+                      <SelectItem value="high">Hoch</SelectItem>
+                      <SelectItem value="critical">Kritisch</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </TabsContent>
+              
+              {/* Ausführung Tab */}
+              <TabsContent value="execution" className="space-y-4 mt-4">
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-2">
+                    <Clock className="h-4 w-4" />
+                    Timeout (Sekunden)
+                  </Label>
+                  <Input
+                    type="number"
+                    value={selectedNode.data.timeout || 300}
+                    onChange={(e) => updateNode(selectedNode.id, { timeout: parseInt(e.target.value) || 300 })}
+                    min={10}
+                    max={3600}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Maximale Ausführungszeit bevor der Node als fehlgeschlagen gilt
+                  </p>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-2">
+                    <Timer className="h-4 w-4" />
+                    Verzögerung vor Ausführung (ms)
+                  </Label>
+                  <Input
+                    type="number"
+                    value={selectedNode.data.delay || 0}
+                    onChange={(e) => updateNode(selectedNode.id, { delay: parseInt(e.target.value) || 0 })}
+                    min={0}
+                    max={60000}
+                    step={100}
+                  />
+                </div>
+                
+                <div className="flex items-center justify-between p-3 border rounded-lg">
+                  <div>
+                    <Label>Caching aktivieren</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Speichere Ergebnisse für wiederholte Ausführungen
+                    </p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={selectedNode.data.cacheEnabled ?? false}
+                    onChange={(e) => updateNode(selectedNode.id, { cacheEnabled: e.target.checked })}
+                    className="h-5 w-5"
+                  />
+                </div>
+                
+                {selectedNode.data.cacheEnabled && (
+                  <div className="space-y-2 ml-4">
+                    <Label>Cache TTL (Minuten)</Label>
+                    <Input
+                      type="number"
+                      value={selectedNode.data.cacheTTL || 10}
+                      onChange={(e) => updateNode(selectedNode.id, { cacheTTL: parseInt(e.target.value) || 10 })}
+                      min={1}
+                      max={1440}
+                    />
+                  </div>
+                )}
+                
+                <div className="flex items-center justify-between p-3 border rounded-lg">
+                  <div>
+                    <Label>Parallel ausführbar</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Kann parallel mit anderen Nodes ausgeführt werden
+                    </p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={selectedNode.data.parallelizable ?? true}
+                    onChange={(e) => updateNode(selectedNode.id, { parallelizable: e.target.checked })}
+                    className="h-5 w-5"
+                  />
+                </div>
+              </TabsContent>
+              
+              {/* Retry & Fehler Tab */}
+              <TabsContent value="retry" className="space-y-4 mt-4">
+                <div className="flex items-center justify-between p-3 border rounded-lg">
+                  <div>
+                    <Label>Auto-Retry aktivieren</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Automatisch bei Fehlern wiederholen
+                    </p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={selectedNode.data.retryEnabled ?? true}
+                    onChange={(e) => updateNode(selectedNode.id, { retryEnabled: e.target.checked })}
+                    className="h-5 w-5"
+                  />
+                </div>
+                
+                {selectedNode.data.retryEnabled !== false && (
+                  <>
+                    <div className="space-y-2">
+                      <Label className="flex items-center gap-2">
+                        <RotateCcw className="h-4 w-4" />
+                        Max. Retry-Versuche
+                      </Label>
+                      <Input
+                        type="number"
+                        value={selectedNode.data.maxRetries || 3}
+                        onChange={(e) => updateNode(selectedNode.id, { maxRetries: parseInt(e.target.value) || 3 })}
+                        min={0}
+                        max={10}
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label>Retry-Verzögerung (ms)</Label>
+                      <Input
+                        type="number"
+                        value={selectedNode.data.retryDelay || 1000}
+                        onChange={(e) => updateNode(selectedNode.id, { retryDelay: parseInt(e.target.value) || 1000 })}
+                        min={100}
+                        max={30000}
+                        step={100}
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label>Retry-Strategie</Label>
+                      <Select
+                        value={selectedNode.data.retryStrategy || "linear"}
+                        onValueChange={(value) => updateNode(selectedNode.id, { retryStrategy: value as "linear" | "exponential" | "fixed" })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="linear">Linear</SelectItem>
+                          <SelectItem value="exponential">Exponentiell</SelectItem>
+                          <SelectItem value="fixed">Fest</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        Linear: Gleiche Verzögerung, Exponentiell: Verdoppelt sich, Fest: Keine Änderung
+                      </p>
+                    </div>
+                  </>
+                )}
+                
+                <div className="space-y-2">
+                  <Label>Bei Fehler</Label>
+                  <Select
+                    value={selectedNode.data.onError || "stop"}
+                    onValueChange={(value) => updateNode(selectedNode.id, { onError: value as "stop" | "skip" | "continue" | "fallback" })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="stop">Workflow stoppen</SelectItem>
+                      <SelectItem value="skip">Node überspringen</SelectItem>
+                      <SelectItem value="continue">Fortfahren mit Warnung</SelectItem>
+                      <SelectItem value="fallback">Fallback-Node ausführen</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                {selectedNode.data.onError === "fallback" && (
+                  <div className="space-y-2">
+                    <Label>Fallback-Node</Label>
+                    <Select
+                      value={selectedNode.data.fallbackNodeId || ""}
+                      onValueChange={(value) => updateNode(selectedNode.id, { fallbackNodeId: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Node auswählen" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {workflow.nodes
+                          .filter(n => n.id !== selectedNode.id)
+                          .map(node => (
+                            <SelectItem key={node.id} value={node.id}>
+                              {node.data.label || node.id}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+              </TabsContent>
+              
+              {/* Erweitert Tab */}
+              <TabsContent value="advanced" className="space-y-4 mt-4">
+                {selectedNode.type === "agent" && (
+                  <>
+                    <div className="space-y-2">
+                      <Label>Temperatur (0-1)</Label>
+                      <Input
+                        type="number"
+                        value={selectedNode.data.temperature ?? 0.7}
+                        onChange={(e) => updateNode(selectedNode.id, { temperature: parseFloat(e.target.value) || 0.7 })}
+                        min={0}
+                        max={1}
+                        step={0.1}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Höhere Werte = kreativere, niedrigere = deterministischere Antworten
+                      </p>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label>Max. Tokens</Label>
+                      <Input
+                        type="number"
+                        value={selectedNode.data.maxTokens || 4000}
+                        onChange={(e) => updateNode(selectedNode.id, { maxTokens: parseInt(e.target.value) || 4000 })}
+                        min={100}
+                        max={128000}
+                        step={100}
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label>Custom System Prompt (Override)</Label>
+                      <Textarea
+                        value={selectedNode.data.customPrompt || ""}
+                        onChange={(e) => updateNode(selectedNode.id, { customPrompt: e.target.value })}
+                        placeholder="Überschreibt den Standard-System-Prompt des Agents..."
+                        rows={4}
+                      />
+                    </div>
+                  </>
+                )}
+                
+                <div className="space-y-2">
+                  <Label>Eingabe-Transformation</Label>
+                  <Textarea
+                    value={selectedNode.data.inputTransform || ""}
+                    onChange={(e) => updateNode(selectedNode.id, { inputTransform: e.target.value })}
+                    placeholder="JavaScript-Ausdruck zur Transformation der Eingabe, z.B.: input.toUpperCase()"
+                    rows={2}
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label>Ausgabe-Transformation</Label>
+                  <Textarea
+                    value={selectedNode.data.outputTransform || ""}
+                    onChange={(e) => updateNode(selectedNode.id, { outputTransform: e.target.value })}
+                    placeholder="JavaScript-Ausdruck zur Transformation der Ausgabe"
+                    rows={2}
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label>Validierungs-Bedingung</Label>
+                  <Textarea
+                    value={selectedNode.data.validationCondition || ""}
+                    onChange={(e) => updateNode(selectedNode.id, { validationCondition: e.target.value })}
+                    placeholder="JavaScript-Bedingung, z.B.: output.length > 100"
+                    rows={2}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Wenn diese Bedingung false ergibt, wird der Node als fehlgeschlagen markiert
+                  </p>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label>Metadaten (JSON)</Label>
+                  <Textarea
+                    value={selectedNode.data.metadata ? JSON.stringify(selectedNode.data.metadata, null, 2) : "{}"}
+                    onChange={(e) => {
+                      try {
+                        const parsed = JSON.parse(e.target.value)
+                        updateNode(selectedNode.id, { metadata: parsed })
+                      } catch {
+                        // Invalid JSON, don't update
+                      }
+                    }}
+                    placeholder='{"key": "value"}'
+                    rows={3}
+                    className="font-mono text-sm"
+                  />
+                </div>
+                
+                <div className="flex items-center justify-between p-3 border rounded-lg">
+                  <div>
+                    <Label>Debug-Modus</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Ausführliche Logs für diesen Node
+                    </p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={selectedNode.data.debugMode ?? false}
+                    onChange={(e) => updateNode(selectedNode.id, { debugMode: e.target.checked })}
+                    className="h-5 w-5"
+                  />
+                </div>
+              </TabsContent>
+            </Tabs>
+          )}
+          
+          <DialogFooter className="mt-6">
+            <Button variant="outline" onClick={() => setShowNodeDialog(false)}>
+              Abbrechen
+            </Button>
+            <Button onClick={() => setShowNodeDialog(false)}>
+              Speichern
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
