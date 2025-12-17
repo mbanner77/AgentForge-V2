@@ -5118,3 +5118,800 @@ export function formatWorkflowDiff(diff: WorkflowDiff): string {
   
   return lines.join("\n")
 }
+
+// === WORKFLOW AUTO-COMPLETION & SUGGESTIONS ===
+
+export interface WorkflowSuggestion {
+  id: string
+  type: "add-node" | "connect-nodes" | "add-agent" | "optimize" | "fix-issue"
+  title: string
+  description: string
+  priority: number
+  autoApply?: () => { nodes: WorkflowNode[]; edges: WorkflowEdge[] }
+}
+
+export class WorkflowAutoComplete {
+  // Vorschläge basierend auf aktuellem Workflow generieren
+  getSuggestions(workflow: { nodes: WorkflowNode[]; edges: WorkflowEdge[] }): WorkflowSuggestion[] {
+    const suggestions: WorkflowSuggestion[] = []
+    
+    // 1. Fehlender End-Node
+    const hasEndNode = workflow.nodes.some(n => n.type === "end")
+    if (!hasEndNode) {
+      suggestions.push({
+        id: "add-end-node",
+        type: "add-node",
+        title: "End-Node hinzufügen",
+        description: "Workflow hat keinen End-Node. Empfohlen für sauberen Abschluss.",
+        priority: 8,
+      })
+    }
+    
+    // 2. Dead-End Nodes (außer End)
+    for (const node of workflow.nodes) {
+      if (node.type === "end") continue
+      const hasOutgoing = workflow.edges.some(e => e.source === node.id)
+      if (!hasOutgoing) {
+        suggestions.push({
+          id: `connect-${node.id}`,
+          type: "connect-nodes",
+          title: `"${node.data.label}" verbinden`,
+          description: `Node hat keine ausgehende Verbindung.`,
+          priority: 7,
+        })
+      }
+    }
+    
+    // 3. Review nach Coder empfehlen
+    const coderNodes = workflow.nodes.filter(n => n.data.agentId === "coder")
+    for (const coder of coderNodes) {
+      const outgoing = workflow.edges.filter(e => e.source === coder.id)
+      const hasReviewAfter = outgoing.some(edge => {
+        const target = workflow.nodes.find(n => n.id === edge.target)
+        return target?.data.agentId === "reviewer"
+      })
+      
+      if (!hasReviewAfter) {
+        suggestions.push({
+          id: `add-review-after-${coder.id}`,
+          type: "add-agent",
+          title: `Reviewer nach "${coder.data.label}" hinzufügen`,
+          description: "Code-Review nach Coder verbessert Qualität.",
+          priority: 6,
+        })
+      }
+    }
+    
+    // 4. Human-Decision für kritische Entscheidungen
+    const hasHumanDecision = workflow.nodes.some(n => n.type === "human-decision")
+    if (!hasHumanDecision && workflow.nodes.length > 3) {
+      suggestions.push({
+        id: "add-human-decision",
+        type: "add-node",
+        title: "Human-Decision hinzufügen",
+        description: "Menschliche Kontrolle bei wichtigen Entscheidungen.",
+        priority: 5,
+      })
+    }
+    
+    // 5. Parallel-Execution Möglichkeit
+    const independentAgents = this.findParallelizableNodes(workflow)
+    if (independentAgents.length >= 2) {
+      suggestions.push({
+        id: "parallelize-agents",
+        type: "optimize",
+        title: "Agents parallelisieren",
+        description: `${independentAgents.length} Agents könnten parallel laufen.`,
+        priority: 4,
+      })
+    }
+    
+    // 6. Condition nach Review
+    const reviewNodes = workflow.nodes.filter(n => n.data.agentId === "reviewer")
+    for (const review of reviewNodes) {
+      const outgoing = workflow.edges.filter(e => e.source === review.id)
+      const hasCondition = outgoing.some(edge => {
+        const target = workflow.nodes.find(n => n.id === edge.target)
+        return target?.type === "condition"
+      })
+      
+      if (!hasCondition && outgoing.length === 1) {
+        suggestions.push({
+          id: `add-condition-after-${review.id}`,
+          type: "add-node",
+          title: `Bedingung nach "${review.data.label}"`,
+          description: "Bei Fehlern automatisch zur Korrektur weiterleiten.",
+          priority: 5,
+        })
+      }
+    }
+    
+    return suggestions.sort((a, b) => b.priority - a.priority)
+  }
+  
+  // Parallelisierbare Nodes finden
+  private findParallelizableNodes(workflow: { nodes: WorkflowNode[]; edges: WorkflowEdge[] }): WorkflowNode[] {
+    const result: WorkflowNode[] = []
+    
+    // Nodes mit gleichem Vorgänger finden
+    const nodesBySource: Map<string, WorkflowNode[]> = new Map()
+    
+    for (const edge of workflow.edges) {
+      const target = workflow.nodes.find(n => n.id === edge.target)
+      if (target && target.type === "agent") {
+        const existing = nodesBySource.get(edge.source) || []
+        existing.push(target)
+        nodesBySource.set(edge.source, existing)
+      }
+    }
+    
+    // Gruppen mit mehr als einem Agent
+    for (const [, nodes] of nodesBySource) {
+      if (nodes.length >= 2) {
+        result.push(...nodes)
+      }
+    }
+    
+    return result
+  }
+  
+  // Nächsten logischen Node-Typ vorschlagen
+  suggestNextNode(currentNode: WorkflowNode): { type: string; agentId?: string; reason: string }[] {
+    const suggestions: { type: string; agentId?: string; reason: string }[] = []
+    
+    switch (currentNode.type) {
+      case "start":
+        suggestions.push(
+          { type: "agent", agentId: "researcher", reason: "Analyse zuerst" },
+          { type: "agent", agentId: "coder", reason: "Direkt zur Implementierung" }
+        )
+        break
+        
+      case "agent":
+        switch (currentNode.data.agentId) {
+          case "coder":
+            suggestions.push(
+              { type: "agent", agentId: "reviewer", reason: "Code-Review" },
+              { type: "human-decision", reason: "Manuelle Prüfung" },
+              { type: "condition", reason: "Automatische Verzweigung" }
+            )
+            break
+          case "reviewer":
+            suggestions.push(
+              { type: "condition", reason: "Bei Fehlern zu Coder" },
+              { type: "agent", agentId: "coder", reason: "Direkte Korrektur" },
+              { type: "end", reason: "Review abschließen" }
+            )
+            break
+          case "researcher":
+            suggestions.push(
+              { type: "agent", agentId: "coder", reason: "Recherche implementieren" },
+              { type: "agent", agentId: "architect", reason: "Architektur planen" }
+            )
+            break
+          default:
+            suggestions.push(
+              { type: "agent", agentId: "reviewer", reason: "Ergebnis prüfen" },
+              { type: "end", reason: "Abschließen" }
+            )
+        }
+        break
+        
+      case "condition":
+        suggestions.push(
+          { type: "agent", agentId: "coder", reason: "Bei Fehler korrigieren" },
+          { type: "end", reason: "Bei Erfolg beenden" }
+        )
+        break
+        
+      case "human-decision":
+        suggestions.push(
+          { type: "agent", agentId: "coder", reason: "Weiter implementieren" },
+          { type: "end", reason: "Abbrechen möglich" }
+        )
+        break
+    }
+    
+    return suggestions
+  }
+}
+
+// === AGENT COLLABORATION PATTERNS ===
+
+export type CollaborationPattern = 
+  | "sequential"      // A → B → C
+  | "parallel"        // A → [B, C, D] → E
+  | "review-loop"     // Coder ↔ Reviewer
+  | "expert-panel"    // Multiple Reviewers → Consensus
+  | "divide-conquer"  // Split → Parallel → Merge
+  | "supervisor"      // Main Agent + Helper Agents
+
+export interface CollaborationConfig {
+  pattern: CollaborationPattern
+  agents: string[]
+  options?: Record<string, unknown>
+}
+
+export class AgentCollaborationPatterns {
+  // Pattern-basierte Workflow-Generierung
+  generateWorkflow(config: CollaborationConfig): { nodes: WorkflowNode[]; edges: WorkflowEdge[] } {
+    switch (config.pattern) {
+      case "sequential":
+        return this.generateSequential(config.agents)
+      case "parallel":
+        return this.generateParallel(config.agents)
+      case "review-loop":
+        return this.generateReviewLoop(config.agents, config.options?.maxIterations as number || 3)
+      case "expert-panel":
+        return this.generateExpertPanel(config.agents)
+      case "divide-conquer":
+        return this.generateDivideConquer(config.agents)
+      case "supervisor":
+        return this.generateSupervisor(config.agents)
+      default:
+        return { nodes: [], edges: [] }
+    }
+  }
+  
+  // Sequential: A → B → C
+  private generateSequential(agents: string[]): { nodes: WorkflowNode[]; edges: WorkflowEdge[] } {
+    const nodes: WorkflowNode[] = [
+      { id: "start", type: "start", position: { x: 250, y: 50 }, data: { label: "Start" } }
+    ]
+    const edges: WorkflowEdge[] = []
+    
+    let y = 150
+    let prevId = "start"
+    
+    for (let i = 0; i < agents.length; i++) {
+      const nodeId = `agent-${i}`
+      nodes.push({
+        id: nodeId,
+        type: "agent",
+        position: { x: 250, y },
+        data: { label: agents[i], agentId: agents[i] }
+      })
+      edges.push({ id: `e-${prevId}-${nodeId}`, source: prevId, target: nodeId })
+      prevId = nodeId
+      y += 120
+    }
+    
+    nodes.push({ id: "end", type: "end", position: { x: 250, y }, data: { label: "Ende" } })
+    edges.push({ id: `e-${prevId}-end`, source: prevId, target: "end" })
+    
+    return { nodes, edges }
+  }
+  
+  // Parallel: A → [B, C, D] → E
+  private generateParallel(agents: string[]): { nodes: WorkflowNode[]; edges: WorkflowEdge[] } {
+    if (agents.length < 2) return this.generateSequential(agents)
+    
+    const [first, ...parallel] = agents
+    const nodes: WorkflowNode[] = [
+      { id: "start", type: "start", position: { x: 250, y: 50 }, data: { label: "Start" } },
+      { id: "split", type: "agent", position: { x: 250, y: 150 }, data: { label: first, agentId: first } }
+    ]
+    const edges: WorkflowEdge[] = [
+      { id: "e-start-split", source: "start", target: "split" }
+    ]
+    
+    // Parallele Agents
+    const width = parallel.length * 200
+    const startX = 250 - width / 2 + 100
+    
+    for (let i = 0; i < parallel.length; i++) {
+      const nodeId = `parallel-${i}`
+      nodes.push({
+        id: nodeId,
+        type: "agent",
+        position: { x: startX + i * 200, y: 280 },
+        data: { label: parallel[i], agentId: parallel[i] }
+      })
+      edges.push({ id: `e-split-${nodeId}`, source: "split", target: nodeId })
+    }
+    
+    // Merge Node
+    nodes.push({ id: "merge", type: "agent", position: { x: 250, y: 410 }, 
+      data: { label: "Zusammenführen", agentId: "merger" } })
+    
+    for (let i = 0; i < parallel.length; i++) {
+      edges.push({ id: `e-parallel-${i}-merge`, source: `parallel-${i}`, target: "merge" })
+    }
+    
+    nodes.push({ id: "end", type: "end", position: { x: 250, y: 530 }, data: { label: "Ende" } })
+    edges.push({ id: "e-merge-end", source: "merge", target: "end" })
+    
+    return { nodes, edges }
+  }
+  
+  // Review-Loop: Coder ↔ Reviewer
+  private generateReviewLoop(agents: string[], maxIterations: number): { nodes: WorkflowNode[]; edges: WorkflowEdge[] } {
+    const [coder, reviewer] = agents.length >= 2 ? agents : ["coder", "reviewer"]
+    
+    return {
+      nodes: [
+        { id: "start", type: "start", position: { x: 250, y: 50 }, data: { label: "Start" } },
+        { id: "coder", type: "agent", position: { x: 250, y: 150 }, 
+          data: { label: coder, agentId: coder, maxIterations } },
+        { id: "reviewer", type: "agent", position: { x: 250, y: 280 }, 
+          data: { label: reviewer, agentId: reviewer } },
+        { id: "condition", type: "condition", position: { x: 250, y: 410 }, 
+          data: { label: "Prüfung OK?", conditions: [
+            { id: "has-issues", type: "has-issues", targetNodeId: "coder" },
+            { id: "success", type: "success", targetNodeId: "end" }
+          ] } },
+        { id: "end", type: "end", position: { x: 250, y: 540 }, data: { label: "Ende" } }
+      ],
+      edges: [
+        { id: "e1", source: "start", target: "coder" },
+        { id: "e2", source: "coder", target: "reviewer" },
+        { id: "e3", source: "reviewer", target: "condition" },
+        { id: "e4", source: "condition", target: "coder", label: "Fehler" },
+        { id: "e5", source: "condition", target: "end", label: "OK" }
+      ]
+    }
+  }
+  
+  // Expert-Panel: Multiple Reviewers → Consensus
+  private generateExpertPanel(agents: string[]): { nodes: WorkflowNode[]; edges: WorkflowEdge[] } {
+    const reviewers = agents.length > 0 ? agents : ["reviewer", "security-reviewer", "perf-reviewer"]
+    
+    const nodes: WorkflowNode[] = [
+      { id: "start", type: "start", position: { x: 250, y: 50 }, data: { label: "Start" } },
+      { id: "input", type: "agent", position: { x: 250, y: 150 }, 
+        data: { label: "Eingabe vorbereiten", agentId: "researcher" } }
+    ]
+    const edges: WorkflowEdge[] = [
+      { id: "e-start-input", source: "start", target: "input" }
+    ]
+    
+    // Reviewer Panel
+    const width = reviewers.length * 180
+    const startX = 250 - width / 2 + 90
+    
+    for (let i = 0; i < reviewers.length; i++) {
+      const nodeId = `expert-${i}`
+      nodes.push({
+        id: nodeId,
+        type: "agent",
+        position: { x: startX + i * 180, y: 280 },
+        data: { label: reviewers[i], agentId: "reviewer" }
+      })
+      edges.push({ id: `e-input-${nodeId}`, source: "input", target: nodeId })
+    }
+    
+    // Consensus
+    nodes.push({ id: "consensus", type: "human-decision", position: { x: 250, y: 410 }, 
+      data: { 
+        label: "Konsens finden",
+        question: "Experten-Bewertungen prüfen",
+        options: [
+          { id: "approve", label: "Alle OK", nextNodeId: "end" },
+          { id: "revise", label: "Überarbeiten", nextNodeId: "input" }
+        ]
+      } })
+    
+    for (let i = 0; i < reviewers.length; i++) {
+      edges.push({ id: `e-expert-${i}-consensus`, source: `expert-${i}`, target: "consensus" })
+    }
+    
+    nodes.push({ id: "end", type: "end", position: { x: 250, y: 540 }, data: { label: "Ende" } })
+    edges.push({ id: "e-consensus-end", source: "consensus", target: "end" })
+    
+    return { nodes, edges }
+  }
+  
+  // Divide & Conquer
+  private generateDivideConquer(agents: string[]): { nodes: WorkflowNode[]; edges: WorkflowEdge[] } {
+    const workers = agents.length > 0 ? agents : ["coder", "coder", "coder"]
+    
+    return {
+      nodes: [
+        { id: "start", type: "start", position: { x: 250, y: 50 }, data: { label: "Start" } },
+        { id: "splitter", type: "agent", position: { x: 250, y: 150 }, 
+          data: { label: "Aufgabe aufteilen", agentId: "architect" } },
+        ...workers.map((w, i) => ({
+          id: `worker-${i}`,
+          type: "agent" as const,
+          position: { x: 100 + i * 150, y: 280 },
+          data: { label: `${w} ${i + 1}`, agentId: w }
+        })),
+        { id: "merger", type: "agent", position: { x: 250, y: 410 }, 
+          data: { label: "Zusammenführen", agentId: "architect" } },
+        { id: "end", type: "end", position: { x: 250, y: 540 }, data: { label: "Ende" } }
+      ],
+      edges: [
+        { id: "e-start-splitter", source: "start", target: "splitter" },
+        ...workers.map((_, i) => ({
+          id: `e-splitter-worker-${i}`,
+          source: "splitter",
+          target: `worker-${i}`
+        })),
+        ...workers.map((_, i) => ({
+          id: `e-worker-${i}-merger`,
+          source: `worker-${i}`,
+          target: "merger"
+        })),
+        { id: "e-merger-end", source: "merger", target: "end" }
+      ]
+    }
+  }
+  
+  // Supervisor Pattern
+  private generateSupervisor(agents: string[]): { nodes: WorkflowNode[]; edges: WorkflowEdge[] } {
+    const [supervisor, ...helpers] = agents.length > 1 ? agents : ["architect", "coder", "reviewer"]
+    
+    return {
+      nodes: [
+        { id: "start", type: "start", position: { x: 250, y: 50 }, data: { label: "Start" } },
+        { id: "supervisor", type: "agent", position: { x: 250, y: 150 }, 
+          data: { label: supervisor, agentId: supervisor } },
+        { id: "decision", type: "human-decision", position: { x: 250, y: 280 }, 
+          data: { 
+            label: "Nächster Schritt?",
+            question: "Welcher Agent soll arbeiten?",
+            options: helpers.map((h, i) => ({
+              id: `helper-${i}`,
+              label: h,
+              nextNodeId: `helper-${i}`
+            }))
+          } },
+        ...helpers.map((h, i) => ({
+          id: `helper-${i}`,
+          type: "agent" as const,
+          position: { x: 100 + i * 150, y: 410 },
+          data: { label: h, agentId: h }
+        })),
+        { id: "review", type: "agent", position: { x: 250, y: 540 }, 
+          data: { label: `${supervisor} Review`, agentId: supervisor } },
+        { id: "end", type: "end", position: { x: 250, y: 670 }, data: { label: "Ende" } }
+      ],
+      edges: [
+        { id: "e-start-supervisor", source: "start", target: "supervisor" },
+        { id: "e-supervisor-decision", source: "supervisor", target: "decision" },
+        ...helpers.map((_, i) => ({
+          id: `e-decision-helper-${i}`,
+          source: "decision",
+          target: `helper-${i}`
+        })),
+        ...helpers.map((_, i) => ({
+          id: `e-helper-${i}-review`,
+          source: `helper-${i}`,
+          target: "review"
+        })),
+        { id: "e-review-end", source: "review", target: "end" }
+      ]
+    }
+  }
+}
+
+// === WORKFLOW STATE PERSISTENCE & RECOVERY ===
+
+export interface PersistedWorkflowState {
+  version: string
+  workflowId: string
+  workflow: { nodes: WorkflowNode[]; edges: WorkflowEdge[] }
+  executionState: WorkflowExecutionState
+  context: Record<string, unknown>
+  checkpoint: Date
+  metadata: {
+    name: string
+    description?: string
+    createdAt: Date
+    lastModified: Date
+    executionCount: number
+  }
+}
+
+export class WorkflowStatePersistence {
+  private storageKey: string = "workflow-states"
+  
+  // State speichern
+  save(state: PersistedWorkflowState): void {
+    const states = this.loadAll()
+    const index = states.findIndex(s => s.workflowId === state.workflowId)
+    
+    if (index >= 0) {
+      states[index] = state
+    } else {
+      states.push(state)
+    }
+    
+    this.persist(states)
+  }
+  
+  // State laden
+  load(workflowId: string): PersistedWorkflowState | null {
+    const states = this.loadAll()
+    return states.find(s => s.workflowId === workflowId) || null
+  }
+  
+  // Alle States laden
+  loadAll(): PersistedWorkflowState[] {
+    try {
+      if (typeof localStorage !== "undefined") {
+        const data = localStorage.getItem(this.storageKey)
+        if (data) {
+          return JSON.parse(data)
+        }
+      }
+    } catch {}
+    return []
+  }
+  
+  // Persistieren
+  private persist(states: PersistedWorkflowState[]): void {
+    try {
+      if (typeof localStorage !== "undefined") {
+        localStorage.setItem(this.storageKey, JSON.stringify(states))
+      }
+    } catch {}
+  }
+  
+  // State löschen
+  delete(workflowId: string): boolean {
+    const states = this.loadAll()
+    const index = states.findIndex(s => s.workflowId === workflowId)
+    
+    if (index >= 0) {
+      states.splice(index, 1)
+      this.persist(states)
+      return true
+    }
+    
+    return false
+  }
+  
+  // Checkpoint erstellen
+  createCheckpoint(
+    workflowId: string,
+    workflow: { nodes: WorkflowNode[]; edges: WorkflowEdge[] },
+    executionState: WorkflowExecutionState,
+    context: Record<string, unknown> = {},
+    metadata: Partial<PersistedWorkflowState["metadata"]> = {}
+  ): PersistedWorkflowState {
+    const existing = this.load(workflowId)
+    
+    const state: PersistedWorkflowState = {
+      version: "1.0",
+      workflowId,
+      workflow,
+      executionState,
+      context,
+      checkpoint: new Date(),
+      metadata: {
+        name: metadata.name || existing?.metadata.name || "Unbenannt",
+        description: metadata.description || existing?.metadata.description,
+        createdAt: existing?.metadata.createdAt || new Date(),
+        lastModified: new Date(),
+        executionCount: (existing?.metadata.executionCount || 0) + 1,
+      }
+    }
+    
+    this.save(state)
+    return state
+  }
+  
+  // Von Checkpoint wiederherstellen
+  restore(workflowId: string): {
+    workflow: { nodes: WorkflowNode[]; edges: WorkflowEdge[] }
+    executionState: WorkflowExecutionState
+    context: Record<string, unknown>
+  } | null {
+    const state = this.load(workflowId)
+    if (!state) return null
+    
+    return {
+      workflow: state.workflow,
+      executionState: {
+        ...state.executionState,
+        startedAt: state.executionState.startedAt 
+          ? new Date(state.executionState.startedAt) 
+          : undefined,
+        completedAt: state.executionState.completedAt
+          ? new Date(state.executionState.completedAt)
+          : undefined,
+      },
+      context: state.context,
+    }
+  }
+  
+  // Auto-Recovery bei Crash
+  getRecoverableWorkflows(): PersistedWorkflowState[] {
+    return this.loadAll().filter(
+      s => s.executionState.status === "running" || s.executionState.status === "paused"
+    )
+  }
+  
+  // Alte States aufräumen
+  cleanup(maxAge: number = 30 * 24 * 60 * 60 * 1000): number {
+    const states = this.loadAll()
+    const cutoff = Date.now() - maxAge
+    
+    const filtered = states.filter(s => {
+      const modified = new Date(s.metadata.lastModified).getTime()
+      return modified > cutoff
+    })
+    
+    const removed = states.length - filtered.length
+    this.persist(filtered)
+    
+    return removed
+  }
+  
+  // Export für Backup
+  exportAll(): string {
+    return JSON.stringify(this.loadAll(), null, 2)
+  }
+  
+  // Import aus Backup
+  importAll(json: string): number {
+    try {
+      const states = JSON.parse(json) as PersistedWorkflowState[]
+      this.persist(states)
+      return states.length
+    } catch {
+      return 0
+    }
+  }
+}
+
+// === WORKFLOW QUICK ACTIONS ===
+
+export interface QuickAction {
+  id: string
+  label: string
+  icon: string
+  shortcut?: string
+  action: (workflow: { nodes: WorkflowNode[]; edges: WorkflowEdge[] }) => { 
+    nodes: WorkflowNode[]
+    edges: WorkflowEdge[] 
+  }
+}
+
+export const WORKFLOW_QUICK_ACTIONS: QuickAction[] = [
+  {
+    id: "add-reviewer",
+    label: "Reviewer hinzufügen",
+    icon: "UserCheck",
+    shortcut: "r",
+    action: (workflow) => {
+      const lastAgent = [...workflow.nodes]
+        .filter(n => n.type === "agent")
+        .sort((a, b) => (b.position?.y || 0) - (a.position?.y || 0))[0]
+      
+      if (!lastAgent) return workflow
+      
+      const newId = `reviewer-${Date.now()}`
+      const newNode: WorkflowNode = {
+        id: newId,
+        type: "agent",
+        position: { 
+          x: lastAgent.position?.x || 250, 
+          y: (lastAgent.position?.y || 300) + 130 
+        },
+        data: { label: "Reviewer", agentId: "reviewer" }
+      }
+      
+      // Bestehende Edges vom letzten Agent zum neuen umleiten
+      const edges = workflow.edges.map(e => {
+        if (e.source === lastAgent.id) {
+          return { ...e, source: newId }
+        }
+        return e
+      })
+      
+      // Neue Edge vom letzten Agent zum Reviewer
+      edges.push({
+        id: `edge-${lastAgent.id}-${newId}`,
+        source: lastAgent.id,
+        target: newId
+      })
+      
+      return {
+        nodes: [...workflow.nodes, newNode],
+        edges
+      }
+    }
+  },
+  {
+    id: "add-condition",
+    label: "Bedingung hinzufügen",
+    icon: "GitBranch",
+    shortcut: "c",
+    action: (workflow) => {
+      const lastNode = [...workflow.nodes]
+        .filter(n => n.type !== "end")
+        .sort((a, b) => (b.position?.y || 0) - (a.position?.y || 0))[0]
+      
+      if (!lastNode) return workflow
+      
+      const newId = `condition-${Date.now()}`
+      return {
+        nodes: [...workflow.nodes, {
+          id: newId,
+          type: "condition",
+          position: {
+            x: lastNode.position?.x || 250,
+            y: (lastNode.position?.y || 300) + 130
+          },
+          data: { 
+            label: "Prüfung",
+            conditions: [
+              { id: "success", type: "success", label: "Erfolgreich" },
+              { id: "has-issues", type: "has-issues", label: "Hat Probleme" }
+            ]
+          }
+        }],
+        edges: [...workflow.edges, {
+          id: `edge-${lastNode.id}-${newId}`,
+          source: lastNode.id,
+          target: newId
+        }]
+      }
+    }
+  },
+  {
+    id: "auto-layout",
+    label: "Layout optimieren",
+    icon: "Layout",
+    shortcut: "l",
+    action: (workflow) => {
+      // Einfaches vertikales Layout
+      const sorted = topologicalSort(workflow.nodes, workflow.edges)
+      const nodes = workflow.nodes.map(node => {
+        const index = sorted.indexOf(node.id)
+        return {
+          ...node,
+          position: {
+            x: 250,
+            y: 50 + index * 130
+          }
+        }
+      })
+      
+      return { nodes, edges: workflow.edges }
+    }
+  }
+]
+
+// Topologische Sortierung für Layout
+function topologicalSort(nodes: WorkflowNode[], edges: WorkflowEdge[]): string[] {
+  const result: string[] = []
+  const visited = new Set<string>()
+  const temp = new Set<string>()
+  
+  const adjacency = new Map<string, string[]>()
+  for (const node of nodes) {
+    adjacency.set(node.id, [])
+  }
+  for (const edge of edges) {
+    adjacency.get(edge.source)?.push(edge.target)
+  }
+  
+  function visit(nodeId: string): void {
+    if (visited.has(nodeId)) return
+    if (temp.has(nodeId)) return // Zyklus
+    
+    temp.add(nodeId)
+    
+    for (const neighbor of adjacency.get(nodeId) || []) {
+      visit(neighbor)
+    }
+    
+    temp.delete(nodeId)
+    visited.add(nodeId)
+    result.unshift(nodeId)
+  }
+  
+  // Start-Node zuerst
+  const startNode = nodes.find(n => n.type === "start")
+  if (startNode) visit(startNode.id)
+  
+  // Restliche Nodes
+  for (const node of nodes) {
+    visit(node.id)
+  }
+  
+  return result
+}
