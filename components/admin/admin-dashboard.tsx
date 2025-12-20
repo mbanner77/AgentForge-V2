@@ -139,7 +139,7 @@ export function AdminDashboard() {
   } = useAgentStore()
   
   // MCP Server State
-  const [activeTab, setActiveTab] = useState<"agents" | "mcp" | "users">("agents")
+  const [activeTab, setActiveTab] = useState<"agents" | "mcp" | "users" | "customizing">("agents")
   const [mcpSearchQuery, setMcpSearchQuery] = useState("")
   const [mcpSelectedCategory, setMcpSelectedCategory] = useState("all")
   
@@ -152,7 +152,153 @@ export function AdminDashboard() {
   const [editPassword, setEditPassword] = useState("")
   const [editRole, setEditRole] = useState<"admin" | "user">("user")
   
+  // Customizing State
+  const [mcpMode, setMcpMode] = useState<"demo" | "production">("demo")
+  const [btpDeploying, setBtpDeploying] = useState(false)
+  const [btpLogs, setBtpLogs] = useState<string[]>([])
+  const [btpStatus, setBtpStatus] = useState<"idle" | "validating" | "building" | "deploying" | "success" | "error">("idle")
+  
   const userIsAdmin = isAdmin()
+  
+  // Load MCP mode from localStorage
+  useState(() => {
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem("mcp_mode")
+      if (stored === "demo" || stored === "production") {
+        setMcpMode(stored)
+      }
+    }
+  })
+  
+  const handleMcpModeChange = (mode: "demo" | "production") => {
+    setMcpMode(mode)
+    if (typeof window !== "undefined") {
+      localStorage.setItem("mcp_mode", mode)
+    }
+  }
+  
+  const handleBtpDeploy = async () => {
+    const { globalConfig } = useAgentStore.getState()
+    
+    if (!globalConfig.btpApiEndpoint || !globalConfig.btpOrg || !globalConfig.btpSpace || 
+        !globalConfig.btpUsername || !globalConfig.btpPassword) {
+      setBtpLogs(["Fehler: BTP Credentials nicht vollständig konfiguriert.", "Bitte unter Settings → API Keys → SAP BTP Credentials konfigurieren."])
+      setBtpStatus("error")
+      return
+    }
+    
+    setBtpDeploying(true)
+    setBtpLogs([])
+    setBtpStatus("validating")
+    
+    try {
+      // 1. Validate credentials
+      setBtpLogs(prev => [...prev, "Validiere BTP Credentials..."])
+      const validateRes = await fetch("/api/btp/deploy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "validate",
+          credentials: {
+            apiEndpoint: globalConfig.btpApiEndpoint,
+            org: globalConfig.btpOrg,
+            space: globalConfig.btpSpace,
+            username: globalConfig.btpUsername,
+            password: globalConfig.btpPassword,
+          },
+        }),
+      })
+      const validateData = await validateRes.json()
+      
+      if (!validateData.valid) {
+        setBtpLogs(prev => [...prev, `Fehler: ${validateData.errors?.join(", ") || "Validation failed"}`])
+        setBtpStatus("error")
+        return
+      }
+      setBtpLogs(prev => [...prev, `✓ Credentials valid (${validateData.mode} mode)`])
+      
+      // 2. Generate MTA
+      setBtpStatus("building")
+      setBtpLogs(prev => [...prev, "", "Generiere MTA Konfiguration..."])
+      const mtaRes = await fetch("/api/btp/deploy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "generate-mta",
+          config: {
+            appName: "agentforge-app",
+            projectType: "fiori",
+            useHANA: false,
+          },
+        }),
+      })
+      const mtaData = await mtaRes.json()
+      if (mtaData.success) {
+        setBtpLogs(prev => [...prev, "✓ MTA Konfiguration generiert"])
+      }
+      
+      // 3. Build
+      setBtpLogs(prev => [...prev, "", "Baue MTA Archive..."])
+      const buildRes = await fetch("/api/btp/deploy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "build",
+          config: {
+            appName: "agentforge-app",
+            projectType: "fiori",
+            projectPath: "./",
+          },
+        }),
+      })
+      const buildData = await buildRes.json()
+      buildData.logs?.forEach((log: string) => setBtpLogs(prev => [...prev, log]))
+      
+      if (!buildData.success && buildData.mode !== "demo") {
+        setBtpStatus("error")
+        return
+      }
+      setBtpLogs(prev => [...prev, `✓ Build erfolgreich (${buildData.mode} mode)`])
+      
+      // 4. Deploy
+      setBtpStatus("deploying")
+      setBtpLogs(prev => [...prev, "", "Deploye zu SAP BTP..."])
+      const deployRes = await fetch("/api/btp/deploy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "deploy",
+          config: {
+            appName: "agentforge-app",
+            projectType: "fiori",
+            projectPath: "./",
+            credentials: {
+              apiEndpoint: globalConfig.btpApiEndpoint,
+              org: globalConfig.btpOrg,
+              space: globalConfig.btpSpace,
+              username: globalConfig.btpUsername,
+              password: globalConfig.btpPassword,
+            },
+          },
+        }),
+      })
+      const deployData = await deployRes.json()
+      deployData.logs?.forEach((log: string) => setBtpLogs(prev => [...prev, log]))
+      
+      if (deployData.success) {
+        setBtpStatus("success")
+        setBtpLogs(prev => [...prev, "", `🚀 Deployment erfolgreich!`, `App URL: ${deployData.appUrl || "N/A"}`])
+      } else {
+        setBtpStatus("error")
+        setBtpLogs(prev => [...prev, `Fehler: ${deployData.error || "Deployment failed"}`])
+      }
+    } catch (error) {
+      setBtpStatus("error")
+      setBtpLogs(prev => [...prev, `Fehler: ${error instanceof Error ? error.message : "Unknown error"}`])
+    } finally {
+      setBtpDeploying(false)
+    }
+  }
 
   const handleLogout = () => {
     logout()
@@ -252,14 +398,24 @@ export function AdminDashboard() {
                 MCP Server
               </Button>
               {userIsAdmin && (
-                <Button
-                  variant={activeTab === "users" ? "default" : "ghost"}
-                  size="sm"
-                  onClick={() => setActiveTab("users")}
-                >
-                  <User className="h-4 w-4 mr-2" />
-                  Benutzer
-                </Button>
+                <>
+                  <Button
+                    variant={activeTab === "users" ? "default" : "ghost"}
+                    size="sm"
+                    onClick={() => setActiveTab("users")}
+                  >
+                    <User className="h-4 w-4 mr-2" />
+                    Benutzer
+                  </Button>
+                  <Button
+                    variant={activeTab === "customizing" ? "default" : "ghost"}
+                    size="sm"
+                    onClick={() => setActiveTab("customizing")}
+                  >
+                    <Settings className="h-4 w-4 mr-2" />
+                    Customizing
+                  </Button>
+                </>
               )}
             </div>
           </div>
@@ -885,6 +1041,204 @@ export function AdminDashboard() {
                         <li>• <strong>Benutzer</strong> können den Builder nutzen, aber keine Systemkonfiguration ändern</li>
                         <li>• Mindestens ein Administrator muss immer vorhanden sein</li>
                       </ul>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* Customizing Tab */}
+            {activeTab === "customizing" && userIsAdmin && (
+              <>
+                <div className="mb-6">
+                  <h1 className="text-2xl font-bold mb-2">System Customizing</h1>
+                  <p className="text-muted-foreground">
+                    Konfiguriere den Betriebsmodus und Deployment-Einstellungen
+                  </p>
+                </div>
+
+                {/* MCP Mode Toggle */}
+                <div className="mb-8 p-6 rounded-lg border border-border bg-card">
+                  <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                    <Server className="h-5 w-5" />
+                    MCP Betriebsmodus
+                  </h2>
+                  <p className="text-sm text-muted-foreground mb-6">
+                    Wähle zwischen Demo-Modus (simulierte Responses) und Production-Modus (echte MCP Server Aufrufe)
+                  </p>
+                  
+                  <div className="grid grid-cols-2 gap-6">
+                    <button
+                      onClick={() => handleMcpModeChange("demo")}
+                      className={`flex flex-col items-center p-6 rounded-xl border-2 transition-all ${
+                        mcpMode === "demo" 
+                          ? "border-blue-500 bg-blue-500/10" 
+                          : "border-border hover:border-blue-500/50"
+                      }`}
+                    >
+                      <div className={`p-4 rounded-full mb-4 ${mcpMode === "demo" ? "bg-blue-500/20" : "bg-secondary"}`}>
+                        <TestTube className={`h-8 w-8 ${mcpMode === "demo" ? "text-blue-500" : "text-muted-foreground"}`} />
+                      </div>
+                      <span className="font-semibold text-lg">Demo-Modus</span>
+                      <span className="text-sm text-muted-foreground text-center mt-2">
+                        Simulierte MCP Responses<br/>Keine echten Server erforderlich
+                      </span>
+                      {mcpMode === "demo" && (
+                        <Badge className="mt-4 bg-blue-500">Aktiv</Badge>
+                      )}
+                    </button>
+                    
+                    <button
+                      onClick={() => handleMcpModeChange("production")}
+                      className={`flex flex-col items-center p-6 rounded-xl border-2 transition-all ${
+                        mcpMode === "production" 
+                          ? "border-green-500 bg-green-500/10" 
+                          : "border-border hover:border-green-500/50"
+                      }`}
+                    >
+                      <div className={`p-4 rounded-full mb-4 ${mcpMode === "production" ? "bg-green-500/20" : "bg-secondary"}`}>
+                        <Zap className={`h-8 w-8 ${mcpMode === "production" ? "text-green-500" : "text-muted-foreground"}`} />
+                      </div>
+                      <span className="font-semibold text-lg">Production-Modus</span>
+                      <span className="text-sm text-muted-foreground text-center mt-2">
+                        Echte MCP Server Aufrufe<br/>Volle Funktionalität
+                      </span>
+                      {mcpMode === "production" && (
+                        <Badge className="mt-4 bg-green-500">Aktiv</Badge>
+                      )}
+                    </button>
+                  </div>
+
+                  <div className={`mt-6 p-4 rounded-lg ${mcpMode === "production" ? "bg-green-500/10 border border-green-500/30" : "bg-blue-500/10 border border-blue-500/30"}`}>
+                    <p className="text-sm">
+                      {mcpMode === "production" ? (
+                        <>
+                          <strong className="text-green-500">Production-Modus aktiv:</strong> MCP Server werden real aufgerufen. 
+                          Stelle sicher, dass die erforderlichen Server installiert sind.
+                        </>
+                      ) : (
+                        <>
+                          <strong className="text-blue-500">Demo-Modus aktiv:</strong> Alle MCP Aufrufe werden simuliert. 
+                          Ideal für Entwicklung, Tests und Demos.
+                        </>
+                      )}
+                    </p>
+                  </div>
+                </div>
+
+                {/* BTP Deployment */}
+                <div className="mb-8 p-6 rounded-lg border border-border bg-card">
+                  <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                    <Cloud className="h-5 w-5" />
+                    SAP BTP Deployment
+                  </h2>
+                  <p className="text-sm text-muted-foreground mb-6">
+                    Deploye generierte Apps direkt zur SAP Business Technology Platform
+                  </p>
+
+                  <div className="flex gap-4 mb-6">
+                    <Button
+                      onClick={handleBtpDeploy}
+                      disabled={btpDeploying}
+                      size="lg"
+                      className="gap-2"
+                    >
+                      {btpDeploying ? (
+                        <>
+                          <RefreshCw className="h-4 w-4 animate-spin" />
+                          Deployment läuft...
+                        </>
+                      ) : (
+                        <>
+                          <Cloud className="h-4 w-4" />
+                          Deploy zu BTP
+                        </>
+                      )}
+                    </Button>
+                    
+                    <Button
+                      variant="outline"
+                      onClick={() => router.push("/settings")}
+                      className="gap-2"
+                    >
+                      <Settings className="h-4 w-4" />
+                      BTP Credentials konfigurieren
+                    </Button>
+                  </div>
+
+                  {/* Deployment Status */}
+                  {btpStatus !== "idle" && (
+                    <div className="mb-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-sm font-medium">Status:</span>
+                        {btpStatus === "validating" && <Badge variant="outline">Validiere...</Badge>}
+                        {btpStatus === "building" && <Badge variant="outline" className="bg-yellow-500/20">Baue...</Badge>}
+                        {btpStatus === "deploying" && <Badge variant="outline" className="bg-blue-500/20">Deploye...</Badge>}
+                        {btpStatus === "success" && <Badge className="bg-green-500">Erfolgreich</Badge>}
+                        {btpStatus === "error" && <Badge variant="destructive">Fehler</Badge>}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Deployment Logs */}
+                  {btpLogs.length > 0 && (
+                    <div className="bg-black/90 rounded-lg p-4 font-mono text-sm max-h-80 overflow-y-auto">
+                      {btpLogs.map((log, index) => (
+                        <div 
+                          key={index} 
+                          className={`${
+                            log.startsWith("✓") ? "text-green-400" :
+                            log.startsWith("Fehler") || log.startsWith("❌") ? "text-red-400" :
+                            log.startsWith("🚀") ? "text-blue-400" :
+                            log.startsWith("[Demo]") ? "text-yellow-400" :
+                            "text-gray-300"
+                          }`}
+                        >
+                          {log || "\u00A0"}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Requirements Info */}
+                  <div className="mt-6 p-4 rounded-lg border border-amber-500/30 bg-amber-500/5">
+                    <div className="flex items-start gap-3">
+                      <Shield className="h-5 w-5 text-amber-500 mt-0.5" />
+                      <div>
+                        <h3 className="font-medium text-amber-500">Voraussetzungen für Production Deployment</h3>
+                        <ul className="mt-2 text-sm text-muted-foreground space-y-1">
+                          <li>• BTP Credentials in Settings konfiguriert</li>
+                          <li>• Cloud Foundry CLI installiert (<code className="bg-secondary px-1 rounded">cf</code>)</li>
+                          <li>• MTA Build Tool installiert (<code className="bg-secondary px-1 rounded">mbt</code>)</li>
+                          <li>• MCP Mode auf "Production" gesetzt</li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Environment Info */}
+                <div className="p-6 rounded-lg border border-border bg-card">
+                  <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                    <Monitor className="h-5 w-5" />
+                    Umgebungsinformationen
+                  </h2>
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div className="p-3 rounded-lg bg-secondary/50">
+                      <span className="text-muted-foreground">MCP Modus:</span>
+                      <span className="ml-2 font-medium">{mcpMode === "production" ? "Production" : "Demo"}</span>
+                    </div>
+                    <div className="p-3 rounded-lg bg-secondary/50">
+                      <span className="text-muted-foreground">Installierte Agenten:</span>
+                      <span className="ml-2 font-medium">{installedAgents.length}</span>
+                    </div>
+                    <div className="p-3 rounded-lg bg-secondary/50">
+                      <span className="text-muted-foreground">Installierte MCP Server:</span>
+                      <span className="ml-2 font-medium">{installedMcpServers.length}</span>
+                    </div>
+                    <div className="p-3 rounded-lg bg-secondary/50">
+                      <span className="text-muted-foreground">Workflow Schritte:</span>
+                      <span className="ml-2 font-medium">{workflowOrder.length}</span>
                     </div>
                   </div>
                 </div>
