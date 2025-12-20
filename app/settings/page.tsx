@@ -26,10 +26,14 @@ import {
   Eye,
   ExternalLink,
   CheckCircle2,
+  Server,
+  Play,
+  TestTube,
 } from "lucide-react"
 import { useAgentStore } from "@/lib/agent-store"
 import { useAuth } from "@/lib/auth"
 import { toast } from "sonner"
+import { getMCPMode, setMCPMode, type MCPMode } from "@/lib/mcp-config"
 
 export default function SettingsPage() {
   const router = useRouter()
@@ -38,6 +42,14 @@ export default function SettingsPage() {
   
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({})
   const [hasChanges, setHasChanges] = useState(false)
+  const [mcpMode, setMcpModeState] = useState<MCPMode>(getMCPMode())
+
+  const handleMCPModeChange = (mode: MCPMode) => {
+    setMcpModeState(mode)
+    setMCPMode(mode)
+    setHasChanges(true)
+    toast.success(`MCP Modus auf "${mode === "production" ? "Production" : "Demo"}" gesetzt`)
+  }
 
   const toggleKeyVisibility = (key: string) => {
     setShowKeys(prev => ({ ...prev, [key]: !prev[key] }))
@@ -483,6 +495,82 @@ export default function SettingsPage() {
 
           {/* Advanced */}
           <TabsContent value="advanced" className="space-y-4">
+            {/* MCP Configuration */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Server className="h-5 w-5" />
+                  MCP Server Konfiguration
+                </CardTitle>
+                <CardDescription>Konfiguriere den Betriebsmodus für MCP (Model Context Protocol) Server</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="space-y-4">
+                  <Label>MCP Betriebsmodus</Label>
+                  <div className="grid grid-cols-2 gap-4">
+                    <button
+                      onClick={() => handleMCPModeChange("demo")}
+                      className={`flex flex-col items-center p-4 rounded-lg border-2 transition-all ${
+                        mcpMode === "demo" 
+                          ? "border-primary bg-primary/10" 
+                          : "border-border hover:border-primary/50"
+                      }`}
+                    >
+                      <TestTube className={`h-8 w-8 mb-2 ${mcpMode === "demo" ? "text-primary" : "text-muted-foreground"}`} />
+                      <span className="font-medium">Demo</span>
+                      <span className="text-xs text-muted-foreground text-center mt-1">
+                        Simulierte Responses für Entwicklung
+                      </span>
+                    </button>
+                    <button
+                      onClick={() => handleMCPModeChange("production")}
+                      className={`flex flex-col items-center p-4 rounded-lg border-2 transition-all ${
+                        mcpMode === "production" 
+                          ? "border-green-500 bg-green-500/10" 
+                          : "border-border hover:border-green-500/50"
+                      }`}
+                    >
+                      <Play className={`h-8 w-8 mb-2 ${mcpMode === "production" ? "text-green-500" : "text-muted-foreground"}`} />
+                      <span className="font-medium">Production</span>
+                      <span className="text-xs text-muted-foreground text-center mt-1">
+                        Echte MCP Server Aufrufe
+                      </span>
+                    </button>
+                  </div>
+                  <div className={`rounded-lg p-3 ${mcpMode === "production" ? "bg-green-500/10 border border-green-500/30" : "bg-blue-500/10 border border-blue-500/30"}`}>
+                    <p className="text-sm">
+                      {mcpMode === "production" ? (
+                        <>
+                          <strong className="text-green-500">Production-Modus aktiv:</strong> MCP Server werden real aufgerufen. 
+                          Stelle sicher, dass die Server installiert sind.
+                        </>
+                      ) : (
+                        <>
+                          <strong className="text-blue-500">Demo-Modus aktiv:</strong> MCP Aufrufe werden simuliert. 
+                          Ideal für Entwicklung und Tests.
+                        </>
+                      )}
+                    </p>
+                  </div>
+                </div>
+
+                {mcpMode === "production" && (
+                  <div className="space-y-3 pt-4 border-t">
+                    <Label>MCP Server Installation</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Für Production-Modus müssen die MCP Server global installiert sein.
+                    </p>
+                    <div className="bg-muted rounded-lg p-3 font-mono text-xs overflow-x-auto">
+                      <code>chmod +x scripts/install-mcp-servers.sh && ./scripts/install-mcp-servers.sh</code>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Oder setze <code className="bg-muted px-1 py-0.5 rounded">MCP_MODE=production</code> in deiner <code className="bg-muted px-1 py-0.5 rounded">.env.local</code>
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
             <Card>
               <CardHeader>
                 <CardTitle>Erweiterte Einstellungen</CardTitle>

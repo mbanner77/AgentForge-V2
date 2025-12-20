@@ -1,5 +1,69 @@
 import { NextRequest, NextResponse } from "next/server"
 import { mcpServers } from "@/lib/mcp-servers"
+import { getMCPMode } from "@/lib/mcp-config"
+import { execSync } from "child_process"
+
+// Call real MCP server via npx (Production mode)
+async function callRealMCPServer(
+  npmPackage: string,
+  capability: string,
+  args: Record<string, unknown>,
+  config: Record<string, unknown>
+): Promise<unknown> {
+  // Build environment variables from config
+  const env: NodeJS.ProcessEnv = { ...process.env }
+  for (const [key, value] of Object.entries(config)) {
+    env[`MCP_${key.toUpperCase()}`] = String(value)
+  }
+
+  // Build MCP request
+  const request = {
+    jsonrpc: "2.0",
+    id: Date.now(),
+    method: "tools/call",
+    params: {
+      name: capability,
+      arguments: args,
+    },
+  }
+
+  try {
+    // Execute MCP server with request via echo and pipe
+    const requestJson = JSON.stringify(request)
+    const command = `echo '${requestJson.replace(/'/g, "'\\''")}' | npx -y ${npmPackage}`
+    
+    const result = execSync(command, {
+      env,
+      timeout: 30000,
+      encoding: "utf-8",
+      maxBuffer: 10 * 1024 * 1024, // 10MB
+    })
+
+    // Parse response
+    const lines = result.split("\n").filter(l => l.trim())
+    for (const line of lines) {
+      try {
+        const response = JSON.parse(line)
+        if (response.result) {
+          return response.result
+        }
+        if (response.error) {
+          throw new Error(response.error.message || "MCP error")
+        }
+      } catch {
+        // Not valid JSON, continue
+      }
+    }
+
+    // Return raw output if no JSON response
+    return { raw: result }
+  } catch (error) {
+    if (error instanceof Error) {
+      throw new Error(`MCP server error: ${error.message}`)
+    }
+    throw error
+  }
+}
 
 // Simulate tool calls for demo mode
 function simulateToolCall(serverId: string, capability: string, args: Record<string, unknown>): unknown {
@@ -261,21 +325,55 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Execute tool call (demo mode with simulated responses)
-    // In production, this would connect to real MCP servers via stdio
-    const result = simulateToolCall(serverId, capability, args || {})
+    // Check MCP mode
+    const mcpMode = getMCPMode()
     
-    return NextResponse.json({
-      success: true,
-      result,
-      mode: "demo",
-      server: server.name,
-      capability,
-      npmPackage: server.npmPackage,
-      hint: server.npmPackage 
-        ? `Für Production: npm install -g ${server.npmPackage}` 
-        : "Kein npm Package verfügbar",
-    })
+    if (mcpMode === "demo") {
+      // Demo mode: Use simulated responses
+      const result = simulateToolCall(serverId, capability, args || {})
+      return NextResponse.json({
+        success: true,
+        result,
+        mode: "demo",
+        server: server.name,
+        capability,
+        npmPackage: server.npmPackage,
+        hint: server.npmPackage 
+          ? `Für Production: npm install -g ${server.npmPackage}` 
+          : "Kein npm Package verfügbar",
+      })
+    }
+    
+    // Production mode: Call real MCP server
+    if (!server.npmPackage) {
+      return NextResponse.json(
+        { error: `Server ${serverId} hat kein npm Package für Production` },
+        { status: 400 }
+      )
+    }
+    
+    try {
+      const result = await callRealMCPServer(server.npmPackage, capability, args || {}, config || {})
+      return NextResponse.json({
+        success: true,
+        result,
+        mode: "production",
+        server: server.name,
+        capability,
+      })
+    } catch (error) {
+      // Fallback to demo mode on error
+      console.error(`MCP Production Error for ${serverId}:`, error)
+      const result = simulateToolCall(serverId, capability, args || {})
+      return NextResponse.json({
+        success: true,
+        result,
+        mode: "demo",
+        server: server.name,
+        capability,
+        warning: `Production-Aufruf fehlgeschlagen, Demo-Mode verwendet: ${error instanceof Error ? error.message : "Unknown error"}`,
+      })
+    }
   } catch (error) {
     console.error("MCP call error:", error)
     return NextResponse.json(
