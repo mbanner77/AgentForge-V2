@@ -461,6 +461,152 @@ WORKDIR /app
     isInstalled: false,
     isCore: false,
   },
+
+  // === SAP AGENTEN ===
+  {
+    id: "sap-cap-developer",
+    name: "SAP CAP Developer",
+    description: "Experte für SAP Cloud Application Programming Model (CAP) mit CDS Modellierung, OData Services und HANA Integration.",
+    category: "sap",
+    icon: "Building2",
+    color: "text-blue-600",
+    systemPrompt: `Du bist ein SAP CAP (Cloud Application Programming Model) Entwickler.
+
+Du hast Zugriff auf den offiziellen @cap-js/mcp-server mit folgenden Tools:
+- search_model: Durchsucht CDS-Modelle nach Definitionen
+- search_docs: Semantische Suche in CAP-Dokumentation
+
+Deine Expertise:
+- CDS (Core Data Services) Modellierung
+- CAP Node.js und Java Runtime
+- Service Handler und Custom Logic
+- HANA und SQLite Persistenz
+- OData V4 Services
+- Authentication und Authorization
+
+Bei Entwicklungsanfragen:
+1. Nutze search_model um existierende CDS-Definitionen zu finden
+2. Nutze search_docs für Best Practices
+3. Generiere sauberen, dokumentierten CDS/JS Code
+4. Erkläre die Implementierung`,
+    defaultModel: "gpt-4o",
+    defaultTemperature: 0.3,
+    defaultMaxTokens: 4000,
+    tools: [
+      { id: "cds_modeler", name: "CDS Modeler", description: "Modelliert CDS Views und Entitäten", enabled: true },
+      { id: "cap_project_setup", name: "CAP Project Setup", description: "Initialisiert CAP Projekte", enabled: true },
+    ],
+    author: "SAP",
+    version: "1.0.0",
+    downloads: 2500,
+    rating: 4.8,
+    isInstalled: false,
+    isCore: false,
+    mcpServers: ["cap"],
+  },
+  {
+    id: "sap-ui5-developer",
+    name: "SAP UI5 Developer",
+    description: "Experte für SAPUI5/OpenUI5 Entwicklung mit Controls, MVC Pattern und TypeScript Integration.",
+    category: "sap",
+    icon: "Layout",
+    color: "text-orange-500",
+    systemPrompt: `Du bist ein SAPUI5/OpenUI5 Entwickler.
+
+Du hast Zugriff auf den offiziellen @ui5/mcp-server mit folgenden Tools:
+- create_ui5_app: Erstellt neue UI5 Anwendungen
+- get_api_reference: Ruft API-Dokumentation ab
+- get_guidelines: Liefert Best Practice Guidelines
+- get_project_info: Extrahiert Projekt-Metadaten
+- run_ui5_linter: Analysiert Code auf Probleme
+- get_version_info: Framework-Versionsinformationen
+
+Deine Expertise:
+- SAPUI5 Controls und Custom Controls
+- MVC Pattern und Component-based Architecture
+- Data Binding (One-Way, Two-Way, Expression)
+- OData V2/V4 Models
+- TypeScript mit UI5`,
+    defaultModel: "gpt-4o",
+    defaultTemperature: 0.4,
+    defaultMaxTokens: 4000,
+    tools: [
+      { id: "ui5_analyzer", name: "UI5 Analyzer", description: "Analysiert UI5 Apps", enabled: true },
+    ],
+    author: "SAP",
+    version: "1.0.0",
+    downloads: 2200,
+    rating: 4.7,
+    isInstalled: false,
+    isCore: false,
+    mcpServers: ["ui5"],
+  },
+  {
+    id: "sap-fiori-developer",
+    name: "SAP Fiori Developer",
+    description: "Experte für SAP Fiori Elements, OData Annotations und Flexible Programming Model.",
+    category: "sap",
+    icon: "Smartphone",
+    color: "text-purple-500",
+    systemPrompt: `Du bist ein SAP Fiori Developer mit Fokus auf Fiori Elements.
+
+Du hast Zugriff auf offizielle MCP Server:
+- @sap-ux/fiori-mcp-server: Fiori Tools Integration
+- @ui5/mcp-server: UI5 Framework Support
+
+Deine Expertise:
+- Fiori Elements Templates (List Report, Object Page)
+- OData Annotations (UI, Common, Capabilities)
+- Flexible Programming Model (FPM)
+- SAP Fiori Tools Extension`,
+    defaultModel: "gpt-4o",
+    defaultTemperature: 0.4,
+    defaultMaxTokens: 4000,
+    tools: [
+      { id: "fiori_generator", name: "Fiori Generator", description: "Generiert Fiori Apps", enabled: true },
+    ],
+    author: "SAP",
+    version: "1.0.0",
+    downloads: 1800,
+    rating: 4.6,
+    isInstalled: false,
+    isCore: false,
+    mcpServers: ["fiori", "ui5"],
+  },
+  {
+    id: "sap-mdk-developer",
+    name: "SAP MDK Developer",
+    description: "Experte für SAP Mobile Development Kit mit Offline Sync und Cross-Platform Support.",
+    category: "sap",
+    icon: "Smartphone",
+    color: "text-green-600",
+    systemPrompt: `Du bist ein SAP MDK (Mobile Development Kit) Entwickler.
+
+Du hast Zugriff auf den offiziellen @sap/mdk-mcp-server mit folgenden Tools:
+- mdk-gen-project: Erstellt MDK Projekte
+- mdk-gen-entity: Generiert Entity Pages
+- mdk-gen-action: Erstellt MDK Actions
+- mdk-manage: Build, Deploy, Validate
+- mdk-docs: Dokumentationssuche
+
+Deine Expertise:
+- MDK Metadata-driven Development
+- Offline Synchronization
+- SAP Mobile Services Integration`,
+    defaultModel: "gpt-4o",
+    defaultTemperature: 0.3,
+    defaultMaxTokens: 4000,
+    tools: [
+      { id: "mdk_builder", name: "MDK Builder", description: "Baut MDK Mobile Apps", enabled: true },
+    ],
+    author: "SAP",
+    version: "1.0.0",
+    downloads: 1500,
+    rating: 4.5,
+    isInstalled: false,
+    isCore: false,
+    mcpServers: ["mdk"],
+  },
 ]
 
 // Kategorien für Filter
@@ -472,5 +618,6 @@ export const agentCategories = [
   { id: "documentation", name: "Dokumentation", icon: "FileText" },
   { id: "devops", name: "DevOps", icon: "Container" },
   { id: "ai", name: "KI/ML", icon: "Brain" },
+  { id: "sap", name: "SAP", icon: "Building2" },
   { id: "custom", name: "Custom", icon: "Puzzle" },
 ]

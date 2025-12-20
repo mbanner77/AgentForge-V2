@@ -117,6 +117,7 @@ const categoryIconMap: Record<string, any> = {
   MessageSquare,
   Sparkles,
   MoreHorizontal,
+  Building2: Server, // SAP Icon mapping
 }
 
 export function AdminDashboard() {

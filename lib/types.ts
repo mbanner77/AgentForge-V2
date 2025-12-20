@@ -138,7 +138,7 @@ export interface MarketplaceAgent {
   id: string
   name: string
   description: string
-  category: "development" | "testing" | "security" | "documentation" | "devops" | "ai" | "custom"
+  category: "development" | "testing" | "security" | "documentation" | "devops" | "ai" | "sap" | "custom"
   icon: string
   color: string
   systemPrompt: string
@@ -152,6 +152,7 @@ export interface MarketplaceAgent {
   rating: number
   isInstalled: boolean
   isCore: boolean // Core agents können nicht entfernt werden
+  mcpServers?: string[] // Optional: Zugewiesene MCP Server (z.B. SAP MCP Server)
 }
 
 // Custom Agent (installierter Agent)
