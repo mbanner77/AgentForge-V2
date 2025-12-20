@@ -402,6 +402,101 @@ export default function SettingsPage() {
                 </div>
               </CardContent>
             </Card>
+
+            {/* SAP BTP Credentials */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Database className="h-5 w-5" />
+                  SAP BTP Credentials
+                </CardTitle>
+                <CardDescription>Konfiguriere deine SAP Business Technology Platform Zugangsdaten für Deployments</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* API Endpoint */}
+                <div className="space-y-2">
+                  <Label>Cloud Foundry API Endpoint</Label>
+                  <Select 
+                    value={globalConfig.btpApiEndpoint || ""} 
+                    onValueChange={(v) => { updateGlobalConfig({ btpApiEndpoint: v }); setHasChanges(true) }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Region wählen..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="https://api.cf.eu10.hana.ondemand.com">Europe (Frankfurt) - eu10</SelectItem>
+                      <SelectItem value="https://api.cf.eu20.hana.ondemand.com">Europe (Netherlands) - eu20</SelectItem>
+                      <SelectItem value="https://api.cf.us10.hana.ondemand.com">US East (VA) - us10</SelectItem>
+                      <SelectItem value="https://api.cf.us20.hana.ondemand.com">US West (WA) - us20</SelectItem>
+                      <SelectItem value="https://api.cf.ap10.hana.ondemand.com">Australia (Sydney) - ap10</SelectItem>
+                      <SelectItem value="https://api.cf.ap11.hana.ondemand.com">Singapore - ap11</SelectItem>
+                      <SelectItem value="https://api.cf.jp10.hana.ondemand.com">Japan (Tokyo) - jp10</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Organization */}
+                <div className="space-y-2">
+                  <Label>Organisation</Label>
+                  <Input
+                    value={globalConfig.btpOrg || ""}
+                    onChange={(e) => { updateGlobalConfig({ btpOrg: e.target.value }); setHasChanges(true) }}
+                    placeholder="z.B. my-org-trial"
+                  />
+                </div>
+
+                {/* Space */}
+                <div className="space-y-2">
+                  <Label>Space</Label>
+                  <Input
+                    value={globalConfig.btpSpace || ""}
+                    onChange={(e) => { updateGlobalConfig({ btpSpace: e.target.value }); setHasChanges(true) }}
+                    placeholder="z.B. dev"
+                  />
+                </div>
+
+                {/* Username */}
+                <div className="space-y-2">
+                  <Label>BTP Username (Email)</Label>
+                  <Input
+                    type="email"
+                    value={globalConfig.btpUsername || ""}
+                    onChange={(e) => { updateGlobalConfig({ btpUsername: e.target.value }); setHasChanges(true) }}
+                    placeholder="your.email@company.com"
+                  />
+                </div>
+
+                {/* Password */}
+                <div className="space-y-2">
+                  <Label>BTP Password / API Token</Label>
+                  <div className="relative">
+                    <Input
+                      type={showKeys.btp ? "text" : "password"}
+                      value={globalConfig.btpPassword || ""}
+                      onChange={(e) => { updateGlobalConfig({ btpPassword: e.target.value }); setHasChanges(true) }}
+                      placeholder="••••••••"
+                      className="pr-20"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="absolute right-1 top-1/2 -translate-y-1/2"
+                      onClick={() => toggleKeyVisibility("btp")}
+                    >
+                      {showKeys.btp ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="rounded-lg bg-blue-500/10 border border-blue-500/30 p-3">
+                  <p className="text-sm text-blue-600 dark:text-blue-400">
+                    <strong>Tipp:</strong> Für Production-Deployments empfehlen wir einen API Token statt Passwort.
+                    Erstelle einen unter SAP BTP Cockpit → Security → Users → Create API Token.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
           </TabsContent>
 
           {/* Agents */}

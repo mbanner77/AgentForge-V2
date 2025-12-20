@@ -115,6 +115,20 @@ export interface GlobalConfig {
   renderApiKey: string
   githubToken: string
   targetEnvironment: TargetEnvironment
+  // SAP BTP Credentials
+  btpApiEndpoint?: string
+  btpOrg?: string
+  btpSpace?: string
+  btpUsername?: string
+  btpPassword?: string
+}
+
+export interface BTPCredentials {
+  apiEndpoint: string
+  org: string
+  space: string
+  username: string
+  password: string
 }
 
 export interface DeploymentInfo {
