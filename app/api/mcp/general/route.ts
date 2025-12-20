@@ -96,8 +96,163 @@ function simulateToolCall(serverId: string, capability: string, args: Record<str
       return simulateSearch(serverId, capability, args)
     case "puppeteer":
       return simulatePuppeteer(capability, args)
+    // SAP MCP Servers
+    case "cap":
+      return simulateCAP(capability, args)
+    case "ui5":
+      return simulateUI5(capability, args)
+    case "fiori":
+      return simulateFiori(capability, args)
+    case "mdk":
+      return simulateMDK(capability, args)
     default:
       return { success: true, message: `${capability} executed on ${serverId}`, args }
+  }
+}
+
+// SAP CAP MCP Server
+function simulateCAP(capability: string, args: Record<string, unknown>): unknown {
+  switch (capability) {
+    case "search_model":
+      return {
+        results: [
+          { name: "Books", type: "entity", path: "db/schema.cds", line: 5 },
+          { name: "Authors", type: "entity", path: "db/schema.cds", line: 15 },
+          { name: "CatalogService", type: "service", path: "srv/catalog-service.cds", line: 1 },
+        ],
+        query: args.query,
+      }
+    case "generate_service":
+      return {
+        success: true,
+        serviceName: args.name || "NewService",
+        files: ["srv/new-service.cds", "srv/new-service.js"],
+        code: `service ${args.name || "NewService"} {\n  entity Items as projection on db.Items;\n}`,
+      }
+    case "generate_entity":
+      return {
+        success: true,
+        entityName: args.name || "NewEntity",
+        file: "db/schema.cds",
+        code: `entity ${args.name || "NewEntity"} {\n  key ID : UUID;\n  name : String(100);\n  description : String(500);\n}`,
+      }
+    case "cds_compile":
+      return { success: true, output: "Compiled successfully", warnings: [] }
+    default:
+      return { success: true, capability, args }
+  }
+}
+
+// SAP UI5 MCP Server
+function simulateUI5(capability: string, args: Record<string, unknown>): unknown {
+  switch (capability) {
+    case "search_api":
+      return {
+        results: [
+          { name: "sap.m.Table", type: "control", description: "A table control for displaying data" },
+          { name: "sap.ui.model.json.JSONModel", type: "class", description: "JSON data model" },
+        ],
+        query: args.query,
+      }
+    case "generate_view":
+      return {
+        success: true,
+        viewName: args.name || "Main",
+        file: `webapp/view/${args.name || "Main"}.view.xml`,
+        code: `<mvc:View xmlns:mvc="sap.ui.core.mvc" xmlns="sap.m">\n  <Page title="${args.name || "Main"}">\n    <content>\n      <!-- Content here -->\n    </content>\n  </Page>\n</mvc:View>`,
+      }
+    case "generate_controller":
+      return {
+        success: true,
+        controllerName: args.name || "Main",
+        file: `webapp/controller/${args.name || "Main"}.controller.js`,
+        code: `sap.ui.define(["sap/ui/core/mvc/Controller"], function(Controller) {\n  "use strict";\n  return Controller.extend("app.controller.${args.name || "Main"}", {\n    onInit: function() {}\n  });\n});`,
+      }
+    default:
+      return { success: true, capability, args }
+  }
+}
+
+// SAP Fiori MCP Server
+function simulateFiori(capability: string, args: Record<string, unknown>): unknown {
+  switch (capability) {
+    case "generate_fiori_app":
+      return {
+        success: true,
+        projectName: args.projectPath || "fiori-app",
+        template: args.templateType || "list-report",
+        files: [
+          "webapp/manifest.json",
+          "webapp/Component.js",
+          "webapp/view/Main.view.xml",
+          "webapp/controller/Main.controller.js",
+          "webapp/annotations/annotation.xml",
+          "ui5.yaml",
+          "package.json",
+        ],
+        code: {
+          manifest: `{\n  "_version": "1.49.0",\n  "sap.app": {\n    "id": "${args.projectPath || "fiori-app"}",\n    "type": "application",\n    "title": "Fiori App"\n  }\n}`,
+          component: `sap.ui.define(["sap/fe/core/AppComponent"], function(AppComponent) {\n  return AppComponent.extend("${args.projectPath || "fiori-app"}.Component", {\n    metadata: { manifest: "json" }\n  });\n});`,
+        },
+      }
+    case "add_annotation":
+      return {
+        success: true,
+        annotationType: args.type || "UI.LineItem",
+        entity: args.entity,
+        file: "webapp/annotations/annotation.xml",
+        code: `<Annotation Term="UI.LineItem">\n  <Collection>\n    <Record Type="UI.DataField">\n      <PropertyValue Property="Value" Path="name"/>\n    </Record>\n  </Collection>\n</Annotation>`,
+      }
+    case "search_fiori_docs":
+      return {
+        results: [
+          { title: "List Report Template", url: "https://sapui5.hana.ondemand.com/#/topic/list-report" },
+          { title: "Object Page Template", url: "https://sapui5.hana.ondemand.com/#/topic/object-page" },
+          { title: "Annotations Reference", url: "https://sapui5.hana.ondemand.com/#/topic/annotations" },
+        ],
+        query: args.query,
+      }
+    case "configure_odata":
+      return {
+        success: true,
+        serviceUrl: args.serviceUrl || "/sap/opu/odata/sap/",
+        manifest: "Updated manifest.json with OData configuration",
+      }
+    default:
+      return { success: true, capability, args }
+  }
+}
+
+// SAP MDK MCP Server
+function simulateMDK(capability: string, args: Record<string, unknown>): unknown {
+  switch (capability) {
+    case "mdk_gen_project":
+      return {
+        success: true,
+        projectName: args.name || "MDKApp",
+        files: [
+          "Application.app",
+          "Pages/Main.page",
+          "Rules/OnWillUpdate.js",
+          "Actions/Service/InitializeOffline.action",
+        ],
+      }
+    case "mdk_gen_entity":
+      return {
+        success: true,
+        entityName: args.name,
+        pages: ["List.page", "Detail.page", "Edit.page"],
+      }
+    case "mdk_gen_action":
+      return {
+        success: true,
+        actionName: args.name || "NewAction",
+        file: `Actions/${args.name || "NewAction"}.action`,
+      }
+    case "mdk_build":
+      return { success: true, platform: args.platform || "iOS", output: "Build completed" }
+    default:
+      return { success: true, capability, args }
   }
 }
 
