@@ -91,10 +91,19 @@
     "@modelcontextprotocol/server-brave-search": "^1.0.0",
     "@modelcontextprotocol/server-fetch": "^1.0.0",
     "@modelcontextprotocol/server-github": "^1.0.0",
+    "@modelcontextprotocol/server-gitlab": "^1.0.0",
     "@modelcontextprotocol/server-slack": "^1.0.0",
     "@modelcontextprotocol/server-puppeteer": "^1.0.0",
     "@modelcontextprotocol/server-memory": "^1.0.0",
+    "@modelcontextprotocol/server-sequential-thinking": "^1.0.0",
+    "@mcp/server-redis": "^1.0.0",
+    "@mcp/server-mongodb": "^1.0.0",
+    "@mcp/server-linear": "^1.0.0",
+    "@mcp/server-notion": "^1.0.0",
+    "@mcp/server-todoist": "^1.0.0",
     "@cap-js/mcp-server": "^1.0.0",
-    "@ui5/mcp-server": "^1.0.0"
+    "@ui5/mcp-server": "^1.0.0",
+    "@sap/mdk-mcp-server": "^1.0.0",
+    "@sap-ux/fiori-mcp-server": "^1.0.0"
   }
 }
