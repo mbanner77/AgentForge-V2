@@ -3,7 +3,7 @@ import { mcpServers } from "@/lib/mcp-servers"
 import { getMCPMode } from "@/lib/mcp-config"
 import { execSync } from "child_process"
 
-// Call real MCP server via npx (Production mode)
+// Call real MCP server via npx or local node_modules (Production mode)
 async function callRealMCPServer(
   npmPackage: string,
   capability: string,
@@ -28,15 +28,26 @@ async function callRealMCPServer(
   }
 
   try {
-    // Execute MCP server with request via echo and pipe
     const requestJson = JSON.stringify(request)
-    const command = `echo '${requestJson.replace(/'/g, "'\\''")}' | npx -y ${npmPackage}`
+    
+    // Try local node_modules first (for Render deployment), then npx
+    let command: string
+    const isRender = process.env.RENDER === "true" || process.env.IS_PULL_REQUEST !== undefined
+    
+    if (isRender) {
+      // On Render: Use local node_modules (installed via optionalDependencies)
+      command = `echo '${requestJson.replace(/'/g, "'\\''")}' | node node_modules/${npmPackage}/dist/index.js 2>/dev/null || echo '${requestJson.replace(/'/g, "'\\''")}' | npx -y ${npmPackage}`
+    } else {
+      // Local development: Use npx
+      command = `echo '${requestJson.replace(/'/g, "'\\''")}' | npx -y ${npmPackage}`
+    }
     
     const result = execSync(command, {
       env,
       timeout: 30000,
       encoding: "utf-8",
       maxBuffer: 10 * 1024 * 1024, // 10MB
+      shell: "/bin/bash",
     })
 
     // Parse response
