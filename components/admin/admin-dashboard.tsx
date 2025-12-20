@@ -158,6 +158,16 @@ export function AdminDashboard() {
   const [btpLogs, setBtpLogs] = useState<string[]>([])
   const [btpStatus, setBtpStatus] = useState<"idle" | "validating" | "building" | "deploying" | "success" | "error">("idle")
   
+  // Render Deployment State
+  const [renderDeploying, setRenderDeploying] = useState(false)
+  const [renderLogs, setRenderLogs] = useState<string[]>([])
+  const [renderStatus, setRenderStatus] = useState<"idle" | "creating" | "building" | "deploying" | "success" | "error">("idle")
+  const [renderProjectName, setRenderProjectName] = useState("my-agentforge-app")
+  const [renderRegion, setRenderRegion] = useState("frankfurt")
+  const [renderPlan, setRenderPlan] = useState("free")
+  const [renderIncludeDB, setRenderIncludeDB] = useState(false)
+  const [generatedBlueprint, setGeneratedBlueprint] = useState<string | null>(null)
+  
   const userIsAdmin = isAdmin()
   
   // Load MCP mode from localStorage
@@ -297,6 +307,127 @@ export function AdminDashboard() {
       setBtpLogs(prev => [...prev, `Fehler: ${error instanceof Error ? error.message : "Unknown error"}`])
     } finally {
       setBtpDeploying(false)
+    }
+  }
+  
+  const handleRenderDeploy = async () => {
+    const { globalConfig } = useAgentStore.getState()
+    
+    setRenderDeploying(true)
+    setRenderLogs([])
+    setRenderStatus("creating")
+    setGeneratedBlueprint(null)
+    
+    try {
+      // 1. Generate Blueprint
+      setRenderLogs(prev => [...prev, "Generiere Render Blueprint..."])
+      const blueprintRes = await fetch("/api/render/deploy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "generate-blueprint",
+          config: {
+            projectName: renderProjectName,
+            projectType: "nextjs",
+            region: renderRegion,
+            plan: renderPlan,
+            includeDatabase: renderIncludeDB,
+            autoDeploy: true,
+            healthCheckPath: "/",
+          },
+        }),
+      })
+      const blueprintData = await blueprintRes.json()
+      
+      if (blueprintData.success) {
+        setGeneratedBlueprint(blueprintData.blueprint)
+        setRenderLogs(prev => [...prev, "✓ Blueprint generiert (render.yaml)"])
+      }
+      
+      // 2. Deploy
+      setRenderStatus("deploying")
+      setRenderLogs(prev => [...prev, "", "Starte Deployment zu Render..."])
+      
+      const deployRes = await fetch("/api/render/deploy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "deploy",
+          config: {
+            projectName: renderProjectName,
+            projectType: "nextjs",
+            region: renderRegion,
+            plan: renderPlan,
+            includeDatabase: renderIncludeDB,
+            autoDeploy: true,
+            healthCheckPath: "/",
+          },
+          apiKey: globalConfig.renderApiKey,
+        }),
+      })
+      const deployData = await deployRes.json()
+      
+      if (deployData.logs) {
+        deployData.logs.forEach((log: string) => setRenderLogs(prev => [...prev, log]))
+      }
+      
+      if (deployData.success) {
+        setRenderStatus("success")
+        setRenderLogs(prev => [
+          ...prev, 
+          "", 
+          "🚀 Deployment erfolgreich!",
+          `App URL: ${deployData.serviceUrl}`,
+          `Dashboard: ${deployData.dashboardUrl}`,
+        ])
+      } else {
+        setRenderStatus("error")
+        setRenderLogs(prev => [...prev, `Fehler: ${deployData.error || "Deployment failed"}`])
+      }
+    } catch (error) {
+      setRenderStatus("error")
+      setRenderLogs(prev => [...prev, `Fehler: ${error instanceof Error ? error.message : "Unknown error"}`])
+    } finally {
+      setRenderDeploying(false)
+    }
+  }
+  
+  const handleGenerateBlueprintOnly = async () => {
+    setRenderLogs([])
+    setGeneratedBlueprint(null)
+    
+    try {
+      setRenderLogs(prev => [...prev, "Generiere Render Blueprint..."])
+      const res = await fetch("/api/render/deploy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "generate-blueprint",
+          config: {
+            projectName: renderProjectName,
+            projectType: "nextjs",
+            region: renderRegion,
+            plan: renderPlan,
+            includeDatabase: renderIncludeDB,
+            autoDeploy: true,
+            healthCheckPath: "/",
+          },
+        }),
+      })
+      const data = await res.json()
+      
+      if (data.success) {
+        setGeneratedBlueprint(data.blueprint)
+        setRenderLogs(prev => [
+          ...prev, 
+          "✓ Blueprint generiert!",
+          "",
+          "Nächste Schritte:",
+          ...data.instructions,
+        ])
+      }
+    } catch (error) {
+      setRenderLogs(prev => [...prev, `Fehler: ${error instanceof Error ? error.message : "Unknown"}`])
     }
   }
 
@@ -1212,6 +1343,171 @@ export function AdminDashboard() {
                           <li>• MTA Build Tool installiert (<code className="bg-secondary px-1 rounded">mbt</code>)</li>
                           <li>• MCP Mode auf "Production" gesetzt</li>
                         </ul>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Render Deployment */}
+                <div className="mb-8 p-6 rounded-lg border border-border bg-card">
+                  <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                    <Globe className="h-5 w-5" />
+                    Render Deployment
+                  </h2>
+                  <p className="text-sm text-muted-foreground mb-6">
+                    Deploye Apps zu Render.com mit automatischem Blueprint
+                  </p>
+
+                  {/* Configuration */}
+                  <div className="grid grid-cols-2 gap-4 mb-6">
+                    <div>
+                      <label className="text-sm text-muted-foreground mb-1 block">Projekt Name</label>
+                      <Input
+                        value={renderProjectName}
+                        onChange={(e) => setRenderProjectName(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-"))}
+                        placeholder="my-app"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm text-muted-foreground mb-1 block">Region</label>
+                      <select
+                        className="w-full h-10 px-3 rounded-md border border-input bg-background text-sm"
+                        value={renderRegion}
+                        onChange={(e) => setRenderRegion(e.target.value)}
+                      >
+                        <option value="frankfurt">Frankfurt, Germany</option>
+                        <option value="oregon">Oregon, USA</option>
+                        <option value="ohio">Ohio, USA</option>
+                        <option value="singapore">Singapore</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-sm text-muted-foreground mb-1 block">Plan</label>
+                      <select
+                        className="w-full h-10 px-3 rounded-md border border-input bg-background text-sm"
+                        value={renderPlan}
+                        onChange={(e) => setRenderPlan(e.target.value)}
+                      >
+                        <option value="free">Free ($0/mo)</option>
+                        <option value="starter">Starter ($7/mo)</option>
+                        <option value="standard">Standard ($25/mo)</option>
+                        <option value="pro">Pro ($85/mo)</option>
+                      </select>
+                    </div>
+                    <div className="flex items-end">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={renderIncludeDB}
+                          onChange={(e) => setRenderIncludeDB(e.target.checked)}
+                          className="w-4 h-4 rounded"
+                        />
+                        <span className="text-sm">PostgreSQL Datenbank hinzufügen</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-4 mb-6">
+                    <Button
+                      onClick={handleRenderDeploy}
+                      disabled={renderDeploying || !renderProjectName}
+                      size="lg"
+                      className="gap-2"
+                    >
+                      {renderDeploying ? (
+                        <>
+                          <RefreshCw className="h-4 w-4 animate-spin" />
+                          Deployment läuft...
+                        </>
+                      ) : (
+                        <>
+                          <Globe className="h-4 w-4" />
+                          Deploy zu Render
+                        </>
+                      )}
+                    </Button>
+                    
+                    <Button
+                      variant="outline"
+                      onClick={handleGenerateBlueprintOnly}
+                      disabled={renderDeploying || !renderProjectName}
+                      className="gap-2"
+                    >
+                      <FileText className="h-4 w-4" />
+                      Nur Blueprint generieren
+                    </Button>
+                  </div>
+
+                  {/* Deployment Status */}
+                  {renderStatus !== "idle" && (
+                    <div className="mb-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-sm font-medium">Status:</span>
+                        {renderStatus === "creating" && <Badge variant="outline">Erstelle Service...</Badge>}
+                        {renderStatus === "building" && <Badge variant="outline" className="bg-yellow-500/20">Baue...</Badge>}
+                        {renderStatus === "deploying" && <Badge variant="outline" className="bg-blue-500/20">Deploye...</Badge>}
+                        {renderStatus === "success" && <Badge className="bg-green-500">Erfolgreich</Badge>}
+                        {renderStatus === "error" && <Badge variant="destructive">Fehler</Badge>}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Generated Blueprint */}
+                  {generatedBlueprint && (
+                    <div className="mb-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium">render.yaml Blueprint:</span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            navigator.clipboard.writeText(generatedBlueprint)
+                          }}
+                          className="gap-1"
+                        >
+                          <Package className="h-3 w-3" />
+                          Kopieren
+                        </Button>
+                      </div>
+                      <div className="bg-black/90 rounded-lg p-4 font-mono text-xs max-h-48 overflow-y-auto">
+                        <pre className="text-green-400">{generatedBlueprint}</pre>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Deployment Logs */}
+                  {renderLogs.length > 0 && (
+                    <div className="bg-black/90 rounded-lg p-4 font-mono text-sm max-h-60 overflow-y-auto">
+                      {renderLogs.map((log, index) => (
+                        <div 
+                          key={index} 
+                          className={`${
+                            log.startsWith("✓") ? "text-green-400" :
+                            log.startsWith("Fehler") || log.startsWith("❌") ? "text-red-400" :
+                            log.startsWith("🚀") ? "text-blue-400" :
+                            log.startsWith("[Demo]") ? "text-yellow-400" :
+                            log.startsWith("→") ? "text-cyan-400" :
+                            "text-gray-300"
+                          }`}
+                        >
+                          {log || "\u00A0"}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Deploy Button Info */}
+                  <div className="mt-6 p-4 rounded-lg border border-purple-500/30 bg-purple-500/5">
+                    <div className="flex items-start gap-3">
+                      <Package className="h-5 w-5 text-purple-500 mt-0.5" />
+                      <div>
+                        <h3 className="font-medium text-purple-500">Render Deploy Button</h3>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          Mit dem generierten Blueprint kannst du auch einen Deploy Button für dein GitHub Repository erstellen:
+                        </p>
+                        <code className="mt-2 block text-xs bg-secondary p-2 rounded">
+                          [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/YOUR_USERNAME/{renderProjectName})
+                        </code>
                       </div>
                     </div>
                   </div>
