@@ -1708,8 +1708,8 @@ export function validateWorkflow(workflow: WorkflowGraph): WorkflowValidationRes
   }
 }
 
-// Workflow klonen
-export function cloneWorkflow(workflow: WorkflowGraph, newName?: string): WorkflowGraph {
+// Workflow klonen (einfache Version)
+export function cloneWorkflowSimple(workflow: WorkflowGraph, newName?: string): WorkflowGraph {
   return {
     ...JSON.parse(JSON.stringify(workflow)),
     id: `workflow-${Date.now()}`,
@@ -1724,7 +1724,7 @@ export function createFromTemplate(templateId: string, customName?: string): Wor
   const template = WORKFLOW_TEMPLATES[templateId]
   if (!template) return undefined
   
-  return cloneWorkflow(template, customName)
+  return cloneWorkflowSimple(template, customName)
 }
 
 // === EXPORT/IMPORT FUNKTIONEN ===
@@ -1857,8 +1857,8 @@ export function diffWorkflows(workflowA: WorkflowGraph, workflowB: WorkflowGraph
   return { addedNodes, removedNodes, modifiedNodes, addedEdges, removedEdges }
 }
 
-// Workflow-Merge: Kombiniert zwei Workflows
-export function mergeWorkflows(workflowA: WorkflowGraph, workflowB: WorkflowGraph, newName: string): WorkflowGraph {
+// Workflow-Merge: Kombiniert zwei Workflows (einfache Version)
+export function mergeWorkflowsSimple(workflowA: WorkflowGraph, workflowB: WorkflowGraph, newName: string): WorkflowGraph {
   // Präfix für B-Nodes um Konflikte zu vermeiden
   const prefix = "merged-"
   
@@ -7328,5 +7328,715 @@ export class WorkflowSearchEngine {
         .sort((a, b) => b.count - a.count)
         .slice(0, 5),
     }
+  }
+}
+
+// === WORKFLOW REPLAY & TIME-TRAVEL DEBUGGING ===
+
+export interface ReplayStep {
+  timestamp: Date
+  nodeId: string
+  nodeLabel: string
+  type: "start" | "agent-start" | "agent-complete" | "decision" | "condition" | "end" | "error"
+  input?: string
+  output?: string
+  duration?: number
+  metadata?: Record<string, unknown>
+}
+
+export interface ReplaySession {
+  id: string
+  workflowId: string
+  workflowName: string
+  startedAt: Date
+  completedAt?: Date
+  status: "recording" | "completed" | "error"
+  steps: ReplayStep[]
+  finalState?: WorkflowExecutionState
+}
+
+export class WorkflowReplayRecorder {
+  private sessions: Map<string, ReplaySession> = new Map()
+  private currentSession: ReplaySession | null = null
+  
+  // Aufnahme starten
+  startRecording(workflowId: string, workflowName: string): string {
+    const sessionId = `replay-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    
+    this.currentSession = {
+      id: sessionId,
+      workflowId,
+      workflowName,
+      startedAt: new Date(),
+      status: "recording",
+      steps: [],
+    }
+    
+    this.sessions.set(sessionId, this.currentSession)
+    return sessionId
+  }
+  
+  // Schritt aufzeichnen
+  recordStep(step: Omit<ReplayStep, "timestamp">): void {
+    if (!this.currentSession) return
+    
+    this.currentSession.steps.push({
+      ...step,
+      timestamp: new Date(),
+    })
+  }
+  
+  // Aufnahme beenden
+  stopRecording(finalState?: WorkflowExecutionState): ReplaySession | null {
+    if (!this.currentSession) return null
+    
+    this.currentSession.completedAt = new Date()
+    this.currentSession.status = finalState?.status === "error" ? "error" : "completed"
+    this.currentSession.finalState = finalState
+    
+    const session = this.currentSession
+    this.currentSession = null
+    return session
+  }
+  
+  // Session abrufen
+  getSession(sessionId: string): ReplaySession | undefined {
+    return this.sessions.get(sessionId)
+  }
+  
+  // Alle Sessions
+  getAllSessions(): ReplaySession[] {
+    return Array.from(this.sessions.values())
+      .sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime())
+  }
+  
+  // Session löschen
+  deleteSession(sessionId: string): void {
+    this.sessions.delete(sessionId)
+  }
+}
+
+export class WorkflowReplayPlayer {
+  private session: ReplaySession
+  private currentStepIndex: number = 0
+  private playbackSpeed: number = 1
+  private isPaused: boolean = false
+  private onStepCallback?: (step: ReplayStep, index: number) => void
+  
+  constructor(session: ReplaySession) {
+    this.session = session
+  }
+  
+  // Callback für Schritt-Updates
+  onStep(callback: (step: ReplayStep, index: number) => void): void {
+    this.onStepCallback = callback
+  }
+  
+  // Replay starten
+  async play(): Promise<void> {
+    this.isPaused = false
+    
+    while (this.currentStepIndex < this.session.steps.length && !this.isPaused) {
+      const step = this.session.steps[this.currentStepIndex]
+      const nextStep = this.session.steps[this.currentStepIndex + 1]
+      
+      this.onStepCallback?.(step, this.currentStepIndex)
+      
+      // Berechne Wartezeit basierend auf echten Timestamps
+      if (nextStep) {
+        const delay = (nextStep.timestamp.getTime() - step.timestamp.getTime()) / this.playbackSpeed
+        await new Promise(resolve => setTimeout(resolve, Math.min(delay, 5000)))
+      }
+      
+      this.currentStepIndex++
+    }
+  }
+  
+  // Pausieren
+  pause(): void {
+    this.isPaused = true
+  }
+  
+  // Fortsetzen
+  resume(): void {
+    if (this.isPaused) {
+      this.play()
+    }
+  }
+  
+  // Zu Schritt springen
+  jumpToStep(index: number): ReplayStep | null {
+    if (index < 0 || index >= this.session.steps.length) return null
+    this.currentStepIndex = index
+    const step = this.session.steps[index]
+    this.onStepCallback?.(step, index)
+    return step
+  }
+  
+  // Nächster Schritt
+  nextStep(): ReplayStep | null {
+    return this.jumpToStep(this.currentStepIndex + 1)
+  }
+  
+  // Vorheriger Schritt
+  previousStep(): ReplayStep | null {
+    return this.jumpToStep(this.currentStepIndex - 1)
+  }
+  
+  // Geschwindigkeit setzen
+  setSpeed(speed: number): void {
+    this.playbackSpeed = Math.max(0.25, Math.min(4, speed))
+  }
+  
+  // Aktueller Fortschritt
+  getProgress(): { current: number; total: number; percentage: number } {
+    return {
+      current: this.currentStepIndex,
+      total: this.session.steps.length,
+      percentage: Math.round((this.currentStepIndex / this.session.steps.length) * 100),
+    }
+  }
+  
+  // Timeline generieren
+  getTimeline(): { step: ReplayStep; relativeTime: number }[] {
+    if (this.session.steps.length === 0) return []
+    
+    const startTime = this.session.steps[0].timestamp.getTime()
+    
+    return this.session.steps.map(step => ({
+      step,
+      relativeTime: step.timestamp.getTime() - startTime,
+    }))
+  }
+}
+
+// === AGENT CONFIGURATION PRESETS ===
+
+export interface AgentPreset {
+  id: string
+  name: string
+  description: string
+  category: "development" | "review" | "testing" | "documentation" | "analysis" | "custom"
+  config: {
+    temperature: number
+    maxTokens: number
+    topP?: number
+    frequencyPenalty?: number
+    presencePenalty?: number
+    systemPromptAdditions?: string
+    outputFormat?: "text" | "json" | "markdown" | "code"
+  }
+  tags: string[]
+}
+
+export const AGENT_PRESETS: AgentPreset[] = [
+  {
+    id: "precise-coder",
+    name: "Präziser Coder",
+    description: "Niedrige Temperatur für deterministischen, konsistenten Code",
+    category: "development",
+    config: {
+      temperature: 0.2,
+      maxTokens: 4000,
+      topP: 0.9,
+      outputFormat: "code",
+    },
+    tags: ["code", "precise", "deterministic"],
+  },
+  {
+    id: "creative-coder",
+    name: "Kreativer Coder",
+    description: "Höhere Temperatur für innovative Lösungsansätze",
+    category: "development",
+    config: {
+      temperature: 0.8,
+      maxTokens: 4000,
+      topP: 0.95,
+      outputFormat: "code",
+    },
+    tags: ["code", "creative", "innovative"],
+  },
+  {
+    id: "thorough-reviewer",
+    name: "Gründlicher Reviewer",
+    description: "Detaillierte Code-Reviews mit ausführlichem Feedback",
+    category: "review",
+    config: {
+      temperature: 0.3,
+      maxTokens: 3000,
+      outputFormat: "markdown",
+      systemPromptAdditions: "Sei besonders gründlich und erkläre jeden gefundenen Issue detailliert.",
+    },
+    tags: ["review", "detailed", "thorough"],
+  },
+  {
+    id: "quick-reviewer",
+    name: "Schneller Reviewer",
+    description: "Fokus auf kritische Issues, kurze Antworten",
+    category: "review",
+    config: {
+      temperature: 0.4,
+      maxTokens: 1500,
+      outputFormat: "markdown",
+      systemPromptAdditions: "Fokussiere nur auf kritische Issues. Halte dich kurz.",
+    },
+    tags: ["review", "fast", "critical-only"],
+  },
+  {
+    id: "test-generator",
+    name: "Test-Generator",
+    description: "Optimiert für Generierung von Unit-Tests",
+    category: "testing",
+    config: {
+      temperature: 0.3,
+      maxTokens: 4000,
+      outputFormat: "code",
+      systemPromptAdditions: "Generiere umfassende Tests mit Edge Cases und Mocking.",
+    },
+    tags: ["testing", "unit-tests", "coverage"],
+  },
+  {
+    id: "documentation-writer",
+    name: "Dokumentations-Autor",
+    description: "Klare, strukturierte Dokumentation",
+    category: "documentation",
+    config: {
+      temperature: 0.5,
+      maxTokens: 3000,
+      outputFormat: "markdown",
+      systemPromptAdditions: "Schreibe klare, gut strukturierte Dokumentation mit Beispielen.",
+    },
+    tags: ["docs", "markdown", "examples"],
+  },
+  {
+    id: "security-analyst",
+    name: "Security-Analyst",
+    description: "Fokus auf Sicherheitslücken und Best Practices",
+    category: "analysis",
+    config: {
+      temperature: 0.2,
+      maxTokens: 3000,
+      outputFormat: "markdown",
+      systemPromptAdditions: "Analysiere auf OWASP Top 10 Schwachstellen und Security Best Practices.",
+    },
+    tags: ["security", "owasp", "vulnerabilities"],
+  },
+  {
+    id: "performance-optimizer",
+    name: "Performance-Optimierer",
+    description: "Analyse und Verbesserung der Code-Performance",
+    category: "analysis",
+    config: {
+      temperature: 0.3,
+      maxTokens: 3000,
+      outputFormat: "markdown",
+      systemPromptAdditions: "Fokussiere auf Performance-Optimierungen, Big-O Komplexität und Memory-Effizienz.",
+    },
+    tags: ["performance", "optimization", "efficiency"],
+  },
+]
+
+export class AgentPresetManager {
+  private presets: Map<string, AgentPreset> = new Map()
+  
+  constructor() {
+    // Default-Presets laden
+    AGENT_PRESETS.forEach(p => this.presets.set(p.id, p))
+  }
+  
+  // Preset abrufen
+  get(id: string): AgentPreset | undefined {
+    return this.presets.get(id)
+  }
+  
+  // Alle Presets
+  getAll(): AgentPreset[] {
+    return Array.from(this.presets.values())
+  }
+  
+  // Nach Kategorie filtern
+  getByCategory(category: AgentPreset["category"]): AgentPreset[] {
+    return this.getAll().filter(p => p.category === category)
+  }
+  
+  // Nach Tags filtern
+  getByTags(tags: string[]): AgentPreset[] {
+    return this.getAll().filter(p => 
+      tags.some(tag => p.tags.includes(tag))
+    )
+  }
+  
+  // Preset hinzufügen
+  add(preset: AgentPreset): void {
+    this.presets.set(preset.id, preset)
+  }
+  
+  // Preset entfernen
+  remove(id: string): void {
+    this.presets.delete(id)
+  }
+  
+  // Preset auf Agent anwenden
+  applyToAgent(presetId: string, agentConfig: Record<string, unknown>): Record<string, unknown> {
+    const preset = this.presets.get(presetId)
+    if (!preset) return agentConfig
+    
+    return {
+      ...agentConfig,
+      temperature: preset.config.temperature,
+      maxTokens: preset.config.maxTokens,
+      topP: preset.config.topP,
+      frequencyPenalty: preset.config.frequencyPenalty,
+      presencePenalty: preset.config.presencePenalty,
+      outputFormat: preset.config.outputFormat,
+      systemPromptAdditions: preset.config.systemPromptAdditions,
+    }
+  }
+}
+
+// === WORKFLOW CLONE & FORK ===
+
+export interface CloneOptions {
+  newName?: string
+  resetPositions?: boolean
+  includeHistory?: boolean
+  deepClone?: boolean
+}
+
+export function cloneWorkflow(
+  workflow: { id?: string; name: string; nodes: WorkflowNode[]; edges: WorkflowEdge[] },
+  options: CloneOptions = {}
+): { id: string; name: string; nodes: WorkflowNode[]; edges: WorkflowEdge[] } {
+  const newId = `wf-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+  const newName = options.newName || `${workflow.name} (Kopie)`
+  
+  // Node-ID Mapping für Edge-Updates
+  const nodeIdMap = new Map<string, string>()
+  
+  // Nodes klonen
+  const clonedNodes = workflow.nodes.map(node => {
+    const newNodeId = `node-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`
+    nodeIdMap.set(node.id, newNodeId)
+    
+    return {
+      ...node,
+      id: newNodeId,
+      position: options.resetPositions 
+        ? { x: node.position.x, y: node.position.y }
+        : { ...node.position },
+      data: options.deepClone 
+        ? JSON.parse(JSON.stringify(node.data))
+        : { ...node.data },
+    }
+  })
+  
+  // Edges klonen mit aktualisierten Node-IDs
+  const clonedEdges = workflow.edges.map(edge => {
+    const newEdgeId = `edge-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`
+    
+    return {
+      ...edge,
+      id: newEdgeId,
+      source: nodeIdMap.get(edge.source) || edge.source,
+      target: nodeIdMap.get(edge.target) || edge.target,
+    }
+  })
+  
+  return {
+    id: newId,
+    name: newName,
+    nodes: clonedNodes,
+    edges: clonedEdges,
+  }
+}
+
+export interface ForkOptions extends CloneOptions {
+  forkPoint?: string // Node-ID ab dem geforkt wird
+  keepOriginalConnection?: boolean
+}
+
+export function forkWorkflow(
+  workflow: { id?: string; name: string; nodes: WorkflowNode[]; edges: WorkflowEdge[] },
+  options: ForkOptions = {}
+): { id: string; name: string; nodes: WorkflowNode[]; edges: WorkflowEdge[] } {
+  // Vollständiger Klon
+  const forked = cloneWorkflow(workflow, {
+    ...options,
+    newName: options.newName || `${workflow.name} (Fork)`,
+    deepClone: true,
+  })
+  
+  // Wenn ein Fork-Punkt angegeben ist, nur Nodes ab diesem Punkt behalten
+  if (options.forkPoint) {
+    const forkPointIndex = workflow.nodes.findIndex(n => n.id === options.forkPoint)
+    if (forkPointIndex >= 0) {
+      // Finde alle erreichbaren Nodes ab dem Fork-Punkt
+      const reachableNodes = new Set<string>()
+      const toVisit = [options.forkPoint]
+      
+      while (toVisit.length > 0) {
+        const current = toVisit.pop()!
+        if (reachableNodes.has(current)) continue
+        reachableNodes.add(current)
+        
+        // Finde ausgehende Edges
+        const outgoing = workflow.edges.filter(e => e.source === current)
+        toVisit.push(...outgoing.map(e => e.target))
+      }
+      
+      // Filtere Nodes und Edges
+      forked.nodes = forked.nodes.filter(n => {
+        const originalId = [...workflow.nodes].find(
+          on => forked.nodes.find(fn => fn.id === n.id && fn.data.label === on.data.label)
+        )?.id
+        return originalId && reachableNodes.has(originalId)
+      })
+      
+      const forkedNodeIds = new Set(forked.nodes.map(n => n.id))
+      forked.edges = forked.edges.filter(e => 
+        forkedNodeIds.has(e.source) && forkedNodeIds.has(e.target)
+      )
+    }
+  }
+  
+  return forked
+}
+
+// === WORKFLOW MERGE ===
+
+export interface MergeResult {
+  success: boolean
+  workflow: { nodes: WorkflowNode[]; edges: WorkflowEdge[] }
+  conflicts: {
+    nodeId: string
+    field: string
+    sourceValue: unknown
+    targetValue: unknown
+  }[]
+  addedNodes: string[]
+  addedEdges: string[]
+}
+
+export function mergeWorkflows(
+  source: { nodes: WorkflowNode[]; edges: WorkflowEdge[] },
+  target: { nodes: WorkflowNode[]; edges: WorkflowEdge[] },
+  options: { 
+    preferSource?: boolean
+    mergePoint?: string // Node-ID wo Source eingefügt wird
+  } = {}
+): MergeResult {
+  const conflicts: MergeResult["conflicts"] = []
+  const addedNodes: string[] = []
+  const addedEdges: string[] = []
+  
+  // Kopie von Target erstellen
+  const merged = {
+    nodes: [...target.nodes],
+    edges: [...target.edges],
+  }
+  
+  // Node-IDs in Target
+  const targetNodeIds = new Set(target.nodes.map(n => n.id))
+  const targetEdgeIds = new Set(target.edges.map(e => e.id))
+  
+  // Nodes aus Source hinzufügen
+  for (const sourceNode of source.nodes) {
+    if (targetNodeIds.has(sourceNode.id)) {
+      // Node existiert - prüfe auf Konflikte
+      const targetNode = target.nodes.find(n => n.id === sourceNode.id)!
+      
+      if (JSON.stringify(sourceNode.data) !== JSON.stringify(targetNode.data)) {
+        conflicts.push({
+          nodeId: sourceNode.id,
+          field: "data",
+          sourceValue: sourceNode.data,
+          targetValue: targetNode.data,
+        })
+        
+        // Bei Konflikt: Source bevorzugen wenn gewünscht
+        if (options.preferSource) {
+          const idx = merged.nodes.findIndex(n => n.id === sourceNode.id)
+          merged.nodes[idx] = { ...sourceNode }
+        }
+      }
+    } else {
+      // Neuer Node - hinzufügen
+      merged.nodes.push({ ...sourceNode })
+      addedNodes.push(sourceNode.id)
+    }
+  }
+  
+  // Edges aus Source hinzufügen
+  for (const sourceEdge of source.edges) {
+    if (!targetEdgeIds.has(sourceEdge.id)) {
+      merged.edges.push({ ...sourceEdge })
+      addedEdges.push(sourceEdge.id)
+    }
+  }
+  
+  // Wenn Merge-Punkt angegeben, verbinde Source mit Target
+  if (options.mergePoint) {
+    const mergeNode = merged.nodes.find(n => n.id === options.mergePoint)
+    const sourceStart = source.nodes.find(n => n.type === "start")
+    
+    if (mergeNode && sourceStart) {
+      // Finde ersten "echten" Node nach Start
+      const firstEdge = source.edges.find(e => e.source === sourceStart.id)
+      if (firstEdge) {
+        merged.edges.push({
+          id: `merge-edge-${Date.now()}`,
+          source: options.mergePoint,
+          target: firstEdge.target,
+        })
+      }
+    }
+  }
+  
+  return {
+    success: conflicts.length === 0,
+    workflow: merged,
+    conflicts,
+    addedNodes,
+    addedEdges,
+  }
+}
+
+// === WORKFLOW HEALTH CHECK ===
+
+export interface HealthCheckResult {
+  healthy: boolean
+  score: number // 0-100
+  checks: {
+    name: string
+    passed: boolean
+    message: string
+    severity: "error" | "warning" | "info"
+  }[]
+  recommendations: string[]
+}
+
+export function checkWorkflowHealth(
+  workflow: { nodes: WorkflowNode[]; edges: WorkflowEdge[] }
+): HealthCheckResult {
+  const checks: HealthCheckResult["checks"] = []
+  const recommendations: string[] = []
+  
+  // 1. Start-Node prüfen
+  const startNodes = workflow.nodes.filter(n => n.type === "start")
+  checks.push({
+    name: "Start-Node vorhanden",
+    passed: startNodes.length === 1,
+    message: startNodes.length === 0 
+      ? "Kein Start-Node gefunden" 
+      : startNodes.length > 1 
+        ? "Mehrere Start-Nodes gefunden" 
+        : "OK",
+    severity: startNodes.length !== 1 ? "error" : "info",
+  })
+  
+  // 2. End-Node prüfen
+  const endNodes = workflow.nodes.filter(n => n.type === "end")
+  checks.push({
+    name: "End-Node vorhanden",
+    passed: endNodes.length >= 1,
+    message: endNodes.length === 0 ? "Kein End-Node gefunden" : "OK",
+    severity: endNodes.length === 0 ? "error" : "info",
+  })
+  
+  // 3. Verwaiste Nodes prüfen
+  const orphanNodes = workflow.nodes.filter(n => {
+    if (n.type === "start") return false
+    return !workflow.edges.some(e => e.target === n.id)
+  })
+  checks.push({
+    name: "Keine verwaisten Nodes",
+    passed: orphanNodes.length === 0,
+    message: orphanNodes.length > 0 
+      ? `${orphanNodes.length} nicht erreichbare Node(s)` 
+      : "OK",
+    severity: orphanNodes.length > 0 ? "warning" : "info",
+  })
+  
+  // 4. Sackgassen prüfen
+  const deadEnds = workflow.nodes.filter(n => {
+    if (n.type === "end") return false
+    return !workflow.edges.some(e => e.source === n.id)
+  })
+  checks.push({
+    name: "Keine Sackgassen",
+    passed: deadEnds.length === 0,
+    message: deadEnds.length > 0 
+      ? `${deadEnds.length} Node(s) ohne ausgehende Verbindung` 
+      : "OK",
+    severity: deadEnds.length > 0 ? "warning" : "info",
+  })
+  
+  // 5. Agent-Nodes haben Agent-ID
+  const agentNodes = workflow.nodes.filter(n => n.type === "agent")
+  const agentsWithoutId = agentNodes.filter(n => !n.data.agentId)
+  checks.push({
+    name: "Agents konfiguriert",
+    passed: agentsWithoutId.length === 0,
+    message: agentsWithoutId.length > 0 
+      ? `${agentsWithoutId.length} Agent-Node(s) ohne Agent-ID` 
+      : "OK",
+    severity: agentsWithoutId.length > 0 ? "error" : "info",
+  })
+  
+  // 6. Human-Decision Nodes haben Optionen
+  const humanNodes = workflow.nodes.filter(n => n.type === "human-decision")
+  const humansWithoutOptions = humanNodes.filter(n => !n.data.options?.length)
+  checks.push({
+    name: "Human-Decisions haben Optionen",
+    passed: humansWithoutOptions.length === 0,
+    message: humansWithoutOptions.length > 0 
+      ? `${humansWithoutOptions.length} Human-Decision(s) ohne Optionen` 
+      : "OK",
+    severity: humansWithoutOptions.length > 0 ? "warning" : "info",
+  })
+  
+  // 7. Workflow-Komplexität
+  const complexity = workflow.nodes.length + workflow.edges.length
+  checks.push({
+    name: "Angemessene Komplexität",
+    passed: complexity <= 50,
+    message: complexity > 50 
+      ? `Hohe Komplexität (${complexity} Elemente)` 
+      : `${complexity} Elemente`,
+    severity: complexity > 50 ? "warning" : "info",
+  })
+  
+  // Empfehlungen generieren
+  if (orphanNodes.length > 0) {
+    recommendations.push("Verbinden Sie verwaiste Nodes oder entfernen Sie sie")
+  }
+  if (deadEnds.length > 0) {
+    recommendations.push("Fügen Sie ausgehende Verbindungen zu Sackgassen hinzu")
+  }
+  if (agentsWithoutId.length > 0) {
+    recommendations.push("Weisen Sie allen Agent-Nodes einen Agent zu")
+  }
+  if (humanNodes.length > 0 && humanNodes.every(n => !n.data.timeout)) {
+    recommendations.push("Fügen Sie Timeouts zu Human-Decision-Nodes hinzu")
+  }
+  if (workflow.nodes.filter(n => n.type === "agent").length > 5) {
+    recommendations.push("Erwägen Sie parallele Ausführung für bessere Performance")
+  }
+  
+  // Score berechnen
+  const passedChecks = checks.filter(c => c.passed).length
+  const errorChecks = checks.filter(c => !c.passed && c.severity === "error").length
+  const warningChecks = checks.filter(c => !c.passed && c.severity === "warning").length
+  
+  let score = Math.round((passedChecks / checks.length) * 100)
+  score -= errorChecks * 20
+  score -= warningChecks * 5
+  score = Math.max(0, Math.min(100, score))
+  
+  return {
+    healthy: errorChecks === 0,
+    score,
+    checks,
+    recommendations,
   }
 }

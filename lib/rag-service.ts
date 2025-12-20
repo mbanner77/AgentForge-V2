@@ -198,7 +198,7 @@ export async function searchRelevantChunks(
   })
   
   // Filtere Dokumente basierend auf Agent-Zugriff
-  const accessibleDocuments = documents.filter(doc => {
+  const accessibleDocuments = documents.filter((doc: { allowedAgents: string[] | null }) => {
     // Wenn keine Agent-Einschränkungen, hat jeder Zugriff
     if (!doc.allowedAgents || doc.allowedAgents.length === 0) {
       return true
@@ -295,7 +295,7 @@ export async function listDocuments(): Promise<RagDocument[]> {
     orderBy: { createdAt: "desc" },
   })
   
-  return documents.map(doc => ({
+  return documents.map((doc: { id: string; filename: string; originalName: string; mimeType: string; size: number; title: string | null; description: string | null; tags: string[]; category: string; status: string; errorMessage: string | null; createdAt: Date; updatedAt: Date }) => ({
     id: doc.id,
     filename: doc.filename,
     originalName: doc.originalName,
@@ -364,7 +364,7 @@ export async function getKnowledgeBaseStats(): Promise<{
     processingDocuments: processing,
     errorDocuments: error,
     totalChunks: chunks,
-    categories: categories.map(c => ({
+    categories: categories.map((c: { category: string; _count: { category: number } }) => ({
       name: c.category,
       count: c._count.category,
     })),
