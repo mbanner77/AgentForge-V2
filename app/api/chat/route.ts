@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 
-export const runtime = "edge"
+// Verwende Node.js Runtime statt Edge für bessere Stabilität auf Render
+export const runtime = "nodejs"
+export const maxDuration = 60 // 60 Sekunden Timeout
 
 interface ChatMessage {
   role: "system" | "user" | "assistant"
