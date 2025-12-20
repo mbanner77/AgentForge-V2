@@ -1,12 +1,12 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, useCallback } from "react"
 import { BuilderChat } from "./builder-chat"
 import { BuilderWorkflow } from "./builder-workflow"
 import { BuilderOutput } from "./builder-output"
 import { BuilderSidebar } from "./builder-sidebar"
 import { Button } from "@/components/ui/button"
-import { Bot, PanelLeft, Download, FolderOpen, Plus, Rocket, Github, Loader2, ExternalLink, LogOut, Settings, GripHorizontal, Database, GitBranch } from "lucide-react"
+import { Bot, PanelLeft, Download, FolderOpen, Plus, Rocket, Github, Loader2, ExternalLink, LogOut, Settings, GripHorizontal, Database, GitBranch, Upload, Copy, History, FileText, Undo, Redo, Keyboard, Server, Building2 } from "lucide-react"
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels"
 import Link from "next/link"
 import { useAgentStore } from "@/lib/agent-store"
@@ -30,9 +30,13 @@ import { toast } from "sonner"
 import { KnowledgeBaseDialog } from "@/components/knowledge-base-dialog"
 import { WorkflowSelectorDialog } from "@/components/workflow-selector-dialog"
 import { WorkflowExecutionView } from "@/components/workflow-execution-view"
+import { ThemeToggle } from "@/components/theme-toggle"
+import { useKeyboardShortcut, useGlobalKeyboardShortcuts, formatShortcut, DEFAULT_SHORTCUTS } from "@/lib/keyboard-shortcuts"
 import type { WorkflowGraph } from "@/lib/types"
 
 export function BuilderInterface() {
+  // Initialize global keyboard shortcuts
+  useGlobalKeyboardShortcuts()
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [selectedWorkflow, setSelectedWorkflow] = useState<WorkflowGraph | null>(null)
   const [workflowPrompt, setWorkflowPrompt] = useState<string | null>(null) // Chat-Auftrag für Workflow
@@ -44,9 +48,35 @@ export function BuilderInterface() {
   const [isDeploying, setIsDeploying] = useState(false)
   const [deployStep, setDeployStep] = useState<"idle" | "github" | "render" | "done" | "error">("idle")
   const [deployResult, setDeployResult] = useState<{ repoUrl?: string; renderUrl?: string; error?: string } | null>(null)
+  const [shortcutsDialogOpen, setShortcutsDialogOpen] = useState(false)
 
   const { messages, workflowSteps, isProcessing, currentProject, addMessage, createProject, saveProject, getFiles, globalConfig } =
     useAgentStore()
+
+  // Keyboard shortcuts
+  useKeyboardShortcut(
+    { key: "s", ctrl: true, description: "Projekt speichern" },
+    () => { if (currentProject) saveProject(); toast.success("Projekt gespeichert") },
+    [currentProject, saveProject]
+  )
+  
+  useKeyboardShortcut(
+    { key: "n", ctrl: true, description: "Neues Projekt" },
+    () => setNewProjectOpen(true),
+    []
+  )
+  
+  useKeyboardShortcut(
+    { key: "b", ctrl: true, description: "Sidebar umschalten" },
+    () => setSidebarOpen(prev => !prev),
+    []
+  )
+  
+  useKeyboardShortcut(
+    { key: "?", shift: true, description: "Tastenkürzel anzeigen" },
+    () => setShortcutsDialogOpen(true),
+    []
+  )
 
   const { executeWorkflow, fixErrors } = useAgentExecutor()
   const { isLoading, isSyncing, saveCurrentProject } = usePersistence()
@@ -388,7 +418,8 @@ ${f.content}
           )}
 
           <div className="ml-auto flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => setNewProjectOpen(true)}>
+            <ThemeToggle />
+            <Button variant="outline" size="sm" onClick={() => setNewProjectOpen(true)} title="Neues Projekt (Ctrl+N)">
               <Plus className="mr-2 h-4 w-4" />
               Neues Projekt
             </Button>
@@ -432,6 +463,29 @@ ${f.content}
               Deployen
             </Button>
             <div className="ml-2 pl-2 border-l border-border flex items-center gap-2">
+              <Link href="/mcp">
+                <Button variant="ghost" size="sm" title="MCP Server Konfiguration">
+                  <Server className="h-4 w-4" />
+                </Button>
+              </Link>
+              <Link href="/sap">
+                <Button variant="ghost" size="sm" title="SAP Integration">
+                  <Building2 className="h-4 w-4" />
+                </Button>
+              </Link>
+              <Link href="/history">
+                <Button variant="ghost" size="sm" title="Verlauf">
+                  <History className="h-4 w-4" />
+                </Button>
+              </Link>
+              <Link href="/logs">
+                <Button variant="ghost" size="sm" title="Logs">
+                  <FileText className="h-4 w-4" />
+                </Button>
+              </Link>
+              <Button variant="ghost" size="sm" onClick={() => setShortcutsDialogOpen(true)} title="Tastenkürzel (Shift+?)">
+                <Keyboard className="h-4 w-4" />
+              </Button>
               <Link href="/admin">
                 <Button variant="ghost" size="sm" title="Admin - Agent Marketplace">
                   <Settings className="h-4 w-4" />
@@ -685,6 +739,52 @@ ${f.content}
                 )}
               </Button>
             )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Keyboard Shortcuts Dialog */}
+      <Dialog open={shortcutsDialogOpen} onOpenChange={setShortcutsDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Keyboard className="h-5 w-5" />
+              Tastenkürzel
+            </DialogTitle>
+            <DialogDescription>
+              Nutze diese Tastenkürzel für schnelleres Arbeiten
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-4">
+            <div className="flex items-center justify-between text-sm">
+              <span>Neues Projekt</span>
+              <kbd className="px-2 py-1 bg-secondary rounded text-xs font-mono">Ctrl+N</kbd>
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <span>Projekt speichern</span>
+              <kbd className="px-2 py-1 bg-secondary rounded text-xs font-mono">Ctrl+S</kbd>
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <span>Sidebar umschalten</span>
+              <kbd className="px-2 py-1 bg-secondary rounded text-xs font-mono">Ctrl+B</kbd>
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <span>Tastenkürzel anzeigen</span>
+              <kbd className="px-2 py-1 bg-secondary rounded text-xs font-mono">Shift+?</kbd>
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <span>Suche öffnen</span>
+              <kbd className="px-2 py-1 bg-secondary rounded text-xs font-mono">Ctrl+K</kbd>
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <span>Einstellungen</span>
+              <kbd className="px-2 py-1 bg-secondary rounded text-xs font-mono">Ctrl+,</kbd>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShortcutsDialogOpen(false)}>
+              Schließen
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
