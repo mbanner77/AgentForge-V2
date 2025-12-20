@@ -39,7 +39,9 @@ import {
   Code2,
   Smartphone,
   Layout,
+  Check,
 } from "lucide-react"
+import { toast } from "sonner"
 import {
   OFFICIAL_SAP_MCP_SERVERS,
   SAP_AGENTS,
@@ -361,6 +363,11 @@ export function SAPAgentsPanel({ onSelectAgent, onSelectServer }: SAPAgentsPanel
                         const instructions = configManager.getInstallInstructions(server.id)
                         if (instructions) {
                           navigator.clipboard.writeText(instructions)
+                          toast.success(`${server.name} Installationsanleitung kopiert!`, {
+                            description: "Die Anleitung wurde in die Zwischenablage kopiert.",
+                          })
+                        } else {
+                          toast.error("Anleitung nicht gefunden")
                         }
                       }}
                     >
@@ -368,6 +375,26 @@ export function SAPAgentsPanel({ onSelectAgent, onSelectServer }: SAPAgentsPanel
                       {server.name} Anleitung kopieren
                     </Button>
                   ))}
+                </div>
+                
+                {/* Installation Preview */}
+                <div className="mt-4 p-3 bg-muted rounded-lg">
+                  <p className="text-xs text-muted-foreground mb-2">Schnellinstallation (alle SAP MCP Server):</p>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 text-xs bg-background p-2 rounded font-mono overflow-x-auto">
+                      npm install -g @cap-js/mcp-server @ui5/mcp-server @sap/mdk-mcp-server @sap-ux/fiori-mcp-server
+                    </code>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        navigator.clipboard.writeText("npm install -g @cap-js/mcp-server @ui5/mcp-server @sap/mdk-mcp-server @sap-ux/fiori-mcp-server")
+                        toast.success("Installationsbefehl kopiert!")
+                      }}
+                    >
+                      <Copy className="h-3 w-3" />
+                    </Button>
+                  </div>
                 </div>
               </div>
             </div>
