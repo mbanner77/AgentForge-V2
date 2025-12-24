@@ -17,15 +17,52 @@ interface WebContainerPreviewProps {
 
 // Bereinige Code für Vite-Kompatibilität
 function cleanCodeForVite(content: string): string {
+  if (!content) return ''
+  
   let cleaned = content
-  // Entferne "use client" Direktiven
-  cleaned = cleaned.replace(/^["']use client["'];?\s*/gm, "")
-  // Entferne Next.js spezifische Imports
-  cleaned = cleaned.replace(/import\s+.*\s+from\s+["']next\/[^"']+["'];?\s*/g, "")
-  // Konvertiere @/ Imports zu relativen Imports (./components statt @/components)
-  cleaned = cleaned.replace(/from\s+["']@\/([^"']+)["']/g, 'from "./$1"')
-  // Entferne CSS Imports (werden nicht unterstützt)
-  cleaned = cleaned.replace(/import\s+["'][^"']*\.css["'];?\s*/g, "")
+  
+  try {
+    // Entferne "use client" und "use server" Direktiven
+    cleaned = cleaned.replace(/^["']use client["'];?\s*/gm, "")
+    cleaned = cleaned.replace(/^["']use server["'];?\s*/gm, "")
+    
+    // Entferne Next.js spezifische Imports
+    cleaned = cleaned.replace(/import\s+.*\s+from\s+["']next\/[^"']+["'];?\s*/g, "")
+    cleaned = cleaned.replace(/import\s+.*\s+from\s+["']next-auth[^"']*["'];?\s*/g, "")
+    
+    // Konvertiere @/ Imports zu relativen Imports (./components statt @/components)
+    cleaned = cleaned.replace(/from\s+["']@\/([^"']+)["']/g, 'from "./$1"')
+    
+    // Entferne CSS/SCSS Imports
+    cleaned = cleaned.replace(/import\s+["'][^"']*\.(css|scss|sass|less)["'];?\s*/g, "")
+    
+    // Entferne Next.js specific types
+    cleaned = cleaned.replace(/import\s+type\s+.*\s+from\s+["']next[^"']*["'];?\s*/g, "")
+    
+    // Ersetze Next.js Image mit normalem img
+    cleaned = cleaned.replace(/<Image\s/g, '<img ')
+    cleaned = cleaned.replace(/<\/Image>/g, '</img>')
+    
+    // Ersetze Next.js Link mit normalem a
+    cleaned = cleaned.replace(/<Link\s+href=/g, '<a href=')
+    cleaned = cleaned.replace(/<\/Link>/g, '</a>')
+    
+    // Entferne getServerSideProps, getStaticProps, etc.
+    cleaned = cleaned.replace(/export\s+(async\s+)?function\s+getServerSideProps[\s\S]*?^}/gm, '')
+    cleaned = cleaned.replace(/export\s+(async\s+)?function\s+getStaticProps[\s\S]*?^}/gm, '')
+    cleaned = cleaned.replace(/export\s+(async\s+)?function\s+getStaticPaths[\s\S]*?^}/gm, '')
+    
+    // Entferne metadata exports
+    cleaned = cleaned.replace(/export\s+const\s+metadata\s*=\s*\{[\s\S]*?\};?\s*/g, '')
+    
+    // Bereinige doppelte Leerzeilen
+    cleaned = cleaned.replace(/\n{3,}/g, '\n\n')
+    
+  } catch (error) {
+    console.error('[WebContainer] Fehler beim Bereinigen des Codes:', error)
+    return content // Gib Original zurück bei Fehler
+  }
+  
   return cleaned
 }
 
@@ -48,6 +85,23 @@ function extractImports(content: string): string[] {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type FileTree = Record<string, any>
 
+// Dateien die vom Template bereitgestellt werden und nicht überschrieben werden sollen
+const PROTECTED_FILES = [
+  'package.json',
+  'tsconfig.json', 
+  'tsconfig.node.json',
+  'vite.config.ts',
+  'index.html',
+  'main.tsx',
+  'main.ts',
+  '.gitignore',
+  'next.config.js',
+  'next.config.mjs',
+]
+
+// Erlaubte Dateiendungen für Quellcode
+const ALLOWED_EXTENSIONS = ['.tsx', '.jsx', '.ts', '.js', '.json', '.css', '.scss', '.svg', '.png', '.jpg', '.gif']
+
 // Erstelle WebContainer-Dateistruktur aus ProjectFiles
 function buildFileTree(files: ProjectFile[]): FileTree {
   const tree: FileTree = {}
@@ -55,6 +109,26 @@ function buildFileTree(files: ProjectFile[]): FileTree {
   for (const file of files) {
     // Normalisiere Pfad (entferne führenden /)
     let filePath = file.path.startsWith('/') ? file.path.slice(1) : file.path
+    const fileName = filePath.split('/').pop() || ''
+    
+    // Überspringe geschützte Konfigurationsdateien
+    if (PROTECTED_FILES.includes(fileName)) {
+      console.log(`[WebContainer] Überspringe geschützte Datei: ${fileName}`)
+      continue
+    }
+    
+    // Überspringe Dateien ohne erlaubte Endung (außer sie haben keine Endung)
+    const hasExtension = fileName.includes('.')
+    const hasAllowedExtension = ALLOWED_EXTENSIONS.some(ext => fileName.endsWith(ext))
+    if (hasExtension && !hasAllowedExtension) {
+      console.log(`[WebContainer] Überspringe nicht unterstützte Datei: ${fileName}`)
+      continue
+    }
+    
+    // Überspringe leere Dateien
+    if (!file.content || file.content.trim().length === 0) {
+      continue
+    }
     
     // Stelle sicher, dass alle Dateien unter src/ liegen
     if (!filePath.startsWith('src/')) {
@@ -62,7 +136,7 @@ function buildFileTree(files: ProjectFile[]): FileTree {
     }
     
     const parts = filePath.split('/')
-    const fileName = parts.pop()!
+    const finalFileName = parts.pop()!
     
     // Navigiere/erstelle Verzeichnisse
     let current = tree
@@ -74,7 +148,7 @@ function buildFileTree(files: ProjectFile[]): FileTree {
     }
     
     // Füge Datei hinzu mit bereinigtem Code
-    current[fileName] = {
+    current[finalFileName] = {
       file: {
         contents: cleanCodeForVite(file.content)
       }
