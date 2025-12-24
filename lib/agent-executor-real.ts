@@ -374,6 +374,114 @@ function createHumanReadableSummary(
     return summary
   }
 
+  // === MARKETPLACE AGENTS ===
+  
+  // Tester Agent
+  if (agentType === "tester") {
+    const testCount = (content.match(/(?:test|it|describe)\s*\(/gi) || []).length
+    const hasJest = content.toLowerCase().includes("jest") || content.toLowerCase().includes("vitest")
+    
+    let summary = `✅ **Test Agent** abgeschlossen (${duration}s)\n\n`
+    summary += `🧪 **Test-Generierung:**\n`
+    if (testCount > 0) summary += `- ${testCount} Tests generiert\n`
+    if (hasJest) summary += `- Jest/Vitest Test-Suite erstellt\n`
+    if (files.length > 0) summary += `- ${files.length} Test-Dateien erstellt`
+    
+    return summary
+  }
+  
+  // Documenter Agent
+  if (agentType === "documenter") {
+    const hasReadme = files.some(f => f.path.toLowerCase().includes("readme"))
+    const hasApi = content.toLowerCase().includes("api") || content.toLowerCase().includes("endpoint")
+    
+    let summary = `✅ **Documentation Agent** abgeschlossen (${duration}s)\n\n`
+    summary += `📝 **Dokumentation:**\n`
+    if (hasReadme) summary += `- README.md erstellt\n`
+    if (hasApi) summary += `- API-Dokumentation generiert\n`
+    if (files.length > 0) summary += `- ${files.length} Dokumentationsdateien erstellt`
+    
+    return summary
+  }
+  
+  // Optimizer Agent
+  if (agentType === "optimizer") {
+    const hasPerf = content.toLowerCase().includes("performance") || content.toLowerCase().includes("optimier")
+    const hasBundle = content.toLowerCase().includes("bundle") || content.toLowerCase().includes("size")
+    
+    let summary = `✅ **Performance Optimizer** abgeschlossen (${duration}s)\n\n`
+    summary += `⚡ **Optimierung:**\n`
+    if (hasPerf) summary += `- Performance-Analyse durchgeführt\n`
+    if (hasBundle) summary += `- Bundle-Size analysiert\n`
+    summary += `- Optimierungsvorschläge erstellt`
+    
+    return summary
+  }
+  
+  // Accessibility Agent
+  if (agentType === "accessibility") {
+    const hasA11y = content.toLowerCase().includes("wcag") || content.toLowerCase().includes("aria")
+    
+    let summary = `✅ **Accessibility Agent** abgeschlossen (${duration}s)\n\n`
+    summary += `♿ **Barrierefreiheit:**\n`
+    if (hasA11y) summary += `- WCAG-Prüfung durchgeführt\n`
+    summary += `- A11y-Empfehlungen erstellt`
+    
+    return summary
+  }
+  
+  // Database Agent
+  if (agentType === "database") {
+    const hasPrisma = content.toLowerCase().includes("prisma")
+    const hasSchema = content.toLowerCase().includes("schema") || content.toLowerCase().includes("model")
+    
+    let summary = `✅ **Database Agent** abgeschlossen (${duration}s)\n\n`
+    summary += `🗄️ **Datenbank:**\n`
+    if (hasPrisma) summary += `- Prisma Schema generiert\n`
+    if (hasSchema) summary += `- Datenmodell erstellt\n`
+    if (files.length > 0) summary += `- ${files.length} Schema-Dateien erstellt`
+    
+    return summary
+  }
+  
+  // DevOps Agent
+  if (agentType === "devops") {
+    const hasDocker = content.toLowerCase().includes("docker")
+    const hasCI = content.toLowerCase().includes("github actions") || content.toLowerCase().includes("ci/cd")
+    
+    let summary = `✅ **DevOps Agent** abgeschlossen (${duration}s)\n\n`
+    summary += `🐳 **DevOps:**\n`
+    if (hasDocker) summary += `- Docker-Konfiguration erstellt\n`
+    if (hasCI) summary += `- CI/CD Pipeline generiert\n`
+    if (files.length > 0) summary += `- ${files.length} Konfigurationsdateien erstellt`
+    
+    return summary
+  }
+  
+  // SAP Agents
+  if ((agentType as string).startsWith("sap-")) {
+    const agentDisplayNames: Record<string, string> = {
+      "sap-cap-developer": "SAP CAP Developer",
+      "sap-ui5-developer": "SAP UI5 Developer",
+      "sap-fiori-developer": "SAP Fiori Developer",
+      "sap-mdk-developer": "SAP MDK Developer",
+    }
+    
+    const displayName = agentDisplayNames[agentType] || agentType
+    const hasCDS = content.toLowerCase().includes("cds") || content.toLowerCase().includes("entity")
+    const hasUI5 = content.toLowerCase().includes("ui5") || content.toLowerCase().includes("sapui5")
+    const hasFiori = content.toLowerCase().includes("fiori") || content.toLowerCase().includes("annotation")
+    
+    let summary = `✅ **${displayName}** abgeschlossen (${duration}s)\n\n`
+    summary += `🏢 **SAP Entwicklung:**\n`
+    if (hasCDS) summary += `- CDS-Modelle erstellt\n`
+    if (hasUI5) summary += `- UI5 Code generiert\n`
+    if (hasFiori) summary += `- Fiori-Konfiguration erstellt\n`
+    if (files.length > 0) summary += `- ${files.length} Dateien erstellt`
+    
+    return summary
+  }
+
   // Fallback für unbekannte Agenten
   return `✅ **${agentName} abgeschlossen** (${duration}s)`
 }
@@ -865,6 +973,65 @@ ${fileContexts.join("\n\n")}
               break
             case "deploy_tool":
               toolDescriptions.push(`- **${toolName}**: Deployment zu Vercel, Netlify, Render.`)
+              break
+            // === MARKETPLACE AGENT TOOLS ===
+            case "coverage_analyzer":
+              toolDescriptions.push(`- **${toolName}**: Analysiere Test-Coverage und identifiziere ungetestete Code-Pfade.`)
+              break
+            case "readme_generator":
+              toolDescriptions.push(`- **${toolName}**: Generiere README.md mit Installation, Verwendung und API-Dokumentation.`)
+              break
+            case "api_doc_generator":
+              toolDescriptions.push(`- **${toolName}**: Erstelle OpenAPI/Swagger Spezifikationen und API-Dokumentation.`)
+              break
+            case "bundle_analyzer":
+              toolDescriptions.push(`- **${toolName}**: Analysiere Bundle-Size, identifiziere große Dependencies und Tree-Shaking Möglichkeiten.`)
+              break
+            case "perf_profiler":
+              toolDescriptions.push(`- **${toolName}**: Profile Performance: Render-Zeiten, Memory Usage, Network Requests.`)
+              break
+            case "wcag_checker":
+              toolDescriptions.push(`- **${toolName}**: Prüfe WCAG 2.1 Konformität: Kontraste, ARIA-Labels, Keyboard Navigation.`)
+              break
+            case "string_extractor":
+              toolDescriptions.push(`- **${toolName}**: Extrahiere hardcodierte Strings für i18n/Übersetzung.`)
+              break
+            case "translator":
+              toolDescriptions.push(`- **${toolName}**: Übersetze Strings in verschiedene Sprachen.`)
+              break
+            case "schema_generator":
+              toolDescriptions.push(`- **${toolName}**: Generiere Datenbank-Schemas (Prisma, Drizzle, TypeORM).`)
+              break
+            case "migration_generator":
+              toolDescriptions.push(`- **${toolName}**: Erstelle Datenbank-Migrationen.`)
+              break
+            case "openapi_generator":
+              toolDescriptions.push(`- **${toolName}**: Generiere OpenAPI 3.0 Spezifikationen für REST APIs.`)
+              break
+            case "code_smell_detector":
+              toolDescriptions.push(`- **${toolName}**: Erkenne Code Smells: Duplicate Code, Long Methods, God Classes.`)
+              break
+            case "docker_generator":
+              toolDescriptions.push(`- **${toolName}**: Generiere Dockerfile, docker-compose.yml, .dockerignore.`)
+              break
+            case "ci_generator":
+              toolDescriptions.push(`- **${toolName}**: Erstelle CI/CD Pipelines für GitHub Actions, GitLab CI, Jenkins.`)
+              break
+            // === SAP AGENT TOOLS ===
+            case "cds_modeler":
+              toolDescriptions.push(`- **${toolName}**: Modelliere CDS Entitäten, Services und Annotationen für SAP CAP.`)
+              break
+            case "cap_project_setup":
+              toolDescriptions.push(`- **${toolName}**: Initialisiere CAP Projekte mit db/, srv/, app/ Struktur.`)
+              break
+            case "ui5_analyzer":
+              toolDescriptions.push(`- **${toolName}**: Analysiere UI5 Apps: Controls, Bindings, manifest.json.`)
+              break
+            case "fiori_generator":
+              toolDescriptions.push(`- **${toolName}**: Generiere Fiori Elements Apps: List Report, Object Page, Worklist.`)
+              break
+            case "mdk_builder":
+              toolDescriptions.push(`- **${toolName}**: Baue MDK Mobile Apps mit Offline-Sync und OData Integration.`)
               break
             default:
               toolDescriptions.push(`- **${toolName}**: ${(tool as { description: string }).description}`)
