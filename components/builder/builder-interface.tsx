@@ -292,12 +292,105 @@ ${f.content}
     }
 
     setIsDeploying(true)
-    setDeployStep("github")
     setDeployResult(null)
     setDeployLogs([])
 
     try {
       let repoUrl = ""
+      
+      // BTP Deployment - kein GitHub Repository nötig, direkt via CF CLI
+      if (deployTarget === "btp") {
+        setDeployStep("btp")
+        setDeployLogs(prev => [...prev, "🚀 SAP BTP Deployment wird gestartet..."])
+        
+        // Validiere BTP Credentials
+        if (!globalConfig.btpApiEndpoint || !globalConfig.btpOrg || !globalConfig.btpSpace) {
+          setDeployLogs(prev => [...prev, "⚠️ BTP Credentials nicht konfiguriert"])
+          setDeployLogs(prev => [...prev, "Bitte unter Settings → API Keys → SAP BTP Credentials konfigurieren"])
+          setDeployStep("error")
+          setDeployResult({ error: "BTP Credentials fehlen. Bitte in Settings konfigurieren." })
+          setIsDeploying(false)
+          return
+        }
+        
+        const appName = repoName.toLowerCase().replace(/\s+/g, "-")
+        
+        // Generiere MTA Konfiguration
+        setDeployLogs(prev => [...prev, "", "📦 Generiere MTA Konfiguration..."])
+        const mtaRes = await fetch("/api/btp/deploy", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "generate-mta",
+            config: {
+              appName,
+              projectType: "fiori",
+              useHANA: false,
+            },
+          }),
+        })
+        const mtaData = await mtaRes.json()
+        
+        if (mtaData.success && mtaData.files) {
+          setGeneratedBlueprint(mtaData.files["mta.yaml"])
+          setDeployLogs(prev => [...prev, "✓ mta.yaml generiert"])
+          setDeployLogs(prev => [...prev, "✓ xs-security.json generiert"])
+        }
+        
+        // Deploy zu BTP via API
+        setDeployLogs(prev => [...prev, "", "☁️ Verbinde mit SAP BTP Cloud Foundry..."])
+        setDeployLogs(prev => [...prev, `   API: ${globalConfig.btpApiEndpoint}`])
+        setDeployLogs(prev => [...prev, `   Org: ${globalConfig.btpOrg}`])
+        setDeployLogs(prev => [...prev, `   Space: ${globalConfig.btpSpace}`])
+        
+        const btpDeployRes = await fetch("/api/btp/deploy", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "deploy",
+            config: {
+              appName,
+              projectType: "fiori",
+              credentials: {
+                apiEndpoint: globalConfig.btpApiEndpoint,
+                org: globalConfig.btpOrg,
+                space: globalConfig.btpSpace,
+                username: globalConfig.btpUsername,
+                password: globalConfig.btpPassword,
+              },
+              // Sende generierte Dateien mit
+              files: files.map(f => ({ path: f.path, content: f.content })),
+            },
+          }),
+        })
+        const btpData = await btpDeployRes.json()
+        
+        if (btpData.logs) {
+          btpData.logs.forEach((log: string) => setDeployLogs(prev => [...prev, log]))
+        }
+        
+        if (btpData.success) {
+          setDeployResult({ btpUrl: btpData.appUrl })
+          setDeployStep("done")
+          toast.success("BTP Deployment erfolgreich!")
+          
+          addMessage({
+            role: "assistant",
+            content: `🚀 **SAP BTP Deployment erfolgreich!**\n\n**BTP App:** ${btpData.appUrl || "Wird bereitgestellt..."}\n\nDeine SAP Fiori App ist jetzt live auf der SAP Business Technology Platform!`,
+            agent: "system",
+          })
+        } else {
+          setDeployResult({ error: btpData.error || "BTP Deployment fehlgeschlagen" })
+          setDeployStep("error")
+          toast.error("BTP Deployment fehlgeschlagen")
+        }
+        
+        setIsDeploying(false)
+        return
+      }
+      
+      // Für andere Targets: GitHub Repository erstellen
+      setDeployStep("github")
       
       // 1. GitHub Repository erstellen (wenn Token vorhanden)
       if (globalConfig.githubToken) {
@@ -633,81 +726,6 @@ export default function RootLayout({
           setDeployResult(prev => ({ ...prev, error: deployData.error }))
           setDeployStep("done")
           toast.warning("Render Deployment mit Hinweisen abgeschlossen")
-        }
-        
-      } else if (deployTarget === "btp") {
-        setDeployStep("btp")
-        setDeployLogs(prev => [...prev, "", "Deploye zu SAP BTP..."])
-        
-        // Validiere BTP Credentials
-        if (!globalConfig.btpApiEndpoint || !globalConfig.btpOrg || !globalConfig.btpSpace) {
-          setDeployLogs(prev => [...prev, "⚠️ BTP Credentials nicht konfiguriert"])
-          setDeployLogs(prev => [...prev, "Bitte unter Settings → API Keys → SAP BTP Credentials konfigurieren"])
-          setDeployStep("done")
-          setDeployResult(prev => ({ ...prev, error: "BTP Credentials fehlen" }))
-          return
-        }
-        
-        // Generiere MTA
-        setDeployLogs(prev => [...prev, "Generiere MTA Konfiguration..."])
-        const mtaRes = await fetch("/api/btp/deploy", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "generate-mta",
-            config: {
-              appName: repoName.toLowerCase().replace(/\s+/g, "-"),
-              projectType: "fiori",
-              useHANA: false,
-            },
-          }),
-        })
-        const mtaData = await mtaRes.json()
-        
-        if (mtaData.success) {
-          setGeneratedBlueprint(mtaData.mtaYaml)
-          setDeployLogs(prev => [...prev, "✓ MTA Konfiguration generiert"])
-        }
-        
-        // Deploy zu BTP
-        setDeployLogs(prev => [...prev, "", "Deploye zu SAP BTP Cloud Foundry..."])
-        const btpDeployRes = await fetch("/api/btp/deploy", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "deploy",
-            config: {
-              appName: repoName.toLowerCase().replace(/\s+/g, "-"),
-              projectType: "fiori",
-              credentials: {
-                apiEndpoint: globalConfig.btpApiEndpoint,
-                org: globalConfig.btpOrg,
-                space: globalConfig.btpSpace,
-                username: globalConfig.btpUsername,
-                password: globalConfig.btpPassword,
-              },
-            },
-          }),
-        })
-        const btpData = await btpDeployRes.json()
-        
-        if (btpData.logs) {
-          btpData.logs.forEach((log: string) => setDeployLogs(prev => [...prev, log]))
-        }
-        
-        if (btpData.success) {
-          setDeployResult(prev => ({ ...prev, btpUrl: btpData.appUrl }))
-          setDeployStep("done")
-          toast.success("BTP Deployment erfolgreich!")
-          
-          addMessage({
-            role: "assistant",
-            content: `🚀 **SAP BTP Deployment erfolgreich!**\n\n${repoUrl ? `**GitHub:** ${repoUrl}\n` : ""}**BTP:** ${btpData.appUrl || "Wird bereitgestellt..."}\n\nDeine SAP Fiori App ist jetzt live!`,
-            agent: "system",
-          })
-        } else {
-          setDeployResult(prev => ({ ...prev, error: btpData.error }))
-          setDeployStep("done")
         }
         
       } else {
