@@ -216,13 +216,36 @@ async function handleCreateService(
         "Accept": "application/json",
       },
     })
-    const owners = await ownersRes.json()
+    
+    if (!ownersRes.ok) {
+      const errorText = await ownersRes.text()
+      console.error("Render API Error:", ownersRes.status, errorText)
+      throw new Error(`Render API Fehler: ${ownersRes.status} - Prüfe deinen API-Key`)
+    }
+    
+    const ownersData = await ownersRes.json()
+    console.log("Render Owners Response:", JSON.stringify(ownersData, null, 2))
+    
+    // Render API gibt ein Array zurück, wobei jedes Element ein {owner: {...}} Objekt hat
+    // Oder direkt ein Array von Ownern - handle beide Fälle
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let owners: Array<{id: string, name?: string, email?: string}> = []
+    if (Array.isArray(ownersData)) {
+      // Format: [{owner: {...}}, ...] oder [{id: ..., name: ...}, ...]
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      owners = ownersData.map((item: any) => item.owner || item).filter((o: any) => o?.id)
+    } else if (ownersData.owners) {
+      // Format: {owners: [...]}
+      owners = ownersData.owners
+    }
+    
     const ownerId = owners[0]?.id
 
     if (!ownerId) {
-      throw new Error("Kein Render Owner gefunden")
+      console.error("No owner found in response:", ownersData)
+      throw new Error("Kein Render Owner gefunden. Stelle sicher, dass dein API-Key gültig ist und Berechtigungen hat.")
     }
-    logs.push(`Owner gefunden: ${owners[0]?.name}`)
+    logs.push(`Owner gefunden: ${owners[0]?.name || owners[0]?.email || ownerId}`)
 
     // Create web service
     const serviceRes = await fetch("https://api.render.com/v1/services", {
