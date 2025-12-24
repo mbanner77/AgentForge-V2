@@ -379,12 +379,20 @@ export function Calendar() {
 ❌ ReactDOM.createRoot()
 ❌ import from "react-dom/client"
 ❌ vite.config.ts
+❌ export const metadata in "use client" Komponenten!
+❌ import "./globals.css" in Komponenten
+❌ import type { Metadata } from "next" in Client-Komponenten
+
+**KRITISCH - METADATA REGEL:**
+metadata exports sind NUR in Server Components (OHNE "use client") erlaubt!
+In Client-Komponenten (MIT "use client") ist metadata VERBOTEN!
 
 **PFLICHT:**
-✅ "use client" am Anfang von Client-Komponenten
+✅ "use client" am Anfang von Client-Komponenten (OHNE metadata!)
 ✅ app/page.tsx als Hauptseite
 ✅ export default function für Seiten
-✅ @/components/X für Imports`,
+✅ @/components/X für Imports
+✅ CSS nur in layout.tsx importieren`,
   },
   
   vercel: {

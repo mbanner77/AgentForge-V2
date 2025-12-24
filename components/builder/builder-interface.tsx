@@ -577,6 +577,14 @@ export default function RootLayout({
             content = content.replace(/^["']use client["'];?\s*/gm, '')
             content = content.replace(/import\s+.*\s+from\s+["']react-dom\/client["'];?\s*/g, '')
             content = content.replace(/createRoot\(.*\)\.render\([\s\S]*?\);?/g, '')
+            // Entferne metadata export (nicht erlaubt in "use client" Komponenten)
+            content = content.replace(/export\s+const\s+metadata\s*:\s*Metadata\s*=\s*\{[\s\S]*?\};\s*/g, '')
+            content = content.replace(/export\s+const\s+metadata\s*=\s*\{[\s\S]*?\};\s*/g, '')
+            // Entferne Metadata type import
+            content = content.replace(/import\s+type\s*\{\s*Metadata\s*\}\s*from\s+["']next["'];?\s*/g, '')
+            content = content.replace(/import\s*\{\s*Metadata\s*\}\s*from\s+["']next["'];?\s*/g, '')
+            // Entferne CSS imports (globals.css etc.)
+            content = content.replace(/import\s+["'][^"']*\.css["'];?\s*/g, '')
             return { path, content }
           })
         
