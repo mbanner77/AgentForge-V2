@@ -433,7 +433,7 @@ ${f.content}
               projectName: repoName.toLowerCase().replace(/\s+/g, "-"),
               projectType: "nextjs",
               region: "frankfurt",
-              plan: "free",
+              plan: "starter", // Render API unterstützt kein "free" via API
               repoUrl: repoUrl,
             },
             apiKey: globalConfig.renderApiKey,
