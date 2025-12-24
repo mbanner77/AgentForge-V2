@@ -14,6 +14,8 @@ interface BuilderChatProps {
   onSendMessage: (content: string) => void
   isProcessing: boolean
   onImplementSuggestion?: (suggestion: string) => void
+  streamingContent?: string // Live-Streaming-Inhalt
+  streamingAgent?: string // Welcher Agent gerade streamt
 }
 
 const agentIcons: Record<string, typeof Bot> = {
@@ -177,7 +179,7 @@ function formatInlineMarkdown(text: string): React.ReactNode {
   })
 }
 
-export function BuilderChat({ messages, onSendMessage, isProcessing, onImplementSuggestion }: BuilderChatProps) {
+export function BuilderChat({ messages, onSendMessage, isProcessing, onImplementSuggestion, streamingContent, streamingAgent }: BuilderChatProps) {
   const [input, setInput] = useState("")
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -187,7 +189,7 @@ export function BuilderChat({ messages, onSendMessage, isProcessing, onImplement
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
-  }, [messages])
+  }, [messages, streamingContent])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -293,7 +295,34 @@ export function BuilderChat({ messages, onSendMessage, isProcessing, onImplement
               </div>
             )
           })}
-          {isProcessing && (
+          {/* Streaming Message - Live-Anzeige während Generierung */}
+          {streamingContent && isProcessing && (
+            <div className="flex gap-3">
+              <Avatar className="h-8 w-8 shrink-0">
+                <AvatarFallback className={agentColors[streamingAgent || "system"] || "bg-primary"}>
+                  {(() => {
+                    const StreamIcon = agentIcons[streamingAgent || "system"] || Bot
+                    return <StreamIcon className="h-4 w-4 text-primary-foreground" />
+                  })()}
+                </AvatarFallback>
+              </Avatar>
+              <div className="group relative max-w-[85%] rounded-lg px-4 py-3 bg-secondary text-secondary-foreground">
+                <div className="mb-2 flex items-center gap-2">
+                  <Badge variant="outline" className="text-xs">
+                    {agentLabels[streamingAgent || "system"] || "Agent"}
+                  </Badge>
+                  <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">Generiert...</span>
+                </div>
+                <div className="text-sm">
+                  <SimpleMarkdown content={streamingContent} />
+                  <span className="inline-block w-2 h-4 bg-primary animate-pulse ml-0.5" />
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {isProcessing && !streamingContent && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
               Agenten arbeiten...
