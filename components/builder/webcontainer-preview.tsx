@@ -94,18 +94,39 @@ const createViteProject = (files: ProjectFile[]) => {
   
   // Prüfe ob App.tsx existiert, sonst erstelle Standard-App
   if (!srcDir['App.tsx']) {
-    // Suche nach einer Hauptdatei
-    const mainFile = files.find(f => 
-      f.path.includes('App.tsx') || 
-      f.path.includes('App.jsx') ||
-      f.path.includes('page.tsx') ||
-      f.path.includes('index.tsx')
-    ) || files.find(f => f.path.endsWith('.tsx') || f.path.endsWith('.jsx'))
+    // Suche nach einer Hauptdatei (priorisiere App.tsx, dann page.tsx)
+    const mainFile = files.find(f => {
+      const fileName = f.path.split('/').pop()
+      return fileName === 'App.tsx' || fileName === 'App.jsx'
+    }) || files.find(f => {
+      const fileName = f.path.split('/').pop()
+      return fileName === 'page.tsx' || fileName === 'index.tsx'
+    }) || files.find(f => f.path.endsWith('.tsx') || f.path.endsWith('.jsx'))
     
     if (mainFile) {
-      srcDir['App.tsx'] = {
-        file: {
-          contents: cleanCodeForVite(mainFile.content)
+      // Erstelle App.tsx als Wrapper der Hauptkomponente
+      const componentName = mainFile.path.split('/').pop()?.replace(/\.(tsx|jsx)$/, '') || 'Component'
+      const isDefaultExport = mainFile.content.includes('export default')
+      
+      if (componentName === 'App') {
+        srcDir['App.tsx'] = {
+          file: {
+            contents: cleanCodeForVite(mainFile.content)
+          }
+        }
+      } else {
+        // Importiere die gefundene Komponente in App.tsx
+        const importPath = mainFile.path.startsWith('/') ? mainFile.path.slice(1) : mainFile.path
+        const relativePath = './' + importPath.replace(/\.(tsx|jsx)$/, '')
+        
+        srcDir['App.tsx'] = {
+          file: {
+            contents: `import ${isDefaultExport ? componentName : `{ ${componentName} }`} from '${relativePath}'
+
+export default function App() {
+  return <${componentName} />
+}`
+          }
         }
       }
     } else {
@@ -113,8 +134,9 @@ const createViteProject = (files: ProjectFile[]) => {
         file: {
           contents: `export default function App() {
   return (
-    <div style={{ padding: 20, background: '#1a1a2e', color: '#eee', minHeight: '100vh' }}>
+    <div style={{ padding: 20, background: '#f5f5f5', color: '#333', minHeight: '100vh' }}>
       <h1>Keine React-Komponente gefunden</h1>
+      <p>Bitte erstelle eine Komponente mit export default.</p>
     </div>
   );
 }`
@@ -193,7 +215,15 @@ export default defineConfig({
     <title>Generated App</title>
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
-      body { font-family: system-ui, -apple-system, sans-serif; }
+      body { 
+        font-family: system-ui, -apple-system, sans-serif; 
+        background-color: #ffffff;
+        color: #333;
+        min-height: 100vh;
+      }
+      #root {
+        min-height: 100vh;
+      }
     </style>
   </head>
   <body>
