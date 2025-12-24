@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { ArrowRight, Sparkles, Bot, Store, Server, Users, Building2, Zap, Shield, Play } from "lucide-react"
+import { ArrowRight, Sparkles, Bot, Store, Server, Users, Building2, Zap, Shield, Play, Rocket, GitBranch } from "lucide-react"
 import Link from "next/link"
 
 export function HeroSection() {
@@ -89,21 +89,51 @@ export function HeroSection() {
 
         {/* Stats */}
         <div className="mt-16 grid grid-cols-2 gap-4 sm:grid-cols-4 max-w-3xl mx-auto">
-          <div className="rounded-xl border border-border/50 bg-card/50 p-4 backdrop-blur-sm">
-            <div className="text-3xl font-bold text-primary">20+</div>
+          <div className="rounded-xl border border-border/50 bg-card/50 p-4 backdrop-blur-sm hover:border-primary/50 transition-colors group">
+            <div className="flex items-center gap-2 mb-1">
+              <Bot className="h-4 w-4 text-primary group-hover:scale-110 transition-transform" />
+              <div className="text-3xl font-bold text-primary">20+</div>
+            </div>
             <div className="text-sm text-muted-foreground">KI-Agenten</div>
           </div>
-          <div className="rounded-xl border border-border/50 bg-card/50 p-4 backdrop-blur-sm">
-            <div className="text-3xl font-bold text-blue-400">24</div>
+          <div className="rounded-xl border border-border/50 bg-card/50 p-4 backdrop-blur-sm hover:border-blue-500/50 transition-colors group">
+            <div className="flex items-center gap-2 mb-1">
+              <Server className="h-4 w-4 text-blue-400 group-hover:scale-110 transition-transform" />
+              <div className="text-3xl font-bold text-blue-400">24</div>
+            </div>
             <div className="text-sm text-muted-foreground">MCP Server</div>
           </div>
-          <div className="rounded-xl border border-border/50 bg-card/50 p-4 backdrop-blur-sm">
-            <div className="text-3xl font-bold text-purple-400">4</div>
+          <div className="rounded-xl border border-border/50 bg-card/50 p-4 backdrop-blur-sm hover:border-purple-500/50 transition-colors group">
+            <div className="flex items-center gap-2 mb-1">
+              <Building2 className="h-4 w-4 text-purple-400 group-hover:scale-110 transition-transform" />
+              <div className="text-3xl font-bold text-purple-400">4</div>
+            </div>
             <div className="text-sm text-muted-foreground">SAP Agenten</div>
           </div>
-          <div className="rounded-xl border border-border/50 bg-card/50 p-4 backdrop-blur-sm">
-            <div className="text-3xl font-bold text-green-400">∞</div>
+          <div className="rounded-xl border border-border/50 bg-card/50 p-4 backdrop-blur-sm hover:border-green-500/50 transition-colors group">
+            <div className="flex items-center gap-2 mb-1">
+              <GitBranch className="h-4 w-4 text-green-400 group-hover:scale-110 transition-transform" />
+              <div className="text-3xl font-bold text-green-400">∞</div>
+            </div>
             <div className="text-sm text-muted-foreground">Workflows</div>
+          </div>
+        </div>
+        
+        {/* Deployment Options Hint */}
+        <div className="mt-8 flex items-center justify-center gap-4 text-sm text-muted-foreground">
+          <div className="flex items-center gap-1.5">
+            <Rocket className="h-4 w-4 text-green-500" />
+            <span>Render.com</span>
+          </div>
+          <span className="text-border">•</span>
+          <div className="flex items-center gap-1.5">
+            <Building2 className="h-4 w-4 text-blue-500" />
+            <span>SAP BTP</span>
+          </div>
+          <span className="text-border">•</span>
+          <div className="flex items-center gap-1.5">
+            <GitBranch className="h-4 w-4 text-purple-500" />
+            <span>GitHub</span>
           </div>
         </div>
       </div>
