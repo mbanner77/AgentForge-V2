@@ -15,37 +15,163 @@ interface WebContainerPreviewProps {
   files: ProjectFile[]
 }
 
-// Vite Projekt-Template
-const createViteProject = (appCode: string) => ({
-  "package.json": {
-    file: {
-      contents: JSON.stringify({
-        name: "vite-react-app",
-        private: true,
-        version: "0.0.0",
-        type: "module",
-        scripts: {
-          dev: "vite",
-          build: "vite build",
-          preview: "vite preview"
-        },
-        dependencies: {
-          "react": "^18.2.0",
-          "react-dom": "^18.2.0"
-        },
-        devDependencies: {
-          "@types/react": "^18.2.0",
-          "@types/react-dom": "^18.2.0",
-          "@vitejs/plugin-react": "^4.2.0",
-          "typescript": "^5.2.0",
-          "vite": "^5.0.0"
-        }
-      }, null, 2)
+// Bereinige Code für Vite-Kompatibilität
+function cleanCodeForVite(content: string): string {
+  let cleaned = content
+  // Entferne "use client" Direktiven
+  cleaned = cleaned.replace(/^["']use client["'];?\s*/gm, "")
+  // Entferne Next.js spezifische Imports
+  cleaned = cleaned.replace(/import\s+.*\s+from\s+["']next\/[^"']+["'];?\s*/g, "")
+  // Konvertiere @/ Imports zu relativen Imports (./components statt @/components)
+  cleaned = cleaned.replace(/from\s+["']@\/([^"']+)["']/g, 'from "./$1"')
+  // Entferne CSS Imports (werden nicht unterstützt)
+  cleaned = cleaned.replace(/import\s+["'][^"']*\.css["'];?\s*/g, "")
+  return cleaned
+}
+
+// Extrahiere Imports aus Code
+function extractImports(content: string): string[] {
+  const importRegex = /import\s+(?:(?:\{[^}]*\}|\*\s+as\s+\w+|\w+)\s*,?\s*)*\s*from\s+["']([^"']+)["']/g
+  const imports: string[] = []
+  let match
+  while ((match = importRegex.exec(content)) !== null) {
+    const importPath = match[1]
+    // Nur relative Imports (keine node_modules)
+    if (importPath.startsWith('./') || importPath.startsWith('../') || importPath.startsWith('@/')) {
+      imports.push(importPath)
     }
-  },
-  "vite.config.ts": {
-    file: {
-      contents: `import { defineConfig } from 'vite'
+  }
+  return imports
+}
+
+// Typ für WebContainer Dateibaum
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type FileTree = Record<string, any>
+
+// Erstelle WebContainer-Dateistruktur aus ProjectFiles
+function buildFileTree(files: ProjectFile[]): FileTree {
+  const tree: FileTree = {}
+  
+  for (const file of files) {
+    // Normalisiere Pfad (entferne führenden /)
+    let filePath = file.path.startsWith('/') ? file.path.slice(1) : file.path
+    
+    // Stelle sicher, dass alle Dateien unter src/ liegen
+    if (!filePath.startsWith('src/')) {
+      filePath = `src/${filePath}`
+    }
+    
+    const parts = filePath.split('/')
+    const fileName = parts.pop()!
+    
+    // Navigiere/erstelle Verzeichnisse
+    let current = tree
+    for (const part of parts) {
+      if (!current[part]) {
+        current[part] = { directory: {} }
+      }
+      current = current[part].directory
+    }
+    
+    // Füge Datei hinzu mit bereinigtem Code
+    current[fileName] = {
+      file: {
+        contents: cleanCodeForVite(file.content)
+      }
+    }
+  }
+  
+  return tree
+}
+
+// Vite Projekt-Template mit allen Projektdateien
+const createViteProject = (files: ProjectFile[]) => {
+  // Baue Dateibaum aus allen Projektdateien
+  const projectTree = buildFileTree(files) as FileTree
+  
+  // Extrahiere src-Verzeichnis oder erstelle leeres
+  const srcDir: FileTree = (projectTree['src'] as FileTree)?.directory || {}
+  
+  // Prüfe ob App.tsx existiert, sonst erstelle Standard-App
+  if (!srcDir['App.tsx']) {
+    // Suche nach einer Hauptdatei
+    const mainFile = files.find(f => 
+      f.path.includes('App.tsx') || 
+      f.path.includes('App.jsx') ||
+      f.path.includes('page.tsx') ||
+      f.path.includes('index.tsx')
+    ) || files.find(f => f.path.endsWith('.tsx') || f.path.endsWith('.jsx'))
+    
+    if (mainFile) {
+      srcDir['App.tsx'] = {
+        file: {
+          contents: cleanCodeForVite(mainFile.content)
+        }
+      }
+    } else {
+      srcDir['App.tsx'] = {
+        file: {
+          contents: `export default function App() {
+  return (
+    <div style={{ padding: 20, background: '#1a1a2e', color: '#eee', minHeight: '100vh' }}>
+      <h1>Keine React-Komponente gefunden</h1>
+    </div>
+  );
+}`
+        }
+      }
+    }
+  }
+  
+  // Stelle sicher, dass main.tsx existiert
+  if (!srcDir['main.tsx']) {
+    srcDir['main.tsx'] = {
+      file: {
+        contents: `import React from 'react'
+import ReactDOM from 'react-dom/client'
+import App from './App'
+
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>,
+)`
+      }
+    }
+  }
+  
+  return {
+    "package.json": {
+      file: {
+        contents: JSON.stringify({
+          name: "vite-react-app",
+          private: true,
+          version: "0.0.0",
+          type: "module",
+          scripts: {
+            dev: "vite",
+            build: "vite build",
+            preview: "vite preview"
+          },
+          dependencies: {
+            "react": "^18.2.0",
+            "react-dom": "^18.2.0",
+            "lucide-react": "^0.294.0",
+            "date-fns": "^2.30.0"
+          },
+          devDependencies: {
+            "@types/react": "^18.2.0",
+            "@types/react-dom": "^18.2.0",
+            "@vitejs/plugin-react": "^4.2.0",
+            "typescript": "^5.2.0",
+            "vite": "^5.0.0"
+          }
+        }, null, 2)
+      }
+    },
+    "vite.config.ts": {
+      file: {
+        contents: `import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
 export default defineConfig({
@@ -55,86 +181,76 @@ export default defineConfig({
     port: 5173
   }
 })`
-    }
-  },
-  "index.html": {
-    file: {
-      contents: `<!DOCTYPE html>
+      }
+    },
+    "index.html": {
+      file: {
+        contents: `<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Generated App</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body { font-family: system-ui, -apple-system, sans-serif; }
+    </style>
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>`
-    }
-  },
-  "src": {
-    directory: {
-      "main.tsx": {
-        file: {
-          contents: `import React from 'react'
-import ReactDOM from 'react-dom/client'
-import App from './App'
-
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>,
-)`
-        }
-      },
-      "App.tsx": {
-        file: {
-          contents: appCode
-        }
+      }
+    },
+    "src": {
+      directory: srcDir
+    },
+    "tsconfig.json": {
+      file: {
+        contents: JSON.stringify({
+          compilerOptions: {
+            target: "ES2020",
+            useDefineForClassFields: true,
+            lib: ["ES2020", "DOM", "DOM.Iterable"],
+            module: "ESNext",
+            skipLibCheck: true,
+            moduleResolution: "bundler",
+            allowImportingTsExtensions: true,
+            resolveJsonModule: true,
+            isolatedModules: true,
+            noEmit: true,
+            jsx: "react-jsx",
+            strict: false,
+            noUnusedLocals: false,
+            noUnusedParameters: false,
+            noFallthroughCasesInSwitch: true,
+            baseUrl: ".",
+            paths: {
+              "@/*": ["src/*"]
+            }
+          },
+          include: ["src"],
+          references: [{ path: "./tsconfig.node.json" }]
+        }, null, 2)
+      }
+    },
+    "tsconfig.node.json": {
+      file: {
+        contents: JSON.stringify({
+          compilerOptions: {
+            composite: true,
+            skipLibCheck: true,
+            module: "ESNext",
+            moduleResolution: "bundler",
+            allowSyntheticDefaultImports: true
+          },
+          include: ["vite.config.ts"]
+        }, null, 2)
       }
     }
-  },
-  "tsconfig.json": {
-    file: {
-      contents: JSON.stringify({
-        compilerOptions: {
-          target: "ES2020",
-          useDefineForClassFields: true,
-          lib: ["ES2020", "DOM", "DOM.Iterable"],
-          module: "ESNext",
-          skipLibCheck: true,
-          moduleResolution: "bundler",
-          allowImportingTsExtensions: true,
-          resolveJsonModule: true,
-          isolatedModules: true,
-          noEmit: true,
-          jsx: "react-jsx",
-          strict: true,
-          noUnusedLocals: true,
-          noUnusedParameters: true,
-          noFallthroughCasesInSwitch: true
-        },
-        include: ["src"],
-        references: [{ path: "./tsconfig.node.json" }]
-      }, null, 2)
-    }
-  },
-  "tsconfig.node.json": {
-    file: {
-      contents: JSON.stringify({
-        compilerOptions: {
-          composite: true,
-          skipLibCheck: true,
-          module: "ESNext",
-          moduleResolution: "bundler",
-          allowSyntheticDefaultImports: true
-        },
-        include: ["vite.config.ts"]
-      }, null, 2)
-    }
   }
-})
+}
 
 export function WebContainerPreview({ files }: WebContainerPreviewProps) {
   const [webcontainer, setWebcontainer] = useState<WebContainer | null>(null)
@@ -148,35 +264,6 @@ export function WebContainerPreview({ files }: WebContainerPreviewProps) {
   const addLog = useCallback((message: string) => {
     setLogs(prev => [...prev.slice(-100), `[${new Date().toLocaleTimeString()}] ${message}`])
   }, [])
-
-  // Finde die Haupt-App-Datei
-  const getAppCode = useCallback(() => {
-    const mainFile = files.find(f => 
-      f.path.includes("App.tsx") || 
-      f.path.includes("App.jsx") ||
-      f.path.includes("page.tsx") ||
-      f.path.includes("index.tsx")
-    ) || files.find(f => f.path.endsWith(".tsx") || f.path.endsWith(".jsx"))
-    
-    if (!mainFile) {
-      return `export default function App() {
-  return (
-    <div style={{ padding: 20, background: '#1a1a2e', color: '#eee', minHeight: '100vh' }}>
-      <h1>Keine React-Komponente gefunden</h1>
-    </div>
-  );
-}`
-    }
-    
-    // Bereinige den Code für Vite
-    let content = mainFile.content
-    content = content.replace(/^["']use client["'];?\s*/gm, "")
-    content = content.replace(/import\s+.*\s+from\s+["']next\/[^"']+["'];?\s*/g, "")
-    content = content.replace(/import\s+.*\s+from\s+["']@\/[^"']+["'];?\s*/g, "")
-    content = content.replace(/import\s+["'][^"']*\.css["'];?\s*/g, "")
-    
-    return content
-  }, [files])
 
   const bootContainer = useCallback(async () => {
     // Verwende existierende Instanz wenn vorhanden
@@ -249,9 +336,8 @@ export function WebContainerPreview({ files }: WebContainerPreviewProps) {
     addLog("Mounte Dateien...")
     
     try {
-      // Mounte Projekt-Dateien
-      const appCode = getAppCode()
-      const projectFiles = createViteProject(appCode)
+      // Mounte Projekt-Dateien mit allen Dateien
+      const projectFiles = createViteProject(files)
       await container.mount(projectFiles)
       addLog("Dateien gemountet")
       
@@ -289,7 +375,7 @@ export function WebContainerPreview({ files }: WebContainerPreviewProps) {
       setError(message)
       setStatus("error")
     }
-  }, [bootContainer, getAppCode, addLog])
+  }, [bootContainer, addLog, files])
 
   const stopServer = useCallback(() => {
     if (processRef.current) {
