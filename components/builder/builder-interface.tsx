@@ -53,8 +53,36 @@ export function BuilderInterface() {
   const [deployLogs, setDeployLogs] = useState<string[]>([])
   const [generatedBlueprint, setGeneratedBlueprint] = useState<string | null>(null)
 
-  const { messages, workflowSteps, isProcessing, currentProject, addMessage, createProject, saveProject, getFiles, globalConfig } =
+  const { messages, workflowSteps, isProcessing, currentProject, addMessage, createProject, saveProject, getFiles, globalConfig, setWorkflowOrder, workflowOrder } =
     useAgentStore()
+  
+  // Default workflow order für Reset
+  const defaultWorkflowOrder = ["planner", "coder", "reviewer", "security", "executor"]
+
+  // Handler für Workflow-Auswahl - aktualisiert auch die Sidebar
+  const handleSelectWorkflow = useCallback((workflow: WorkflowGraph | null) => {
+    setSelectedWorkflow(workflow)
+    
+    if (workflow) {
+      // Extrahiere Agent-IDs aus den Workflow-Nodes in der richtigen Reihenfolge
+      // Sortiere nach Y-Position für vertikale Workflows
+      const agentNodes = workflow.nodes
+        .filter(node => node.type === "agent" && node.data.agentId)
+        .sort((a, b) => a.position.y - b.position.y)
+      
+      const agentIds = agentNodes
+        .map(node => node.data.agentId)
+        .filter((id): id is string => id !== undefined)
+      
+      if (agentIds.length > 0) {
+        setWorkflowOrder(agentIds)
+        toast.info(`Workflow "${workflow.name}" mit ${agentIds.length} Agenten geladen`)
+      }
+    } else {
+      // Zurück zum Default-Workflow
+      setWorkflowOrder(defaultWorkflowOrder)
+    }
+  }, [setWorkflowOrder, defaultWorkflowOrder])
 
   // Keyboard shortcuts
   useKeyboardShortcut(
@@ -544,7 +572,7 @@ ${f.content}
                   Workflow
                 </Button>
               }
-              onSelectWorkflow={(workflow) => setSelectedWorkflow(workflow)}
+              onSelectWorkflow={handleSelectWorkflow}
             />
             <Link href="/builder/workflow">
               <Button variant="outline" size="sm" title="Workflow Designer öffnen">
@@ -637,7 +665,7 @@ ${f.content}
                         setWorkflowPrompt(null)
                       }}
                       onClose={() => {
-                        setSelectedWorkflow(null)
+                        handleSelectWorkflow(null) // Reset workflow und workflowOrder
                         setWorkflowPrompt(null)
                       }}
                       onStart={() => {
