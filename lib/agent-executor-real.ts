@@ -699,6 +699,7 @@ export function useAgentExecutor() {
     workflowOrder,
     customAgentConfigs,
     addSuggestion,
+    saveToHistory,
   } = useAgentStore()
 
   const executeAgent = useCallback(
@@ -1474,6 +1475,10 @@ ${fileContexts.join("\n\n")}
       } finally {
         setCurrentAgent(null)
         setIsProcessing(false)
+        
+        // Speichere Zustand in der Historie für Undo/Redo
+        saveToHistory()
+        
         addLog({
           level: "info",
           agent: "system",
@@ -1496,6 +1501,7 @@ ${fileContexts.join("\n\n")}
       clearLogs,
       workflowOrder,
       customAgentConfigs,
+      saveToHistory,
     ]
   )
 

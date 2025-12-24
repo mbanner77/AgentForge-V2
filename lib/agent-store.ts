@@ -794,6 +794,11 @@ interface AgentStore {
   error: string | null
   generatedFiles: ProjectFile[] // Projektunabhängiger Dateispeicher
   
+  // Undo/Redo History
+  fileHistory: ProjectFile[][] // Historie der Dateizustände
+  historyIndex: number // Aktueller Index in der Historie
+  maxHistorySize: number // Maximale Größe der Historie
+  
   // Marketplace State
   installedAgents: string[] // IDs der installierten Agenten
   workflowOrder: string[] // Reihenfolge der Agenten im Workflow
@@ -857,6 +862,13 @@ interface AgentStore {
   getFiles: () => ProjectFile[]
   setGeneratedFiles: (files: ProjectFile[]) => void
   clearFiles: () => void
+  
+  // Undo/Redo Actions
+  undo: () => void
+  redo: () => void
+  canUndo: () => boolean
+  canRedo: () => boolean
+  saveToHistory: () => void
 
   // Suggestion Actions (Human-in-the-Loop)
   pendingSuggestions: AgentSuggestion[]
@@ -900,6 +912,11 @@ export const useAgentStore = create<AgentStore>()(
       error: null,
       generatedFiles: [],
       pendingSuggestions: [],
+      
+      // Undo/Redo History
+      fileHistory: [],
+      historyIndex: -1,
+      maxHistorySize: 20,
       
       // Marketplace State
       installedAgents: ["planner", "coder", "reviewer", "security", "executor"],
@@ -1248,6 +1265,54 @@ export const useAgentStore = create<AgentStore>()(
             ? { ...state.currentProject, files: [] }
             : null,
         })),
+
+      // Undo/Redo Actions
+      saveToHistory: () =>
+        set((state) => {
+          const currentFiles = JSON.parse(JSON.stringify(state.generatedFiles))
+          // Schneide die Historie ab wenn wir nicht am Ende sind
+          const newHistory = state.fileHistory.slice(0, state.historyIndex + 1)
+          newHistory.push(currentFiles)
+          // Begrenze die Größe
+          if (newHistory.length > state.maxHistorySize) {
+            newHistory.shift()
+          }
+          return {
+            fileHistory: newHistory,
+            historyIndex: newHistory.length - 1,
+          }
+        }),
+
+      undo: () =>
+        set((state) => {
+          if (state.historyIndex <= 0) return state
+          const newIndex = state.historyIndex - 1
+          const previousFiles = JSON.parse(JSON.stringify(state.fileHistory[newIndex]))
+          return {
+            generatedFiles: previousFiles,
+            historyIndex: newIndex,
+            currentProject: state.currentProject
+              ? { ...state.currentProject, files: previousFiles }
+              : null,
+          }
+        }),
+
+      redo: () =>
+        set((state) => {
+          if (state.historyIndex >= state.fileHistory.length - 1) return state
+          const newIndex = state.historyIndex + 1
+          const nextFiles = JSON.parse(JSON.stringify(state.fileHistory[newIndex]))
+          return {
+            generatedFiles: nextFiles,
+            historyIndex: newIndex,
+            currentProject: state.currentProject
+              ? { ...state.currentProject, files: nextFiles }
+              : null,
+          }
+        }),
+
+      canUndo: () => get().historyIndex > 0,
+      canRedo: () => get().historyIndex < get().fileHistory.length - 1,
 
       // Export/Import
       exportConfig: () => {

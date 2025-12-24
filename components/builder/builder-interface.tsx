@@ -53,7 +53,7 @@ export function BuilderInterface() {
   const [deployLogs, setDeployLogs] = useState<string[]>([])
   const [generatedBlueprint, setGeneratedBlueprint] = useState<string | null>(null)
 
-  const { messages, workflowSteps, isProcessing, currentProject, addMessage, createProject, saveProject, getFiles, globalConfig, setWorkflowOrder, workflowOrder } =
+  const { messages, workflowSteps, isProcessing, currentProject, addMessage, createProject, saveProject, getFiles, globalConfig, setWorkflowOrder, workflowOrder, undo, redo, canUndo, canRedo, saveToHistory } =
     useAgentStore()
   
   // Default workflow order für Reset
@@ -107,6 +107,18 @@ export function BuilderInterface() {
     { key: "?", shift: true, description: "Tastenkürzel anzeigen" },
     () => setShortcutsDialogOpen(true),
     []
+  )
+  
+  useKeyboardShortcut(
+    { key: "z", ctrl: true, description: "Rückgängig" },
+    () => { if (canUndo()) { undo(); toast.info("Änderung rückgängig gemacht") } },
+    [canUndo, undo]
+  )
+  
+  useKeyboardShortcut(
+    { key: "y", ctrl: true, description: "Wiederholen" },
+    () => { if (canRedo()) { redo(); toast.info("Änderung wiederhergestellt") } },
+    [canRedo, redo]
   )
 
   const { executeWorkflow, fixErrors } = useAgentExecutor()
@@ -571,6 +583,31 @@ ${f.content}
 
           <div className="ml-auto flex items-center gap-2">
             <ThemeToggle />
+            
+            {/* Undo/Redo Buttons */}
+            <div className="flex items-center border rounded-md">
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => { undo(); toast.info("Änderung rückgängig gemacht") }}
+                disabled={!canUndo()}
+                title="Rückgängig (Ctrl+Z)"
+                className="rounded-r-none border-r"
+              >
+                <Undo className="h-4 w-4" />
+              </Button>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => { redo(); toast.info("Änderung wiederhergestellt") }}
+                disabled={!canRedo()}
+                title="Wiederholen (Ctrl+Y)"
+                className="rounded-l-none"
+              >
+                <Redo className="h-4 w-4" />
+              </Button>
+            </div>
+            
             <Button variant="outline" size="sm" onClick={() => setNewProjectOpen(true)} title="Neues Projekt (Ctrl+N)">
               <Plus className="mr-2 h-4 w-4" />
               Neues Projekt

@@ -148,3 +148,142 @@ export const availableModels = [
 
 // Alle Modelle kombiniert
 export const allModels = [...availableModels, ...openRouterModels]
+
+// Streaming Chat Request - Token für Token
+export interface StreamCallbacks {
+  onToken: (token: string) => void
+  onComplete: (fullContent: string) => void
+  onError: (error: string) => void
+}
+
+export async function sendStreamingChatRequest(
+  options: ChatOptions,
+  callbacks: StreamCallbacks
+): Promise<void> {
+  if (!options.apiKey) {
+    callbacks.onError("API Key fehlt. Bitte in den Einstellungen konfigurieren.")
+    return
+  }
+  
+  console.log("[API Client] Starte Streaming-Anfrage:", {
+    model: options.model,
+    provider: options.provider,
+    messageCount: options.messages.length,
+  })
+
+  try {
+    const response = await fetch("/api/chat/stream", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(options),
+    })
+
+    if (!response.ok) {
+      let errorMessage = `API Fehler: ${response.status}`
+      try {
+        const error = await response.json()
+        errorMessage = error.error || errorMessage
+      } catch {
+        // Ignore parse error
+      }
+      callbacks.onError(errorMessage)
+      return
+    }
+
+    const reader = response.body?.getReader()
+    if (!reader) {
+      callbacks.onError("Keine Streaming-Response erhalten")
+      return
+    }
+
+    const decoder = new TextDecoder()
+    let fullContent = ""
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      const chunk = decoder.decode(value)
+      const lines = chunk.split("\n").filter(line => line.trim() !== "")
+
+      for (const line of lines) {
+        if (line.startsWith("data: ")) {
+          const data = line.slice(6)
+          if (data === "[DONE]") {
+            callbacks.onComplete(fullContent)
+            return
+          }
+
+          try {
+            const json = JSON.parse(data)
+            if (json.content) {
+              fullContent += json.content
+              callbacks.onToken(json.content)
+            }
+          } catch {
+            // Skip invalid JSON
+          }
+        }
+      }
+    }
+
+    callbacks.onComplete(fullContent)
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Streaming-Fehler"
+    callbacks.onError(errorMessage)
+  }
+}
+
+// Prompt Enhancement - verbessert vage Prompts
+export async function enhancePrompt(
+  userPrompt: string,
+  apiKey: string,
+  provider: "openai" | "anthropic" | "openrouter"
+): Promise<string> {
+  const enhancementPrompt = `Du bist ein Prompt-Optimizer für eine AI-Coding-App.
+
+Analysiere den folgenden User-Prompt und verbessere ihn, um bessere Code-Generierung zu ermöglichen.
+
+REGELN:
+1. Wenn der Prompt bereits spezifisch ist, gib ihn unverändert zurück
+2. Füge technische Details hinzu (Framework, Styling, Features)
+3. Behalte die ursprüngliche Intention bei
+4. Antworte NUR mit dem verbesserten Prompt, keine Erklärungen
+
+BEISPIELE:
+- "mach eine todo app" → "Erstelle eine React Todo-App mit TypeScript, Tailwind CSS und lokalem State. Features: Aufgaben hinzufügen, als erledigt markieren, löschen. Modernes UI mit Schatten und abgerundeten Ecken."
+- "landing page für startup" → "Erstelle eine moderne Landing Page für ein Tech-Startup mit React und Tailwind CSS. Sections: Hero mit CTA-Button, Features-Grid mit Icons, Testimonials, Pricing-Tabelle, Footer. Responsive Design, sanfte Animationen."
+
+USER-PROMPT:
+${userPrompt}
+
+VERBESSERTER PROMPT:`
+
+  try {
+    const response = await sendChatRequest({
+      messages: [{ role: "user", content: enhancementPrompt }],
+      model: provider === "openrouter" ? "openrouter/auto" : "gpt-4o-mini",
+      temperature: 0.3,
+      maxTokens: 500,
+      apiKey,
+      provider,
+    })
+    
+    const enhanced = response.content.trim()
+    
+    // Wenn das Original länger als 100 Zeichen war, war es wahrscheinlich schon spezifisch
+    if (userPrompt.length > 100 || enhanced.length < userPrompt.length) {
+      return userPrompt
+    }
+    
+    console.log("[Prompt Enhancement] Original:", userPrompt)
+    console.log("[Prompt Enhancement] Enhanced:", enhanced)
+    
+    return enhanced
+  } catch (error) {
+    console.warn("[Prompt Enhancement] Fehler, verwende Original:", error)
+    return userPrompt
+  }
+}
