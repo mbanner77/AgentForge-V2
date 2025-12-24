@@ -1769,5 +1769,254 @@ Korrigiere jetzt den Code:`
     [executeAgent, addFile, addSuggestion, getFiles, addLog]
   )
 
-  return { executeWorkflow, fixErrors, executeSingleAgent }
+  // Funktion zum automatischen Umsetzen von Vorschlägen
+  const applyAgentSuggestion = useCallback(
+    async (suggestionId: string): Promise<{ success: boolean; message: string }> => {
+      const { pendingSuggestions, approveSuggestion: markApproved, rejectSuggestion: markRejected, getFiles: getCurrentFiles } = useAgentStore.getState()
+      
+      const suggestion = pendingSuggestions.find(s => s.id === suggestionId)
+      if (!suggestion) {
+        return { success: false, message: "Vorschlag nicht gefunden" }
+      }
+      
+      setIsProcessing(true)
+      
+      addLog({
+        level: "info",
+        agent: "system",
+        message: `Setze Vorschlag um: ${suggestion.title}`,
+      })
+      
+      try {
+        // Wenn der Vorschlag bereits konkrete Änderungen hat, wende sie direkt an
+        if (suggestion.suggestedChanges && suggestion.suggestedChanges.length > 0) {
+          for (const change of suggestion.suggestedChanges) {
+            if (change.filePath && change.newContent) {
+              updateFileByPath(change.filePath, change.newContent, "typescript")
+              addLog({
+                level: "info",
+                agent: "coder",
+                message: `Datei aktualisiert: ${change.filePath}`,
+              })
+            }
+          }
+          
+          markApproved(suggestionId)
+          addMessage({
+            role: "assistant",
+            content: `✅ **Vorschlag umgesetzt:** ${suggestion.title}\n\nGeänderte Dateien:\n${suggestion.suggestedChanges.map(c => `- ${c.filePath}`).join("\n")}`,
+            agent: "coder",
+          })
+          
+          setIsProcessing(false)
+          return { success: true, message: "Vorschlag erfolgreich umgesetzt" }
+        }
+        
+        // Sonst: Lass den Coder-Agent den Vorschlag umsetzen
+        const currentFiles = getCurrentFiles()
+        const filesContext = currentFiles.map(f => 
+          `**${f.path}:**\n\`\`\`${f.language}\n${f.content}\n\`\`\``
+        ).join("\n\n")
+        
+        const implementPrompt = `## AUFGABE: Setze den folgenden Verbesserungsvorschlag um
+
+**Vorschlag von ${suggestion.agent}:**
+- Titel: ${suggestion.title}
+- Beschreibung: ${suggestion.description}
+- Priorität: ${suggestion.priority}
+- Betroffene Dateien: ${suggestion.affectedFiles.join(", ") || "nicht spezifiziert"}
+
+## AKTUELLER CODE:
+${filesContext}
+
+## ANWEISUNGEN:
+1. Analysiere den Vorschlag und den aktuellen Code
+2. Implementiere die vorgeschlagene Verbesserung
+3. Gib den VOLLSTÄNDIGEN aktualisierten Code aus
+4. Behalte alle anderen Funktionen bei
+
+Setze den Vorschlag jetzt um:`
+
+        const result = await executeAgent("coder" as AgentType, implementPrompt)
+        
+        if (result.files.length > 0) {
+          for (const file of result.files) {
+            updateFileByPath(file.path, file.content, file.language)
+            addLog({
+              level: "info",
+              agent: "coder",
+              message: `Datei aktualisiert: ${file.path}`,
+            })
+          }
+          
+          markApproved(suggestionId)
+          addMessage({
+            role: "assistant",
+            content: `✅ **Vorschlag umgesetzt:** ${suggestion.title}\n\nGeänderte Dateien:\n${result.files.map(f => `- ${f.path}`).join("\n")}`,
+            agent: "coder",
+          })
+          
+          setIsProcessing(false)
+          return { success: true, message: "Vorschlag erfolgreich umgesetzt" }
+        } else {
+          setIsProcessing(false)
+          return { success: false, message: "Keine Änderungen generiert" }
+        }
+      } catch (error) {
+        const errMsg = error instanceof Error ? error.message : "Unbekannter Fehler"
+        markRejected(suggestionId)
+        addLog({
+          level: "error",
+          agent: "system",
+          message: `Fehler beim Umsetzen des Vorschlags: ${errMsg}`,
+        })
+        setIsProcessing(false)
+        return { success: false, message: errMsg }
+      }
+    },
+    [executeAgent, updateFileByPath, addMessage, addLog, setIsProcessing]
+  )
+
+  // Funktion zur Code-Validierung vor Ausführung
+  const validateCode = useCallback(
+    async (): Promise<{ isValid: boolean; issues: string[] }> => {
+      const currentFiles = getFiles()
+      const issues: string[] = []
+      
+      if (currentFiles.length === 0) {
+        return { isValid: false, issues: ["Keine Dateien zum Validieren vorhanden"] }
+      }
+      
+      addLog({
+        level: "info",
+        agent: "system",
+        message: "Starte Code-Validierung...",
+      })
+      
+      for (const file of currentFiles) {
+        // Basis-Validierungen
+        if (!file.content || file.content.trim().length === 0) {
+          issues.push(`${file.path}: Datei ist leer`)
+          continue
+        }
+        
+        // React/TypeScript spezifische Prüfungen
+        if (file.path.endsWith(".tsx") || file.path.endsWith(".jsx") || file.path.endsWith(".ts") || file.path.endsWith(".js")) {
+          // Prüfe auf häufige Syntaxfehler
+          const openBraces = (file.content.match(/{/g) || []).length
+          const closeBraces = (file.content.match(/}/g) || []).length
+          if (openBraces !== closeBraces) {
+            issues.push(`${file.path}: Ungleiche Anzahl von { } (${openBraces} vs ${closeBraces})`)
+          }
+          
+          const openParens = (file.content.match(/\(/g) || []).length
+          const closeParens = (file.content.match(/\)/g) || []).length
+          if (openParens !== closeParens) {
+            issues.push(`${file.path}: Ungleiche Anzahl von ( ) (${openParens} vs ${closeParens})`)
+          }
+          
+          // Prüfe auf fehlende React-Imports
+          if ((file.content.includes("useState") || file.content.includes("useEffect")) && 
+              !file.content.includes("import") && !file.content.includes("React")) {
+            issues.push(`${file.path}: React Hooks verwendet aber kein Import gefunden`)
+          }
+          
+          // Prüfe auf unvollständigen Code
+          if (file.content.includes("// TODO") || file.content.includes("// ...") || file.content.includes("/* ... */")) {
+            issues.push(`${file.path}: Enthält unvollständigen Code (TODO oder ...)`)
+          }
+          
+          // Prüfe auf export default in App-Komponente
+          if (file.path.includes("App") && !file.content.includes("export default")) {
+            issues.push(`${file.path}: App-Komponente hat keinen 'export default'`)
+          }
+        }
+        
+        // JSON Validierung
+        if (file.path.endsWith(".json")) {
+          try {
+            JSON.parse(file.content)
+          } catch {
+            issues.push(`${file.path}: Ungültiges JSON`)
+          }
+        }
+      }
+      
+      const isValid = issues.length === 0
+      
+      addLog({
+        level: isValid ? "info" : "warn",
+        agent: "system",
+        message: isValid ? "Code-Validierung erfolgreich" : `${issues.length} Probleme gefunden`,
+      })
+      
+      return { isValid, issues }
+    },
+    [getFiles, addLog]
+  )
+
+  // Funktion zum Ausführen eines spezifischen Marketplace-Agents
+  const executeMarketplaceAgent = useCallback(
+    async (agentId: string, userRequest: string): Promise<{ content: string; files: ParsedCodeFile[] }> => {
+      const marketplaceAgent = marketplaceAgents.find(a => a.id === agentId)
+      if (!marketplaceAgent) {
+        throw new Error(`Marketplace Agent "${agentId}" nicht gefunden`)
+      }
+      
+      addLog({
+        level: "info",
+        agent: agentId as AgentType,
+        message: `${marketplaceAgent.name} gestartet`,
+      })
+      
+      addMessage({
+        role: "assistant",
+        content: `🤖 **${marketplaceAgent.name}** wird ausgeführt...`,
+        agent: agentId as AgentType,
+      })
+      
+      const startTime = Date.now()
+      const result = await executeAgent(agentId as AgentType, userRequest)
+      const duration = ((Date.now() - startTime) / 1000).toFixed(1)
+      
+      // Generiere Zusammenfassung
+      const summary = createHumanReadableSummary(agentId as AgentType, result.content, result.files, duration)
+      
+      addMessage({
+        role: "assistant",
+        content: summary,
+        agent: agentId as AgentType,
+      })
+      
+      // Füge Dateien hinzu
+      if (result.files.length > 0) {
+        for (const file of result.files) {
+          addFile({
+            path: file.path,
+            content: file.content,
+            language: file.language,
+            status: "created",
+          })
+        }
+      }
+      
+      addLog({
+        level: "info",
+        agent: agentId as AgentType,
+        message: `${marketplaceAgent.name} abgeschlossen (${duration}s)`,
+      })
+      
+      return result
+    },
+    [executeAgent, addMessage, addLog, addFile]
+  )
+
+  return { 
+    executeWorkflow, 
+    fixErrors, 
+    executeSingleAgent, 
+    applyAgentSuggestion, 
+    validateCode,
+    executeMarketplaceAgent,
+  }
 }
