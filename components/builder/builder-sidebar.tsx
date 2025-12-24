@@ -37,6 +37,7 @@ import {
   RefreshCw,
   Container,
   Accessibility,
+  Rocket,
 } from "lucide-react"
 import { marketplaceAgents } from "@/lib/marketplace-agents"
 import { mcpServers, getMcpServerById } from "@/lib/mcp-servers"
@@ -563,6 +564,76 @@ export function BuilderSidebar({ onClose }: BuilderSidebarProps) {
                     <span>✓ Mehrere Dateien, npm-Packages, Vite</span>
                   ) : (
                     <span>✓ Eine App.tsx, Inline-Styles, schnelle Vorschau</span>
+                  )}
+                </div>
+              </div>
+
+              {/* Deployment Target Section */}
+              <div className="rounded-lg border border-purple-500/50 bg-purple-500/5 p-3">
+                <div className="mb-3 flex items-center gap-2">
+                  <Rocket className="h-4 w-4 text-purple-500" />
+                  <Label className="font-medium">Deployment-Ziel</Label>
+                </div>
+                <p className="mb-3 text-xs text-muted-foreground">
+                  Wähle die Zielplattform für das Deployment
+                </p>
+                <Select
+                  value={(globalConfig as { deploymentTarget?: string }).deploymentTarget || "none"}
+                  onValueChange={(value: string) => 
+                    updateGlobalConfig({ deploymentTarget: value === "none" ? undefined : value } as Partial<typeof globalConfig>)
+                  }
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">Kein Deployment</span>
+                        <span className="text-xs text-muted-foreground">(Nur Vorschau)</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="vercel">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">Vercel</span>
+                        <span className="text-xs text-muted-foreground">(Kostenlos)</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="render">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">Render</span>
+                        <span className="text-xs text-muted-foreground">(Next.js, $7/mo)</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="btp">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">SAP BTP</span>
+                        <span className="text-xs text-muted-foreground">(Enterprise)</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="github-only">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">GitHub</span>
+                        <span className="text-xs text-muted-foreground">(Nur Repository)</span>
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <div className="mt-2 text-xs text-muted-foreground">
+                  {(globalConfig as { deploymentTarget?: string }).deploymentTarget === "render" && (
+                    <span>🚀 Agenten generieren Next.js App Router Code</span>
+                  )}
+                  {(globalConfig as { deploymentTarget?: string }).deploymentTarget === "vercel" && (
+                    <span>🔺 Agenten generieren Next.js Code für Vercel</span>
+                  )}
+                  {(globalConfig as { deploymentTarget?: string }).deploymentTarget === "btp" && (
+                    <span>🏢 Agenten generieren SAP Fiori/SAPUI5 Code</span>
+                  )}
+                  {(globalConfig as { deploymentTarget?: string }).deploymentTarget === "github-only" && (
+                    <span>📦 Code wird nur zu GitHub gepusht</span>
+                  )}
+                  {!(globalConfig as { deploymentTarget?: string }).deploymentTarget && (
+                    <span>💡 Wähle ein Deployment-Ziel für optimierten Code</span>
                   )}
                 </div>
               </div>
