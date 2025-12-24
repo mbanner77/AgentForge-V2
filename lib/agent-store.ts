@@ -312,6 +312,106 @@ export const getEnvironmentPrompt = (agent: "planner" | "coder", environment: "s
   return environmentPrompts[environment][agent]
 }
 
+// Deployment-Target spezifische Prompt-Erweiterungen
+export type DeploymentTarget = "vercel" | "render" | "btp" | "github-only" | null
+
+export const deploymentTargetPrompts: Record<string, { planner: string; coder: string }> = {
+  render: {
+    planner: `
+## 🚀 DEPLOYMENT-ZIEL: RENDER.COM (Next.js)
+Das Projekt wird auf Render.com deployed. WICHTIGE REGELN:
+
+**PROJEKT-STRUKTUR für Render (Next.js App Router):**
+- app/page.tsx - Hauptseite (NICHT src/App.tsx!)
+- app/layout.tsx - Root Layout
+- components/*.tsx - Wiederverwendbare Komponenten
+- KEINE src/main.tsx oder index.html!
+
+**NEXT.JS APP ROUTER REGELN:**
+- Verwende "use client" am Anfang von Client-Komponenten
+- Exportiere Komponenten als "export default function ComponentName()"
+- Imports: @/components/X für Komponenten
+- KEINE Vite-spezifischen Dateien (vite.config.ts, main.tsx)
+
+**VERBOTEN für Render:**
+- src/main.tsx, src/index.tsx
+- ReactDOM.createRoot()
+- index.html
+- vite.config.ts`,
+
+    coder: `
+## 🚀 DEPLOYMENT-ZIEL: RENDER.COM (Next.js)
+Dein Code wird auf Render.com mit Next.js deployed!
+
+**KRITISCH - NEXT.JS APP ROUTER STRUKTUR:**
+\`\`\`
+app/
+  page.tsx        ← Hauptseite (NICHT App.tsx!)
+  layout.tsx      ← Root Layout
+components/
+  Calendar.tsx    ← Komponenten hier
+\`\`\`
+
+**CODE-FORMAT für Render:**
+\`\`\`typescript
+// filepath: app/page.tsx
+"use client";
+
+import { useState } from "react";
+import { Calendar } from "@/components/Calendar";
+
+export default function Page() {
+  return <Calendar />;
+}
+\`\`\`
+
+\`\`\`typescript
+// filepath: components/Calendar.tsx
+"use client";
+
+export function Calendar() {
+  // Komponenten-Code
+}
+\`\`\`
+
+**VERBOTEN (verursacht Build-Fehler auf Render):**
+❌ src/main.tsx oder src/App.tsx
+❌ ReactDOM.createRoot()
+❌ import from "react-dom/client"
+❌ vite.config.ts
+
+**PFLICHT:**
+✅ "use client" am Anfang von Client-Komponenten
+✅ app/page.tsx als Hauptseite
+✅ export default function für Seiten
+✅ @/components/X für Imports`,
+  },
+  
+  vercel: {
+    planner: `
+## 🔺 DEPLOYMENT-ZIEL: VERCEL (Next.js)
+Das Projekt wird auf Vercel deployed. Nutze Next.js App Router Struktur.`,
+    coder: `
+## 🔺 DEPLOYMENT-ZIEL: VERCEL (Next.js)
+Nutze Next.js App Router Struktur mit app/ Verzeichnis.`,
+  },
+  
+  btp: {
+    planner: `
+## 🏢 DEPLOYMENT-ZIEL: SAP BTP
+Das Projekt wird auf SAP Business Technology Platform deployed.`,
+    coder: `
+## 🏢 DEPLOYMENT-ZIEL: SAP BTP
+Generiere SAP Fiori / SAPUI5 kompatiblen Code.`,
+  },
+}
+
+// Hilfsfunktion für Deployment-Target Prompt
+export const getDeploymentTargetPrompt = (agent: "planner" | "coder", target: DeploymentTarget): string => {
+  if (!target || target === "github-only") return ""
+  return deploymentTargetPrompts[target]?.[agent] || ""
+}
+
 // Iterations-spezifische Prompt-Erweiterungen
 export const iterationPrompts = {
   planner: `

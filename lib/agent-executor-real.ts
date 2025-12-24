@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback } from "react"
-import { useAgentStore, getEnvironmentPrompt, getIterationPrompt } from "./agent-store"
+import { useAgentStore, getEnvironmentPrompt, getIterationPrompt, getDeploymentTargetPrompt, type DeploymentTarget } from "./agent-store"
 import { sendChatRequest, getProviderFromModel } from "./api-client"
 import type { AgentType, Message, WorkflowStep, ProjectFile, AgentSuggestion } from "./types"
 import { marketplaceAgents } from "./marketplace-agents"
@@ -749,6 +749,16 @@ export function useAgentExecutor() {
       if (agentType === "planner" || agentType === "coder") {
         config.systemPrompt = getEnvironmentPrompt(agentType, targetEnv)
         console.log(`[Agent Executor] Verwende ${targetEnv}-Prompt für ${agentType}`)
+        
+        // Füge Deployment-Target spezifischen Prompt hinzu
+        const deployTarget = (globalConfig as { deploymentTarget?: string }).deploymentTarget as DeploymentTarget
+        if (deployTarget) {
+          const deployPrompt = getDeploymentTargetPrompt(agentType, deployTarget)
+          if (deployPrompt) {
+            config.systemPrompt += "\n\n" + deployPrompt
+            console.log(`[Agent Executor] Deployment-Target ${deployTarget} Prompt für ${agentType} hinzugefügt`)
+          }
+        }
       }
       
       // Debug: Zeige Config
