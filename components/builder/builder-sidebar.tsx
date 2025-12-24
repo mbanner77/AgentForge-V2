@@ -641,7 +641,25 @@ export function BuilderSidebar({ onClose }: BuilderSidebarProps) {
                   </div>
                   
                   <div className="space-y-1">
-                    <Label className="text-xs text-muted-foreground">Render.com API Key (für Deploy)</Label>
+                    <Label className="text-xs text-muted-foreground">Vercel Token (kostenlos)</Label>
+                    <div className="relative">
+                      <Input
+                        type="password"
+                        value={globalConfig.vercelToken || ""}
+                        onChange={(e) => updateGlobalConfig({ vercelToken: e.target.value })}
+                        placeholder="..."
+                        className="pr-10 text-xs"
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      <a href="https://vercel.com/account/tokens" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                        Token erstellen →
+                      </a>
+                    </p>
+                  </div>
+                  
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Render.com API Key ($7/mo)</Label>
                     <div className="relative">
                       <Input
                         type={showRenderKey ? "text" : "password"}

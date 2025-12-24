@@ -136,7 +136,9 @@ function handleGenerateBlueprint(config?: RenderDeploymentConfig & { includeData
   }
 
   // Generate deploy button URL
-  const deployButtonUrl = `https://render.com/deploy?repo=https://github.com/YOUR_USERNAME/${config.projectName}`
+  const deployButtonUrl = config.repoUrl 
+    ? `https://render.com/deploy?repo=${config.repoUrl}`
+    : `https://render.com/deploy?repo=YOUR_REPO_URL`
 
   return NextResponse.json({
     success: true,
@@ -192,7 +194,9 @@ async function handleCreateService(
     result.serviceId = "srv-demo123"
     result.serviceUrl = `https://${config.projectName}.onrender.com`
     result.dashboardUrl = "https://dashboard.render.com/web/srv-demo123"
-    result.blueprintUrl = `https://render.com/deploy?repo=https://github.com/YOUR_USERNAME/${config.projectName}`
+    result.blueprintUrl = config.repoUrl 
+      ? `https://render.com/deploy?repo=${config.repoUrl}`
+      : undefined
 
     return NextResponse.json({
       ...result,
@@ -208,6 +212,11 @@ async function handleCreateService(
 
   try {
     logs.push("Erstelle Render Service...")
+    
+    // Validate repoUrl
+    if (!config.repoUrl || config.repoUrl.includes("YOUR_USERNAME") || config.repoUrl.includes("YOUR_REPO")) {
+      throw new Error("Gültige GitHub/GitLab Repository URL erforderlich. Bitte erst ein Repository erstellen oder GitHub Token konfigurieren.")
+    }
     
     // First, get owner ID
     const ownersRes = await fetch("https://api.render.com/v1/owners", {
@@ -259,15 +268,17 @@ async function handleCreateService(
         type: "web_service",
         name: config.projectName,
         ownerId,
-        repo: config.repoUrl || `https://github.com/YOUR_USERNAME/${config.projectName}`,
+        repo: config.repoUrl,
         branch: config.branch || "main",
         autoDeploy: config.autoDeploy !== false ? "yes" : "no",
         serviceDetails: {
           region: config.region,
           plan: config.plan,
-          runtime: "node",
-          buildCommand: config.buildCommand || "npm install && npm run build",
-          startCommand: config.startCommand || "npm start",
+          env: "node",
+          envSpecificDetails: {
+            buildCommand: config.buildCommand || "npm install && npm run build",
+            startCommand: config.startCommand || "npm start",
+          },
           envVars: config.envVars ? Object.entries(config.envVars).map(([key, value]) => ({
             key,
             value,

@@ -122,8 +122,15 @@ export function HeroSection() {
         {/* Deployment Options Hint */}
         <div className="mt-8 flex items-center justify-center gap-4 text-sm text-muted-foreground">
           <div className="flex items-center gap-1.5">
-            <Rocket className="h-4 w-4 text-green-500" />
-            <span>Render.com</span>
+            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M24 22.525H0l12-21.05 12 21.05z" />
+            </svg>
+            <span>Vercel</span>
+          </div>
+          <span className="text-border">•</span>
+          <div className="flex items-center gap-1.5">
+            <Rocket className="h-4 w-4 text-purple-500" />
+            <span>Render</span>
           </div>
           <span className="text-border">•</span>
           <div className="flex items-center gap-1.5">
@@ -132,7 +139,7 @@ export function HeroSection() {
           </div>
           <span className="text-border">•</span>
           <div className="flex items-center gap-1.5">
-            <GitBranch className="h-4 w-4 text-purple-500" />
+            <GitBranch className="h-4 w-4 text-gray-500" />
             <span>GitHub</span>
           </div>
         </div>

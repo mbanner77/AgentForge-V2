@@ -113,6 +113,7 @@ export interface GlobalConfig {
   anthropicApiKey: string
   openrouterApiKey: string
   renderApiKey: string
+  vercelToken: string
   githubToken: string
   targetEnvironment: TargetEnvironment
   enablePromptEnhancement: boolean // Automatische Prompt-Verbesserung

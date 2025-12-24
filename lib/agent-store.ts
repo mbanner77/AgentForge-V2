@@ -775,6 +775,7 @@ const defaultGlobalConfig: GlobalConfig = {
   anthropicApiKey: "",
   openrouterApiKey: "",
   renderApiKey: "",
+  vercelToken: "",
   githubToken: "",
   targetEnvironment: "sandpack",
   enablePromptEnhancement: true,

@@ -47,10 +47,10 @@ export function BuilderInterface() {
   const [deployDialogOpen, setDeployDialogOpen] = useState(false)
   const [repoName, setRepoName] = useState("")
   const [isDeploying, setIsDeploying] = useState(false)
-  const [deployStep, setDeployStep] = useState<"idle" | "github" | "render" | "btp" | "done" | "error">("idle")
+  const [deployStep, setDeployStep] = useState<"idle" | "github" | "vercel" | "render" | "btp" | "done" | "error">("idle")
   const [deployResult, setDeployResult] = useState<{ repoUrl?: string; renderUrl?: string; btpUrl?: string; error?: string } | null>(null)
   const [shortcutsDialogOpen, setShortcutsDialogOpen] = useState(false)
-  const [deployTarget, setDeployTarget] = useState<"render" | "btp" | "github-only">("render")
+  const [deployTarget, setDeployTarget] = useState<"vercel" | "render" | "btp" | "github-only">("vercel")
   const [deployLogs, setDeployLogs] = useState<string[]>([])
   const [generatedBlueprint, setGeneratedBlueprint] = useState<string | null>(null)
 
@@ -395,7 +395,48 @@ ${f.content}
       }
       
       // 2. Deploy basierend auf Target
-      if (deployTarget === "render") {
+      if (deployTarget === "vercel") {
+        setDeployStep("vercel")
+        setDeployLogs(prev => [...prev, "", "Deploye zu Vercel..."])
+        
+        // Deploy zu Vercel
+        const deployRes = await fetch("/api/vercel/deploy", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "deploy",
+            config: {
+              projectName: repoName.toLowerCase().replace(/\s+/g, "-"),
+              framework: "nextjs",
+              files: files.map(f => ({ path: f.path, content: f.content })),
+              repoUrl: repoUrl,
+            },
+            apiKey: globalConfig.vercelToken,
+          }),
+        })
+        const deployData = await deployRes.json()
+        
+        if (deployData.logs) {
+          deployData.logs.forEach((log: string) => setDeployLogs(prev => [...prev, log]))
+        }
+        
+        if (deployData.success) {
+          setDeployResult(prev => ({ ...prev, vercelUrl: deployData.url }))
+          setDeployStep("done")
+          toast.success("Vercel Deployment erfolgreich!")
+          
+          addMessage({
+            role: "assistant",
+            content: `🚀 **Deployment erfolgreich!**\n\n${repoUrl ? `**GitHub:** ${repoUrl}\n` : ""}**Vercel:** ${deployData.url}\n\nDein Projekt ist jetzt live!`,
+            agent: "system",
+          })
+        } else {
+          setDeployResult(prev => ({ ...prev, error: deployData.error }))
+          setDeployStep("done")
+          toast.error(`Vercel Fehler: ${deployData.error}`)
+        }
+        
+      } else if (deployTarget === "render") {
         setDeployStep("render")
         setDeployLogs(prev => [...prev, "", "Generiere Render Blueprint..."])
         
@@ -853,7 +894,23 @@ ${f.content}
             {/* Deployment Target Selection */}
             <div className="space-y-2">
               <Label>Deployment-Ziel</Label>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-4 gap-2">
+                <button
+                  onClick={() => setDeployTarget("vercel")}
+                  disabled={isDeploying}
+                  className={`flex flex-col items-center p-3 rounded-lg border-2 transition-all ${
+                    deployTarget === "vercel" 
+                      ? "border-black bg-black/10 dark:border-white dark:bg-white/10" 
+                      : "border-border hover:border-black/50 dark:hover:border-white/50"
+                  }`}
+                >
+                  <svg className={`h-5 w-5 mb-1 ${deployTarget === "vercel" ? "text-black dark:text-white" : "text-muted-foreground"}`} viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M24 22.525H0l12-21.05 12 21.05z" />
+                  </svg>
+                  <span className="text-xs font-medium">Vercel</span>
+                  <span className="text-xs text-muted-foreground">Kostenlos</span>
+                </button>
+                
                 <button
                   onClick={() => setDeployTarget("render")}
                   disabled={isDeploying}
@@ -865,7 +922,7 @@ ${f.content}
                 >
                   <Rocket className={`h-5 w-5 mb-1 ${deployTarget === "render" ? "text-purple-500" : "text-muted-foreground"}`} />
                   <span className="text-xs font-medium">Render</span>
-                  <span className="text-xs text-muted-foreground">+ Blueprint</span>
+                  <span className="text-xs text-muted-foreground">$7/mo</span>
                 </button>
                 
                 <button
@@ -879,7 +936,7 @@ ${f.content}
                 >
                   <Building2 className={`h-5 w-5 mb-1 ${deployTarget === "btp" ? "text-blue-500" : "text-muted-foreground"}`} />
                   <span className="text-xs font-medium">SAP BTP</span>
-                  <span className="text-xs text-muted-foreground">Cloud Foundry</span>
+                  <span className="text-xs text-muted-foreground">Enterprise</span>
                 </button>
                 
                 <button
@@ -994,10 +1051,19 @@ ${f.content}
             {/* Hinweise */}
             {deployStep === "idle" && (
               <div className="rounded-lg border border-border bg-secondary/30 p-3 text-xs text-muted-foreground space-y-1">
+                {deployTarget === "vercel" && (
+                  <>
+                    <p>▲ Direktes Deployment zu Vercel (kostenlos)</p>
+                    <p>⚡ Edge Network, HTTPS, automatische Skalierung</p>
+                    {!globalConfig.vercelToken && (
+                      <p className="text-yellow-500">⚠️ Vercel Token in Settings konfigurieren</p>
+                    )}
+                  </>
+                )}
                 {deployTarget === "render" && (
                   <>
                     <p>🚀 Erstellt GitHub Repo + render.yaml Blueprint</p>
-                    <p>📦 Automatisches Deployment zu Render.com</p>
+                    <p>📦 Automatisches Deployment zu Render.com ($7/mo)</p>
                   </>
                 )}
                 {deployTarget === "btp" && (
@@ -1025,6 +1091,7 @@ ${f.content}
                 onClick={handleDeploy} 
                 disabled={isDeploying || !repoName.trim()}
                 className={
+                  deployTarget === "vercel" ? "bg-black hover:bg-gray-800 dark:bg-white dark:text-black dark:hover:bg-gray-200" :
                   deployTarget === "render" ? "bg-purple-600 hover:bg-purple-700" :
                   deployTarget === "btp" ? "bg-blue-600 hover:bg-blue-700" :
                   "bg-gray-600 hover:bg-gray-700"
@@ -1037,10 +1104,16 @@ ${f.content}
                   </>
                 ) : (
                   <>
+                    {deployTarget === "vercel" && (
+                      <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M24 22.525H0l12-21.05 12 21.05z" />
+                      </svg>
+                    )}
                     {deployTarget === "render" && <Rocket className="mr-2 h-4 w-4" />}
                     {deployTarget === "btp" && <Building2 className="mr-2 h-4 w-4" />}
                     {deployTarget === "github-only" && <Github className="mr-2 h-4 w-4" />}
-                    {deployTarget === "render" ? "Deploy zu Render" : 
+                    {deployTarget === "vercel" ? "Deploy zu Vercel" :
+                     deployTarget === "render" ? "Deploy zu Render" : 
                      deployTarget === "btp" ? "Deploy zu BTP" : 
                      "GitHub Repo erstellen"}
                   </>
