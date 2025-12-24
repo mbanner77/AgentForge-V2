@@ -557,7 +557,10 @@ export default function RootLayout({
         ]
         
         // Filtere und transformiere generierte Dateien für Next.js
-        const EXCLUDED_FILES = ['main.tsx', 'main.ts', 'index.tsx', 'index.ts', 'index.css', 'index.html', 'vite.config.ts']
+        const EXCLUDED_FILES = ['main.tsx', 'main.ts', 'index.tsx', 'index.ts', 'index.css', 'index.html', 'vite.config.ts', 'vite-env.d.ts']
+        
+        console.log("[Deploy] Verarbeite Dateien:", files.map(f => f.path))
+        
         const filteredFiles = files
           .filter(f => {
             const fileName = f.path.split('/').pop() || ''
@@ -569,32 +572,89 @@ export default function RootLayout({
             if (path.startsWith("src/")) {
               path = path.slice(4)
             }
-            // Komponenten kommen unter components/
-            if (!path.includes("/") && (path.endsWith(".tsx") || path.endsWith(".jsx"))) {
-              const fileName = path.split('/').pop()
-              if (fileName !== 'App.tsx' && fileName !== 'App.jsx') {
-                path = `components/${path}`
-              }
-            }
             // Bereinige Next.js inkompatiblen Code
             let content = f.content
-            content = content.replace(/^["']use client["'];?\s*/gm, '"use client";\n')
+            content = content.replace(/^["']use client["'];?\s*/gm, '')
             content = content.replace(/import\s+.*\s+from\s+["']react-dom\/client["'];?\s*/g, '')
             content = content.replace(/createRoot\(.*\)\.render\([\s\S]*?\);?/g, '')
             return { path, content }
           })
         
-        // Finde die Haupt-App-Komponente
-        const appFile = filteredFiles.find(f => f.path.endsWith('App.tsx') || f.path.endsWith('App.jsx'))
+        console.log("[Deploy] Gefilterte Dateien:", filteredFiles.map(f => f.path))
+        
+        // Finde die Haupt-App-Komponente (verschiedene Möglichkeiten prüfen)
+        let appFile = filteredFiles.find(f => {
+          const fileName = f.path.split('/').pop() || ''
+          return fileName === 'App.tsx' || fileName === 'App.jsx'
+        })
+        
+        // Fallback: Suche nach page.tsx
+        if (!appFile) {
+          appFile = filteredFiles.find(f => {
+            const fileName = f.path.split('/').pop() || ''
+            return fileName === 'page.tsx' || fileName === 'page.jsx'
+          })
+        }
+        
+        // Fallback: Suche nach erster Datei mit export default
+        if (!appFile) {
+          appFile = filteredFiles.find(f => 
+            (f.path.endsWith('.tsx') || f.path.endsWith('.jsx')) &&
+            f.content.includes('export default')
+          )
+        }
+        
+        // Letzter Fallback: Erste tsx/jsx Datei
+        if (!appFile) {
+          appFile = filteredFiles.find(f => f.path.endsWith('.tsx') || f.path.endsWith('.jsx'))
+        }
+        
+        console.log("[Deploy] Haupt-Komponente gefunden:", appFile?.path || "KEINE")
         
         // Erstelle app/page.tsx mit der Hauptkomponente
-        const mainComponent = appFile ? `"use client";
+        let mainComponent: string
+        if (appFile) {
+          // Stelle sicher, dass export default vorhanden ist
+          let content = appFile.content
+          // Ersetze "export default function App" mit "export default function Page"
+          content = content.replace(/export\s+default\s+function\s+App\s*\(/g, 'export default function Page(')
+          // Falls kein default export, füge Wrapper hinzu
+          if (!content.includes('export default')) {
+            // Extrahiere Komponentenname aus dem Dateinamen
+            const componentName = appFile.path.split('/').pop()?.replace(/\.(tsx|jsx)$/, '') || 'Component'
+            content = `${content}
 
-${appFile.content}` : `"use client";
+export default ${componentName};`
+          }
+          mainComponent = `"use client";
+
+${content}`
+        } else {
+          mainComponent = `"use client";
 
 export default function Page() {
-  return <div>No component found</div>;
+  return (
+    <div style={{ padding: 20, background: '#f5f5f5', minHeight: '100vh' }}>
+      <h1>Keine Komponente gefunden</h1>
+      <p>Bitte generiere eine React-Komponente mit export default.</p>
+    </div>
+  );
 }`
+        }
+        
+        // Transformiere restliche Dateien für components/
+        const componentFiles = filteredFiles
+          .filter(f => f !== appFile)
+          .map(f => {
+            let path = f.path
+            // Komponenten kommen unter components/ wenn sie nicht schon dort sind
+            if (!path.startsWith('components/') && !path.startsWith('app/') && !path.startsWith('lib/')) {
+              if (path.endsWith('.tsx') || path.endsWith('.jsx')) {
+                path = `components/${path}`
+              }
+            }
+            return { path, content: f.content }
+          })
 
         // Aktualisiere projectFiles um app/page.tsx einzufügen
         const pageFile = {
@@ -602,12 +662,14 @@ export default function Page() {
           content: mainComponent
         }
         
-        // Kombiniere Projekt-Dateien mit generierten Dateien (ohne App.tsx, das ist jetzt page.tsx)
+        // Kombiniere Projekt-Dateien mit generierten Dateien
         const allFiles = [
           ...projectFiles,
           pageFile,
-          ...filteredFiles.filter(f => !f.path.endsWith('App.tsx') && !f.path.endsWith('App.jsx'))
+          ...componentFiles
         ]
+        
+        console.log("[Deploy] Finale Dateien für GitHub:", allFiles.map(f => f.path))
         
         // Erstelle Blobs für alle Dateien
         const blobs = await Promise.all(allFiles.map(async (file) => {
