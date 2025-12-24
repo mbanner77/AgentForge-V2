@@ -556,13 +556,57 @@ export default function RootLayout({
           }
         ]
         
-        // Kombiniere Projekt-Dateien mit generierten Dateien
+        // Filtere und transformiere generierte Dateien für Next.js
+        const EXCLUDED_FILES = ['main.tsx', 'main.ts', 'index.tsx', 'index.ts', 'index.css', 'index.html', 'vite.config.ts']
+        const filteredFiles = files
+          .filter(f => {
+            const fileName = f.path.split('/').pop() || ''
+            return !EXCLUDED_FILES.includes(fileName)
+          })
+          .map(f => {
+            let path = f.path.startsWith("/") ? f.path.slice(1) : f.path
+            // Entferne src/ Prefix falls vorhanden
+            if (path.startsWith("src/")) {
+              path = path.slice(4)
+            }
+            // Komponenten kommen unter components/
+            if (!path.includes("/") && (path.endsWith(".tsx") || path.endsWith(".jsx"))) {
+              const fileName = path.split('/').pop()
+              if (fileName !== 'App.tsx' && fileName !== 'App.jsx') {
+                path = `components/${path}`
+              }
+            }
+            // Bereinige Next.js inkompatiblen Code
+            let content = f.content
+            content = content.replace(/^["']use client["'];?\s*/gm, '"use client";\n')
+            content = content.replace(/import\s+.*\s+from\s+["']react-dom\/client["'];?\s*/g, '')
+            content = content.replace(/createRoot\(.*\)\.render\([\s\S]*?\);?/g, '')
+            return { path, content }
+          })
+        
+        // Finde die Haupt-App-Komponente
+        const appFile = filteredFiles.find(f => f.path.endsWith('App.tsx') || f.path.endsWith('App.jsx'))
+        
+        // Erstelle app/page.tsx mit der Hauptkomponente
+        const mainComponent = appFile ? `"use client";
+
+${appFile.content}` : `"use client";
+
+export default function Page() {
+  return <div>No component found</div>;
+}`
+
+        // Aktualisiere projectFiles um app/page.tsx einzufügen
+        const pageFile = {
+          path: "app/page.tsx",
+          content: mainComponent
+        }
+        
+        // Kombiniere Projekt-Dateien mit generierten Dateien (ohne App.tsx, das ist jetzt page.tsx)
         const allFiles = [
           ...projectFiles,
-          ...files.map(f => ({
-            path: f.path.startsWith("/") ? f.path.slice(1) : f.path,
-            content: f.content
-          }))
+          pageFile,
+          ...filteredFiles.filter(f => !f.path.endsWith('App.tsx') && !f.path.endsWith('App.jsx'))
         ]
         
         // Erstelle Blobs für alle Dateien
