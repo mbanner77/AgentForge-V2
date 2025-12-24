@@ -271,7 +271,8 @@ function createHumanReadableSummary(
   agentType: AgentType,
   content: string,
   files: ParsedCodeFile[],
-  duration: string
+  duration: string,
+  targetEnvironment?: string
 ): string {
   const agentNames: Record<string, string> = {
     planner: "Planner",
@@ -366,10 +367,19 @@ function createHumanReadableSummary(
 
   // Executor Agent
   if (agentType === "executor") {
+    // Bestimme den korrekten Tab-Namen basierend auf targetEnvironment
+    const envTabNames: Record<string, string> = {
+      sandpack: "Sandpack",
+      webcontainer: "WebContainer",
+      local: "Editor",
+      docker: "Editor",
+    }
+    const tabName = envTabNames[targetEnvironment || "sandpack"] || "Preview"
+    
     let summary = `✅ **${agentName} abgeschlossen** (${duration}s)\n\n`
     summary += `🚀 **Ausführung:**\n`
     summary += `- Projekt ist bereit zur Vorschau\n`
-    summary += `- Wechsle zum "Sandbox"-Tab für Live-Preview`
+    summary += `- Wechsle zum "${tabName}"-Tab für Live-Preview`
     
     return summary
   }
@@ -1423,7 +1433,7 @@ ${fileContexts.join("\n\n")}
             }
 
             // Füge Agent-Nachricht hinzu (menschenlesbare Zusammenfassung)
-            const humanSummary = createHumanReadableSummary(agentType, result.content, result.files, duration)
+            const humanSummary = createHumanReadableSummary(agentType, result.content, result.files, duration, globalConfig.targetEnvironment)
             addMessage({
               role: "assistant",
               content: humanSummary,
@@ -1986,7 +1996,7 @@ Setze den Vorschlag jetzt um:`
       const duration = ((Date.now() - startTime) / 1000).toFixed(1)
       
       // Generiere Zusammenfassung
-      const summary = createHumanReadableSummary(agentId as AgentType, result.content, result.files, duration)
+      const summary = createHumanReadableSummary(agentId as AgentType, result.content, result.files, duration, globalConfig.targetEnvironment)
       
       addMessage({
         role: "assistant",
