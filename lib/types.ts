@@ -115,6 +115,7 @@ export interface GlobalConfig {
   renderApiKey: string
   githubToken: string
   targetEnvironment: TargetEnvironment
+  enablePromptEnhancement: boolean // Automatische Prompt-Verbesserung
   // SAP BTP Credentials
   btpApiEndpoint?: string
   btpOrg?: string

@@ -11,6 +11,7 @@ import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels"
 import Link from "next/link"
 import { useAgentStore } from "@/lib/agent-store"
 import { useAgentExecutor } from "@/lib/agent-executor-real"
+import { enhancePrompt, getProviderFromModel } from "@/lib/api-client"
 import { usePersistence } from "@/lib/use-persistence"
 import { useAuth } from "@/lib/auth"
 import { useRouter } from "next/navigation"
@@ -184,8 +185,36 @@ export function BuilderInterface() {
       // Bei Fehlermeldungen: Rufe fixErrors direkt auf
       await fixErrors(content, 3)
     } else {
-      // Normaler Workflow
-      await executeWorkflow(content, isIteration)
+      // Prompt Enhancement für neue Projekte (kurze Prompts < 100 Zeichen)
+      let finalPrompt = content
+      
+      if (!isIteration && content.length < 100 && globalConfig.enablePromptEnhancement !== false) {
+        // Bestimme API-Key und Provider
+        const apiKey = globalConfig.openrouterApiKey || globalConfig.openaiApiKey || globalConfig.anthropicApiKey
+        if (apiKey) {
+          const provider = globalConfig.openrouterApiKey ? "openrouter" : 
+                          globalConfig.openaiApiKey ? "openai" : "anthropic"
+          try {
+            toast.info("✨ Prompt wird optimiert...")
+            const enhanced = await enhancePrompt(content, apiKey, provider)
+            if (enhanced !== content && enhanced.length > content.length) {
+              finalPrompt = enhanced
+              toast.success("Prompt wurde verbessert")
+              // Zeige dem User den verbesserten Prompt
+              addMessage({
+                role: "assistant",
+                content: `✨ **Prompt optimiert:**\n\n${enhanced}`,
+                agent: "system",
+              })
+            }
+          } catch (error) {
+            console.warn("Prompt Enhancement fehlgeschlagen:", error)
+          }
+        }
+      }
+      
+      // Normaler Workflow mit (optional verbessertem) Prompt
+      await executeWorkflow(finalPrompt, isIteration)
     }
   }
 

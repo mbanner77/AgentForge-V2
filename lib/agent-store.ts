@@ -777,6 +777,7 @@ const defaultGlobalConfig: GlobalConfig = {
   renderApiKey: "",
   githubToken: "",
   targetEnvironment: "sandpack",
+  enablePromptEnhancement: true,
 }
 
 // Store Interface
