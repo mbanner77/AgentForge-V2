@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
-import { Send, Bot, User, Brain, Code2, Eye, Play, Loader2, Copy, Check, Shield, Sparkles } from "lucide-react"
+import { Send, Bot, User, Brain, Code2, Eye, Play, Loader2, Copy, Check, Shield, Sparkles, Lightbulb, ShoppingCart, ListTodo, BarChart3, MessageSquare, Calendar } from "lucide-react"
 import type { Message } from "@/lib/types"
 
 interface BuilderChatProps {
@@ -42,6 +42,52 @@ const agentLabels: Record<string, string> = {
   security: "Security Agent",
   executor: "Executor Agent",
 }
+
+// Quick Start Templates für neue Benutzer
+const quickStartTemplates = [
+  {
+    icon: ListTodo,
+    title: "Todo-App",
+    prompt: "Erstelle eine moderne Todo-App mit Kategorien, Prioritäten, Fälligkeitsdaten und Dark Mode. Die Aufgaben sollen lokal gespeichert werden.",
+    color: "text-blue-500",
+    bgColor: "bg-blue-500/10 hover:bg-blue-500/20 border-blue-500/20",
+  },
+  {
+    icon: ShoppingCart,
+    title: "E-Commerce",
+    prompt: "Baue einen Produkt-Katalog mit Warenkorb-Funktion, Produktfilterung nach Kategorie und Preis, sowie einer modernen Checkout-Seite.",
+    color: "text-green-500",
+    bgColor: "bg-green-500/10 hover:bg-green-500/20 border-green-500/20",
+  },
+  {
+    icon: BarChart3,
+    title: "Dashboard",
+    prompt: "Erstelle ein Analytics-Dashboard mit verschiedenen Charts (Linien, Balken, Pie), KPI-Cards und einer Datumsauswahl für Zeiträume.",
+    color: "text-purple-500",
+    bgColor: "bg-purple-500/10 hover:bg-purple-500/20 border-purple-500/20",
+  },
+  {
+    icon: MessageSquare,
+    title: "Chat-App",
+    prompt: "Entwickle eine Chat-Anwendung mit Nachrichtenverlauf, Emoji-Support, Zeitstempel und einem modernen WhatsApp-ähnlichen Design.",
+    color: "text-cyan-500",
+    bgColor: "bg-cyan-500/10 hover:bg-cyan-500/20 border-cyan-500/20",
+  },
+  {
+    icon: Calendar,
+    title: "Kalender",
+    prompt: "Baue einen interaktiven Kalender mit Terminverwaltung, Monats-, Wochen- und Tagesansicht, Drag-and-Drop für Events.",
+    color: "text-orange-500",
+    bgColor: "bg-orange-500/10 hover:bg-orange-500/20 border-orange-500/20",
+  },
+  {
+    icon: Lightbulb,
+    title: "Notizen-App",
+    prompt: "Erstelle eine Notizen-App im Notion-Stil mit Markdown-Unterstützung, Ordnerstruktur, Suchfunktion und Auto-Save.",
+    color: "text-yellow-500",
+    bgColor: "bg-yellow-500/10 hover:bg-yellow-500/20 border-yellow-500/20",
+  },
+]
 
 function SimpleMarkdown({ content }: { content: string }) {
   const lines = content.split("\n")
@@ -163,6 +209,9 @@ export function BuilderChat({ messages, onSendMessage, isProcessing, onImplement
     setTimeout(() => setCopiedId(null), 2000)
   }
 
+  // Prüft ob nur die Willkommensnachricht vorhanden ist
+  const showQuickStart = messages.length <= 1 && !isProcessing
+
   return (
     <div className="relative flex flex-col" style={{ height: '100%' }}>
       <div ref={scrollRef} className="absolute inset-0 bottom-[140px] overflow-y-auto">
@@ -248,6 +297,40 @@ export function BuilderChat({ messages, onSendMessage, isProcessing, onImplement
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
               Agenten arbeiten...
+            </div>
+          )}
+          
+          {/* Quick Start Templates */}
+          {showQuickStart && (
+            <div className="mt-6 space-y-4">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Lightbulb className="h-4 w-4 text-yellow-500" />
+                <span>Schnellstart - Wähle eine Vorlage oder beschreibe deine eigene App</span>
+              </div>
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+                {quickStartTemplates.map((template) => {
+                  const TemplateIcon = template.icon
+                  return (
+                    <button
+                      key={template.title}
+                      onClick={() => onSendMessage(template.prompt)}
+                      disabled={isProcessing}
+                      className={`group flex flex-col items-start gap-2 rounded-lg border p-3 text-left transition-all ${template.bgColor} hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <TemplateIcon className={`h-5 w-5 ${template.color}`} />
+                        <span className="font-medium text-sm">{template.title}</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground line-clamp-2">
+                        {template.prompt.slice(0, 80)}...
+                      </p>
+                    </button>
+                  )
+                })}
+              </div>
+              <p className="text-xs text-center text-muted-foreground">
+                Oder beschreibe deine eigene App im Textfeld unten
+              </p>
             </div>
           )}
         </div>

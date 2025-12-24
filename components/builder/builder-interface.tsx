@@ -6,7 +6,7 @@ import { BuilderWorkflow } from "./builder-workflow"
 import { BuilderOutput } from "./builder-output"
 import { BuilderSidebar } from "./builder-sidebar"
 import { Button } from "@/components/ui/button"
-import { Bot, PanelLeft, Download, FolderOpen, Plus, Rocket, Github, Loader2, ExternalLink, LogOut, Settings, GripHorizontal, Database, GitBranch, Upload, Copy, History, FileText, Undo, Redo, Keyboard, Server, Building2 } from "lucide-react"
+import { Bot, PanelLeft, Download, FolderOpen, Plus, Rocket, Github, Loader2, ExternalLink, LogOut, Settings, GripHorizontal, Database, GitBranch, Upload, Copy, History, FileText, Undo, Redo, Keyboard, Server, Building2, Code2 } from "lucide-react"
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels"
 import Link from "next/link"
 import { useAgentStore } from "@/lib/agent-store"
@@ -541,14 +541,31 @@ ${f.content}
             <span className="font-semibold">AgentForge Builder</span>
           </Link>
 
-          {/* Project indicator */}
+          {/* Project indicator with stats */}
           {currentProject && (
             <div className="flex items-center gap-2 rounded-md bg-secondary px-3 py-1">
               <FolderOpen className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm">{currentProject.name}</span>
+              <span className="text-sm font-medium">{currentProject.name}</span>
               {isSyncing && (
                 <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
               )}
+            </div>
+          )}
+          
+          {/* Project Statistics */}
+          {files.length > 0 && (
+            <div className="hidden md:flex items-center gap-3 text-xs text-muted-foreground">
+              <div className="flex items-center gap-1" title="Anzahl Dateien">
+                <FileText className="h-3 w-3" />
+                <span>{files.length} {files.length === 1 ? 'Datei' : 'Dateien'}</span>
+              </div>
+              <div className="flex items-center gap-1" title="Zeilen Code">
+                <Code2 className="h-3 w-3" />
+                <span>{files.reduce((acc, f) => acc + (f.content?.split('\n').length || 0), 0).toLocaleString('de-DE')} Zeilen</span>
+              </div>
+              <div className="flex items-center gap-1" title="Zeichen gesamt">
+                <span>{(files.reduce((acc, f) => acc + (f.content?.length || 0), 0) / 1000).toFixed(1)}k</span>
+              </div>
             </div>
           )}
 
@@ -567,9 +584,14 @@ ${f.content}
             </Button>
             <WorkflowSelectorDialog
               trigger={
-                <Button variant="outline" size="sm" title="Workflow auswählen">
+                <Button 
+                  variant={selectedWorkflow ? "default" : "outline"} 
+                  size="sm" 
+                  title="Workflow auswählen"
+                  className={selectedWorkflow ? "bg-purple-600 hover:bg-purple-700" : ""}
+                >
                   <GitBranch className="mr-2 h-4 w-4" />
-                  Workflow
+                  {selectedWorkflow ? selectedWorkflow.name : "Workflow"}
                 </Button>
               }
               onSelectWorkflow={handleSelectWorkflow}
