@@ -179,26 +179,37 @@ const createViteProject = (files: ProjectFile[]) => {
     
     if (mainFile) {
       // Erstelle App.tsx als Wrapper der Hauptkomponente
-      const componentName = mainFile.path.split('/').pop()?.replace(/\.(tsx|jsx)$/, '') || 'Component'
+      const fileName = mainFile.path.split('/').pop() || ''
+      const componentName = fileName.replace(/\.(tsx|jsx)$/, '') || 'Component'
       const isDefaultExport = mainFile.content.includes('export default')
+      const cleanedContent = cleanCodeForVite(mainFile.content)
       
-      if (componentName === 'App') {
-        srcDir['App.tsx'] = {
-          file: {
-            contents: cleanCodeForVite(mainFile.content)
-          }
+      // Prüfe ob die Komponente direkt als App verwendet werden kann
+      if (componentName === 'App' || componentName === 'page' || componentName === 'Page') {
+        // Stelle sicher, dass export default vorhanden ist
+        let finalContent = cleanedContent
+        if (!finalContent.includes('export default')) {
+          // Füge default export hinzu
+          finalContent = finalContent + `\n\nexport default ${componentName === 'page' ? 'Page' : 'App'};`
         }
-      } else {
-        // Importiere die gefundene Komponente in App.tsx
-        const importPath = mainFile.path.startsWith('/') ? mainFile.path.slice(1) : mainFile.path
-        const relativePath = './' + importPath.replace(/\.(tsx|jsx)$/, '')
+        // Ersetze function Page mit function App falls nötig
+        finalContent = finalContent.replace(/export\s+default\s+function\s+Page\s*\(/g, 'export default function App(')
+        finalContent = finalContent.replace(/export\s+default\s+function\s+page\s*\(/g, 'export default function App(')
         
         srcDir['App.tsx'] = {
           file: {
-            contents: `import ${isDefaultExport ? componentName : `{ ${componentName} }`} from '${relativePath}'
+            contents: finalContent
+          }
+        }
+      } else {
+        // Komponente inline in App.tsx einbetten (kein Import nötig)
+        srcDir['App.tsx'] = {
+          file: {
+            contents: `${cleanedContent}
 
+// Wrapper für Vite
 export default function App() {
-  return <${componentName} />
+  return <${componentName} />;
 }`
           }
         }
