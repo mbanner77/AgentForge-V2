@@ -340,6 +340,10 @@ ${f.content}
               encoding: "base64"
             })
           })
+          if (!blobResponse.ok) {
+            const blobError = await blobResponse.json()
+            throw new Error(`Blob für ${file.path} konnte nicht erstellt werden: ${blobError.message || 'Unknown error'}`)
+          }
           const blob = await blobResponse.json()
           return {
             path: file.path.startsWith("/") ? file.path.slice(1) : file.path,
@@ -359,6 +363,10 @@ ${f.content}
           },
           body: JSON.stringify({ tree: blobs })
         })
+        if (!treeResponse.ok) {
+          const treeError = await treeResponse.json()
+          throw new Error(`Git Tree konnte nicht erstellt werden: ${treeError.message || 'Unknown error'}`)
+        }
         const tree = await treeResponse.json()
 
         // Erstelle Commit
@@ -374,10 +382,14 @@ ${f.content}
             tree: tree.sha
           })
         })
+        if (!commitResponse.ok) {
+          const commitError = await commitResponse.json()
+          throw new Error(`Commit konnte nicht erstellt werden: ${commitError.message || 'Unknown error'}`)
+        }
         const commit = await commitResponse.json()
 
         // Update main branch reference
-        await fetch(`https://api.github.com/repos/${repo.full_name}/git/refs`, {
+        const refResponse = await fetch(`https://api.github.com/repos/${repo.full_name}/git/refs`, {
           method: "POST",
           headers: {
             "Authorization": `Bearer ${globalConfig.githubToken}`,
@@ -389,6 +401,12 @@ ${f.content}
             sha: commit.sha
           })
         })
+        
+        if (!refResponse.ok) {
+          const refError = await refResponse.json()
+          console.error("Failed to create main branch:", refError)
+          throw new Error(`Branch konnte nicht erstellt werden: ${refError.message || "Unknown error"}`)
+        }
 
         setDeployResult({ repoUrl: repo.html_url })
         setDeployLogs(prev => [...prev, `✓ GitHub Repository erstellt: ${repo.html_url}`])
