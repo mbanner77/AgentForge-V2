@@ -2908,16 +2908,17 @@ export function useAgentExecutor() {
         }
       }
       
-      // RAG: Best Practices für Coder - DEAKTIVIERT um Token-Limit nicht zu überschreiten
-      // Die wichtigsten Regeln sind bereits im Coder-Prompt enthalten
-      // if (agentType === "coder") {
-      //   const criticalPractices = getCriticalBestPractices()
-      //   config.systemPrompt += "\n\n" + criticalPractices
-      //   const relevantPractices = getBestPracticesForRequest(userRequest)
-      //   if (relevantPractices) {
-      //     config.systemPrompt += "\n" + relevantPractices
-      //   }
-      // }
+      // RAG: Best Practices für Coder (optional aktivierbar in Settings)
+      const enableBestPractices = (globalConfig as { enableBestPracticesRAG?: boolean }).enableBestPracticesRAG
+      if (agentType === "coder" && enableBestPractices) {
+        const criticalPractices = getCriticalBestPractices()
+        config.systemPrompt += "\n\n" + criticalPractices
+        const relevantPractices = getBestPracticesForRequest(userRequest)
+        if (relevantPractices) {
+          config.systemPrompt += "\n" + relevantPractices
+          console.log(`[Agent Executor] Best Practices RAG aktiviert`)
+        }
+      }
       
       // Debug: Zeige Config
       console.log(`[Agent Executor] Config für ${agentType}:`, {

@@ -1292,6 +1292,7 @@ const defaultGlobalConfig: GlobalConfig = {
   githubToken: "",
   targetEnvironment: "sandpack",
   enablePromptEnhancement: true,
+  enableBestPracticesRAG: false, // Deaktiviert um Token-Limit nicht zu überschreiten
 }
 
 // Store Interface

@@ -846,6 +846,16 @@ export function BuilderSidebar({ onClose }: BuilderSidebarProps) {
                 />
               </div>
 
+              <div className="flex items-center justify-between">
+                <Label title="Fügt Best Practices für Next.js/React zum Coder-Prompt hinzu. Kann Token-Limit überschreiten bei komplexen Apps.">
+                  Best Practices RAG
+                </Label>
+                <Switch
+                  checked={globalConfig.enableBestPracticesRAG ?? false}
+                  onCheckedChange={(enableBestPracticesRAG) => updateGlobalConfig({ enableBestPracticesRAG })}
+                />
+              </div>
+
               <div className="space-y-2">
                 <Label>Sprache</Label>
                 <Select

@@ -117,6 +117,7 @@ export interface GlobalConfig {
   githubToken: string
   targetEnvironment: TargetEnvironment
   enablePromptEnhancement: boolean // Automatische Prompt-Verbesserung
+  enableBestPracticesRAG: boolean // Best Practices RAG für Coder aktivieren
   // SAP BTP Credentials
   btpApiEndpoint?: string
   btpOrg?: string
