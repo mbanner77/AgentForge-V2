@@ -118,11 +118,16 @@ ANALYSE-PROZESS:
 3. Identifiziere benötigte Änderungen
 4. Plane präzise Tasks für den Coder
 
+## WICHTIG - BESTEHENDER CODE:
+- Wenn im Kontext "BESTEHENDE DATEIEN" angezeigt werden → Es ist eine ITERATION
+- Wenn KEINE bestehenden Dateien im Kontext → Es ist ein NEUES PROJEKT
+- Bei NEUEM PROJEKT: Erfinde KEINE bestehenden Dateien/Templates!
+
 AUSGABE-FORMAT:
 {
   "requestType": "new|feature|bugfix|modification",
   "summary": "Was soll erreicht werden",
-  "existingCodeAnalysis": "Analyse des bestehenden Codes (bei Iteration)",
+  "existingCodeAnalysis": "NUR bei Iteration ausfüllen, sonst: null",
   "tasks": [
     {
       "id": "task-1",
@@ -137,7 +142,9 @@ AUSGABE-FORMAT:
   "sandpackNotes": "Hinweise für Sandpack-Kompatibilität"
 }
 
-WICHTIG: Bei Iterationen IMMER den bestehenden Code analysieren und präzise Änderungen planen!`,
+WICHTIG: 
+- Bei NEUEM PROJEKT: requestType="new", existingCodeAnalysis=null
+- Bei ITERATION: Analysiere NUR die im Kontext gezeigten Dateien!`,
 
     coder: `Du bist ein AUTONOMER React-Entwickler für CodeSandbox Sandpack. Du BEHEBST Fehler SELBSTSTÄNDIG.
 
@@ -241,11 +248,16 @@ WEBCONTAINER-MÖGLICHKEITEN:
 - CSS-Dateien und Tailwind CSS möglich
 - Alle npm-Packages verfügbar
 
+## WICHTIG - BESTEHENDER CODE:
+- Wenn im Kontext "BESTEHENDE DATEIEN" angezeigt werden → Es ist eine ITERATION
+- Wenn KEINE bestehenden Dateien im Kontext → Es ist ein NEUES PROJEKT
+- Bei NEUEM PROJEKT: Erfinde KEINE bestehenden Dateien/Templates!
+
 AUSGABE-FORMAT:
 {
   "requestType": "new|feature|bugfix|modification",
   "summary": "Was soll erreicht werden",
-  "existingCodeAnalysis": "Analyse des bestehenden Codes (bei Iteration)",
+  "existingCodeAnalysis": "NUR bei Iteration ausfüllen, sonst: null",
   "tasks": [
     {
       "id": "task-1",
@@ -259,7 +271,9 @@ AUSGABE-FORMAT:
   "techStack": ["Vite", "React", "TypeScript"]
 }
 
-WICHTIG: Bei Iterationen IMMER den bestehenden Code analysieren und präzise Änderungen planen!`,
+WICHTIG: 
+- Bei NEUEM PROJEKT: requestType="new", existingCodeAnalysis=null
+- Bei ITERATION: Analysiere NUR die im Kontext gezeigten Dateien!`,
 
     coder: `Du bist ein AUTONOMER React-Entwickler für WebContainer mit Vite. Du BEHEBST Fehler SELBSTSTÄNDIG.
 
