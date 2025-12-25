@@ -1546,6 +1546,17 @@ function validateAgentResult(
           score -= 15
         }
         
+        // KRITISCH: React.ReactNode ohne React Import
+        if (file.content.includes('React.ReactNode') || file.content.includes('React.FC') || 
+            file.content.includes('React.Component') || file.content.includes('React.useState')) {
+          const hasReactImport = file.content.includes("import React") || 
+                                file.content.includes("import * as React")
+          if (!hasReactImport) {
+            criticalIssues.push(`FATAL: ${file.path} verwendet React.X aber React ist nicht importiert! Nutze: import { ReactNode } from "react" und dann nur "ReactNode"`)
+            score -= 30
+          }
+        }
+        
         // Prüfe auf fehlende "use client" für Next.js
         if (deploymentTarget && deploymentTarget !== "github-only") {
           if (file.content.includes("useState") || file.content.includes("useEffect")) {

@@ -462,6 +462,8 @@ export function Name() { ... }   // EINE Funktion pro Datei
 - Props IMMER typisieren: \`function Button({ onClick }: { onClick: () => void })\`
 - State typisieren: \`useState<Event[]>([])\`
 - KEINE \`any\` Types verwenden!
+- **NIEMALS \`React.ReactNode\`** → Nutze: \`import { ReactNode } from "react"\` dann nur \`ReactNode\`
+- **NIEMALS \`React.FC\`** → Nutze normale Funktionen mit Props-Interface
 
 ### 5. VOLLSTÄNDIGKEIT:
 - ALLE imports die verwendet werden müssen vorhanden sein
