@@ -2602,7 +2602,7 @@ function parseSuggestionsFromResponse(content: string, agent: string, existingFi
   return suggestions
 }
 
-function parseCodeFromResponse(content: string): ParsedCodeFile[] {
+export function parseCodeFromResponse(content: string): ParsedCodeFile[] {
   const files: ParsedCodeFile[] = []
   
   // Debug: Log content length and first 500 chars

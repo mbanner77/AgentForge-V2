@@ -2,7 +2,15 @@
 
 interface ChatMessage {
   role: "system" | "user" | "assistant"
-  content: string
+  content: string | VisionContent[]
+}
+
+interface VisionContent {
+  type: "text" | "image_url"
+  text?: string
+  image_url?: {
+    url: string // base64 data URL oder HTTP URL
+  }
 }
 
 interface ChatResponse {
@@ -286,4 +294,92 @@ VERBESSERTER PROMPT:`
     console.warn("[Prompt Enhancement] Fehler, verwende Original:", error)
     return userPrompt
   }
+}
+
+// ============================================================
+// SCREENSHOT TO CODE - Vision API
+// ============================================================
+
+export interface ScreenshotToCodeOptions {
+  imageBase64: string // Base64 encoded image (ohne data: prefix)
+  imageType: "png" | "jpeg" | "webp" | "gif"
+  additionalInstructions?: string
+  apiKey: string
+  provider: "openai" | "anthropic" | "openrouter"
+  targetEnvironment?: "sandpack" | "nextjs"
+}
+
+export async function screenshotToCode(options: ScreenshotToCodeOptions): Promise<string> {
+  const { imageBase64, imageType, additionalInstructions, apiKey, provider, targetEnvironment = "nextjs" } = options
+  
+  const isNextJs = targetEnvironment === "nextjs"
+  
+  const systemPrompt = `Du bist ein Experte für UI/UX Design und React-Entwicklung.
+Deine Aufgabe: Analysiere das Screenshot/Mockup und erstelle exakt passenden React-Code.
+
+## REGELN:
+${isNextJs ? `
+- Verwende Next.js App Router: app/page.tsx + components/*.tsx
+- JEDE Komponente beginnt mit "use client";
+- Imports: @/components/ComponentName
+- Styling: Tailwind CSS
+` : `
+- Verwende React: App.tsx + components/*.tsx
+- Imports: ./components/ComponentName
+- Styling: Inline-Styles
+`}
+
+## WICHTIG:
+- Erstelle ALLE sichtbaren Komponenten als separate Dateien
+- Achte auf: Layout, Farben, Abstände, Schriftgrößen
+- Füge passende Icons hinzu (lucide-react)
+- Mache das UI responsiv
+- Verwende moderne UI-Patterns
+
+## OUTPUT FORMAT:
+Gib für JEDE Datei einen Code-Block aus:
+\`\`\`typescript
+// filepath: components/ComponentName.tsx
+"use client";
+// ... Code
+\`\`\`
+`
+
+  const userContent: VisionContent[] = [
+    {
+      type: "text",
+      text: `Analysiere dieses UI-Design und erstelle vollständigen, funktionalen React-Code.
+${additionalInstructions ? `\nZusätzliche Anforderungen: ${additionalInstructions}` : ""}
+
+Erstelle ALLE notwendigen Dateien mit vollständigem Code.`
+    },
+    {
+      type: "image_url",
+      image_url: {
+        url: `data:image/${imageType};base64,${imageBase64}`
+      }
+    }
+  ]
+
+  // Wähle Vision-fähiges Modell
+  let model = "gpt-4o" // Default: GPT-4o hat Vision
+  if (provider === "anthropic") {
+    model = "claude-3-5-sonnet-20241022"
+  } else if (provider === "openrouter") {
+    model = "openai/gpt-4o" // OpenRouter Syntax
+  }
+
+  const response = await sendChatRequest({
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userContent }
+    ],
+    model,
+    temperature: 0.2,
+    maxTokens: 16000,
+    apiKey,
+    provider
+  })
+
+  return response.content
 }

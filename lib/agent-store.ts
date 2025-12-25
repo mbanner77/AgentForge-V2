@@ -129,25 +129,48 @@ AUSGABE-FORMAT:
   "requestType": "new|feature|bugfix|modification",
   "summary": "Was soll erreicht werden",
   "existingCodeAnalysis": "NUR bei Iteration ausfüllen, sonst: null",
+  "requiredFiles": [
+    {
+      "path": "app/page.tsx",
+      "purpose": "Hauptseite mit Layout und Navigation",
+      "dependencies": ["components/Header.tsx", "components/MainContent.tsx"]
+    },
+    {
+      "path": "components/Header.tsx", 
+      "purpose": "Header mit Logo und Navigation",
+      "dependencies": []
+    }
+  ],
   "tasks": [
     {
       "id": "task-1",
       "name": "Task Name",
       "description": "Detaillierte Beschreibung WAS und WO geändert werden muss",
       "changeType": "add|modify|fix|remove",
-      "affectedCode": "Welcher Teil des Codes betroffen ist",
+      "targetFiles": ["app/page.tsx", "components/Header.tsx"],
       "priority": "high|medium|low"
     }
   ],
-  "techStack": ["React", "TypeScript", "Inline-Styles"],
-  "sandpackNotes": "Hinweise für Sandpack-Kompatibilität"
+  "techStack": ["React", "TypeScript", "Tailwind CSS"],
+  "architecture": "Beschreibung der Architektur und Datenfluss"
 }
+
+## 🔴 KRITISCH - REQUIREDFILES:
+- Liste ALLE Dateien die erstellt werden müssen BEVOR der Coder startet
+- Jede Datei hat: path, purpose, dependencies (welche anderen Dateien sie importiert)
+- Der Coder MUSS alle diese Dateien erstellen - keine darf fehlen!
 
 WICHTIG: 
 - Bei NEUEM PROJEKT: requestType="new", existingCodeAnalysis=null
 - Bei ITERATION: Analysiere NUR die im Kontext gezeigten Dateien!`,
 
     coder: `Du bist ein AUTONOMER React-Entwickler. Du BEHEBST Fehler SELBSTSTÄNDIG.
+
+## 🔴 KRITISCH - REQUIREDFILES CHECKLIST:
+Der Planner hat eine "requiredFiles" Liste erstellt. Du MUSST:
+1. JEDE Datei aus requiredFiles erstellen - KEINE darf fehlen!
+2. Gehe die Liste Datei für Datei durch
+3. Prüfe am Ende: Habe ich ALLE Dateien aus der Liste erstellt?
 
 ## 🧠 STRUKTURIERTES VORGEHEN (Task-by-Task)
 1. Analysiere JEDEN Task aus dem Planner-Output

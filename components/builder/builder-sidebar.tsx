@@ -47,6 +47,8 @@ import { usePersistence } from "@/lib/use-persistence"
 import type { AgentType } from "@/lib/types"
 import { Checkbox } from "@/components/ui/checkbox"
 import { KnowledgeBaseManager } from "./knowledge-base-manager"
+import { ScreenshotUpload } from "./screenshot-upload"
+import { DatabaseGenerator } from "./database-generator"
 
 interface BuilderSidebarProps {
   onClose: () => void
@@ -156,9 +158,9 @@ export function BuilderSidebar({ onClose }: BuilderSidebarProps) {
             <TabsTrigger value="global" className="text-xs">
               Global
             </TabsTrigger>
-            <TabsTrigger value="knowledge" className="text-xs">
-              <Database className="h-3 w-3 mr-1" />
-              Wissen
+            <TabsTrigger value="tools" className="text-xs">
+              <Zap className="h-3 w-3 mr-1" />
+              Tools
             </TabsTrigger>
             <TabsTrigger value="projects" className="text-xs">
               Projekte
@@ -906,9 +908,15 @@ export function BuilderSidebar({ onClose }: BuilderSidebarProps) {
           </ScrollArea>
         </TabsContent>
 
-        {/* Knowledge Base Tab */}
-        <TabsContent value="knowledge" className="mt-0 flex-1 overflow-hidden p-4">
-          <KnowledgeBaseManager />
+        {/* Tools Tab - Screenshot to Code & Database Generator */}
+        <TabsContent value="tools" className="mt-0 flex-1 overflow-hidden">
+          <ScrollArea className="h-full p-4">
+            <div className="space-y-4">
+              <ScreenshotUpload />
+              <DatabaseGenerator />
+              <KnowledgeBaseManager />
+            </div>
+          </ScrollArea>
         </TabsContent>
 
         {/* Projects Tab */}
