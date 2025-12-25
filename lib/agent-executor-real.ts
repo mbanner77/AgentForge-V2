@@ -697,6 +697,140 @@ function validateAgentResult(
       criticalIssues.push("Antwort enthält nur Anweisungen statt Code")
       score -= 50
     }
+    
+    // === ERWEITERTE NEXT.JS VALIDIERUNGEN ===
+    for (const file of files) {
+      const isNextJs = deploymentTarget && deploymentTarget !== "github-only"
+      const hasUseClient = file.content.includes('"use client"') || file.content.includes("'use client'")
+      
+      // KRITISCH: metadata export in "use client" Datei
+      if (hasUseClient && file.content.includes('export const metadata')) {
+        criticalIssues.push(`FATAL: ${file.path} hat "use client" aber exportiert metadata - metadata nur in Server Components!`)
+        score -= 30
+      }
+      
+      // KRITISCH: generateMetadata in "use client" Datei
+      if (hasUseClient && file.content.includes('generateMetadata')) {
+        criticalIssues.push(`FATAL: ${file.path} hat "use client" aber verwendet generateMetadata - nur in Server Components!`)
+        score -= 30
+      }
+      
+      // KRITISCH: process.env ohne NEXT_PUBLIC_ in Client-Komponente
+      if (hasUseClient) {
+        const envMatches = file.content.match(/process\.env\.(?!NEXT_PUBLIC_)(\w+)/g)
+        if (envMatches && envMatches.length > 0) {
+          criticalIssues.push(`FATAL: ${file.path} verwendet process.env ohne NEXT_PUBLIC_ in Client-Komponente - nicht zugänglich!`)
+          score -= 25
+        }
+      }
+      
+      // WARNUNG: <img> statt next/image
+      if (isNextJs && file.content.includes('<img') && !file.content.includes('next/image')) {
+        issues.push(`${file.path}: Verwendet <img> statt next/image - Performance-Optimierung fehlt`)
+        score -= 5
+      }
+      
+      // WARNUNG: <a href> statt next/link für interne Links
+      if (isNextJs && file.content.match(/<a\s+href=["']\/[^"']*["']/)) {
+        if (!file.content.includes('next/link')) {
+          issues.push(`${file.path}: Verwendet <a href="/..."> statt next/link für interne Navigation`)
+          score -= 5
+        }
+      }
+      
+      // KRITISCH: API Route ohne HTTP Method Handler
+      if (file.path.includes('api/') && file.path.includes('route.ts')) {
+        const hasHandler = file.content.includes('export async function GET') ||
+                          file.content.includes('export async function POST') ||
+                          file.content.includes('export async function PUT') ||
+                          file.content.includes('export async function DELETE') ||
+                          file.content.includes('export async function PATCH')
+        if (!hasHandler) {
+          criticalIssues.push(`FATAL: ${file.path} ist API Route aber hat keine HTTP Method Handler (GET, POST, etc.)`)
+          score -= 35
+        }
+      }
+      
+      // KRITISCH: layout.tsx ohne children prop
+      if (file.path.includes('layout.tsx')) {
+        if (!file.content.includes('children')) {
+          criticalIssues.push(`FATAL: ${file.path} ist Layout aber hat keine children prop`)
+          score -= 30
+        }
+      }
+      
+      // KRITISCH: Doppelte Hooks in einer Komponente (oft Copy-Paste Fehler)
+      const hookCalls = file.content.match(/const\s+\[\w+,\s*set\w+\]\s*=\s*useState/g) || []
+      const uniqueHooks = new Set(hookCalls)
+      if (hookCalls.length > uniqueHooks.size) {
+        issues.push(`${file.path}: Möglicherweise duplizierte useState Aufrufe gefunden`)
+        score -= 10
+      }
+      
+      // KRITISCH: Event Handler ohne useCallback bei Dependencies
+      if (file.content.includes('useEffect') || file.content.includes('useMemo')) {
+        const emptyDepsWithHandler = file.content.match(/use(?:Effect|Memo)\([^,]+,\s*\[\s*\]\)/g)
+        if (emptyDepsWithHandler) {
+          const hasHandlerInside = file.content.includes('onClick') || file.content.includes('onChange')
+          if (hasHandlerInside) {
+            issues.push(`${file.path}: useEffect/useMemo mit leerem Dependency-Array aber Event-Handler - prüfe Dependencies`)
+            score -= 5
+          }
+        }
+      }
+      
+      // KRITISCH: className mit Template Literal Fehler
+      const classNameErrors = file.content.match(/className=\{`[^`]*\$\{[^}]*\}[^`]*`\s*\+/g)
+      if (classNameErrors) {
+        issues.push(`${file.path}: className Template Literal mit + Operator - nutze Template Literal komplett`)
+        score -= 10
+      }
+      
+      // KRITISCH: Fehlende Fragment bei mehreren Root-Elementen
+      const returnMatches = file.content.match(/return\s*\(\s*<(?!>|Fragment)/g)
+      if (returnMatches && returnMatches.length > 0) {
+        // Vereinfachte Prüfung: Wenn mehrere Top-Level Tags ohne gemeinsamen Parent
+        const jsxContent = file.content.match(/return\s*\(\s*([\s\S]*?)\s*\);/g)
+        if (jsxContent) {
+          for (const jsx of jsxContent) {
+            const topLevelTags = jsx.match(/<[A-Z][a-z]*|<[a-z]+/g) || []
+            // Wenn mehr als ein Top-Level Tag gefunden (sehr vereinfacht)
+            if (topLevelTags.length > 5) {
+              // Prüfe ob Fragment oder einzelner Parent
+              if (!jsx.includes('<>') && !jsx.includes('Fragment') && !jsx.includes('<div') && !jsx.includes('<main')) {
+                issues.push(`${file.path}: Möglicherweise mehrere Root-Elemente ohne Fragment`)
+                score -= 10
+              }
+            }
+          }
+        }
+      }
+      
+      // KRITISCH: Ungültige TypeScript - any Type verwendet
+      if (file.content.includes(': any') || file.content.includes('<any>') || file.content.includes('as any')) {
+        issues.push(`${file.path}: Verwendet 'any' Type - sollte spezifischer typisiert werden`)
+        score -= 5
+      }
+      
+      // KRITISCH: console.log in Production Code
+      const consoleCount = (file.content.match(/console\.(log|warn|error|debug)/g) || []).length
+      if (consoleCount > 3) {
+        issues.push(`${file.path}: ${consoleCount}x console.* gefunden - sollte für Production entfernt werden`)
+        score -= 5
+      }
+      
+      // KRITISCH: Hardcoded URLs/API Keys
+      if (file.content.match(/https?:\/\/[^"'\s]+api[^"'\s]*/i) && !file.content.includes('process.env')) {
+        issues.push(`${file.path}: Hardcoded API URL gefunden - sollte Environment Variable sein`)
+        score -= 10
+      }
+      
+      // KRITISCH: fetch ohne error handling
+      if (file.content.includes('fetch(') && !file.content.includes('catch') && !file.content.includes('try')) {
+        issues.push(`${file.path}: fetch() ohne Error Handling (try/catch)`)
+        score -= 10
+      }
+    }
   }
   
   // Planner-Agent Validierung
