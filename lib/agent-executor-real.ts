@@ -1046,6 +1046,152 @@ function formatDependencyGraph(graph: DependencyGraph): string {
   return output
 }
 
+// ============================================================
+// AUTO-GENERATE MISSING FILES
+// Erstellt automatisch Skeleton-Dateien für fehlende Imports
+// ============================================================
+
+function autoGenerateMissingFiles(files: ParsedCodeFile[]): ParsedCodeFile[] {
+  const result = [...files]
+  const existingPaths = new Set(files.map(f => f.path))
+  const missingFiles = new Map<string, string>() // path -> componentName
+  
+  // Sammle alle lokalen Imports aus allen Dateien
+  for (const file of files) {
+    // Finde Named Imports: import { X } from "@/components/X"
+    const namedImports = file.content.matchAll(/import\s+\{\s*([^}]+)\s*\}\s+from\s+["'](@\/components\/[^"']+|\.\/[^"']+)["']/g)
+    for (const match of namedImports) {
+      const importedNames = match[1].split(',').map(n => n.trim())
+      const importPath = match[2]
+      
+      // Normalisiere Pfad
+      let normalizedPath = importPath
+        .replace('@/components/', 'components/')
+        .replace('@/', '')
+        .replace('./', '')
+      
+      if (!normalizedPath.endsWith('.tsx') && !normalizedPath.endsWith('.ts')) {
+        normalizedPath += '.tsx'
+      }
+      
+      // Prüfe ob Datei existiert
+      const fileExists = existingPaths.has(normalizedPath) ||
+                        Array.from(existingPaths).some(p => 
+                          p.endsWith(normalizedPath) || 
+                          p.includes(normalizedPath.replace('.tsx', ''))
+                        )
+      
+      if (!fileExists && !missingFiles.has(normalizedPath)) {
+        // Verwende den ersten importierten Namen als Komponenten-Name
+        const componentName = importedNames[0]
+        missingFiles.set(normalizedPath, componentName)
+      }
+    }
+    
+    // Finde Default Imports: import X from "@/components/X"
+    const defaultImports = file.content.matchAll(/import\s+(\w+)\s+from\s+["'](@\/components\/[^"']+|\.\/[^"']+)["']/g)
+    for (const match of defaultImports) {
+      const fullMatch = match[0]
+      if (fullMatch.includes('{')) continue // Überspringe Named Imports
+      
+      const componentName = match[1]
+      const importPath = match[2]
+      
+      let normalizedPath = importPath
+        .replace('@/components/', 'components/')
+        .replace('@/', '')
+        .replace('./', '')
+      
+      if (!normalizedPath.endsWith('.tsx') && !normalizedPath.endsWith('.ts')) {
+        normalizedPath += '.tsx'
+      }
+      
+      const fileExists = existingPaths.has(normalizedPath) ||
+                        Array.from(existingPaths).some(p => 
+                          p.endsWith(normalizedPath) || 
+                          p.includes(normalizedPath.replace('.tsx', ''))
+                        )
+      
+      if (!fileExists && !missingFiles.has(normalizedPath)) {
+        missingFiles.set(normalizedPath, componentName)
+      }
+    }
+  }
+  
+  // Generiere Skeleton-Dateien für fehlende Imports
+  for (const [filePath, componentName] of missingFiles) {
+    // Bestimme ob es ein Context ist
+    const isContext = filePath.toLowerCase().includes('context')
+    
+    let skeletonContent: string
+    
+    if (isContext) {
+      // Context + Provider + Hook Skeleton
+      skeletonContent = `"use client";
+
+import { createContext, useContext, useState, ReactNode } from "react";
+
+interface ${componentName}Type {
+  // TODO: Define context type
+  value: string;
+  setValue: (value: string) => void;
+}
+
+const ${componentName} = createContext<${componentName}Type | undefined>(undefined);
+
+export function ${componentName}Provider({ children }: { children: ReactNode }) {
+  const [value, setValue] = useState("");
+  
+  return (
+    <${componentName}.Provider value={{ value, setValue }}>
+      {children}
+    </${componentName}.Provider>
+  );
+}
+
+export function use${componentName.replace('Context', '')}() {
+  const context = useContext(${componentName});
+  if (!context) {
+    throw new Error("use${componentName.replace('Context', '')} must be used within ${componentName}Provider");
+  }
+  return context;
+}
+
+export { ${componentName} };
+`
+    } else {
+      // Standard-Komponenten Skeleton
+      skeletonContent = `"use client";
+
+import { useState } from "react";
+
+interface ${componentName}Props {
+  // TODO: Define props
+}
+
+export function ${componentName}({ }: ${componentName}Props) {
+  return (
+    <div className="p-4">
+      <h2 className="text-xl font-bold">${componentName}</h2>
+      <p>TODO: Implement ${componentName} component</p>
+    </div>
+  );
+}
+`
+    }
+    
+    result.push({
+      path: filePath,
+      content: skeletonContent,
+      language: 'typescript'
+    })
+    
+    console.log(`[Auto-Generate] Skeleton erstellt: ${filePath} (${componentName})`)
+  }
+  
+  return result
+}
+
 // Spezifische Fehlermeldungen für verschiedene Fehlertypen
 function getSpecificErrorMessage(error: unknown): { message: string; suggestion: string; recoverable: boolean } {
   const errorStr = String(error)
@@ -3281,8 +3427,17 @@ Gib ALLE Dateien (auch die neuen) vollständig aus!`
         }
       }
 
+      // POST-PROCESSING: Automatisch fehlende Dateien erstellen
+      let finalFiles = files
+      if (agentType === "coder" && files.length > 0) {
+        finalFiles = autoGenerateMissingFiles(files)
+        if (finalFiles.length > files.length) {
+          console.log(`[Agent Executor] ${finalFiles.length - files.length} fehlende Dateien automatisch erstellt`)
+        }
+      }
+
       // CACHE-SET: Speichere erfolgreiche Antwort im Cache
-      const result = { content: response.content, files }
+      const result = { content: response.content, files: finalFiles }
       setCache(cacheKey, result.content, result.files)
       
       return result

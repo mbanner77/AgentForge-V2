@@ -417,6 +417,20 @@ Das Projekt wird auf Render.com deployed. WICHTIGE REGELN:
     coder: `
 ## 🚀 RENDER.COM (Next.js) - FEHLERFREIE CODE-GENERIERUNG
 
+## 🔴🔴🔴 WICHTIGSTE REGEL - BEFOLGE SIE ZUERST:
+**BEVOR du Code schreibst, liste ALLE Dateien auf die du erstellen wirst:**
+
+\`\`\`
+## DATEIEN DIE ICH ERSTELLEN WERDE:
+1. app/page.tsx - Hauptseite
+2. components/Calendar.tsx - Kalender-Komponente
+3. components/CalendarContext.tsx - Context + Provider
+... (alle weiteren)
+\`\`\`
+
+**DANN erstelle JEDE dieser Dateien - KEINE AUSNAHMEN!**
+Wenn du \`import { X } from "@/components/X"\` schreibst, MUSS \`components/X.tsx\` existieren!
+
 ## 🔴 KRITISCHE REGELN (Build-Fehler wenn nicht befolgt!):
 
 ### 1. DATEI-STRUKTUR
