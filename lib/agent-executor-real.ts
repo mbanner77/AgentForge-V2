@@ -1058,73 +1058,82 @@ interface MissingFileInfo {
 }
 
 function findMissingImports(files: ParsedCodeFile[]): MissingFileInfo[] {
-  const existingPaths = new Set(files.map(f => f.path))
+  // Sammle alle existierenden Pfade in verschiedenen Formaten
+  const existingPaths = new Set<string>()
+  for (const f of files) {
+    existingPaths.add(f.path)
+    existingPaths.add(f.path.replace(/^\//, ''))
+    existingPaths.add(f.path.replace('.tsx', '').replace('.ts', ''))
+    // Auch ohne components/ Prefix
+    if (f.path.startsWith('components/')) {
+      existingPaths.add(f.path.replace('components/', ''))
+    }
+  }
+  
   const missingFiles: MissingFileInfo[] = []
   const seenPaths = new Set<string>()
   
   for (const file of files) {
-    // Finde Named Imports: import { X } from "@/components/X"
-    const namedImports = file.content.matchAll(/import\s+\{\s*([^}]+)\s*\}\s+from\s+["'](@\/components\/[^"']+|\.\/[^"']+)["']/g)
-    for (const match of namedImports) {
-      const importedNames = match[1].split(',').map(n => n.trim())
-      const importPath = match[2]
-      
-      let normalizedPath = importPath
-        .replace('@/components/', 'components/')
-        .replace('@/', '')
-        .replace('./', '')
-      
-      if (!normalizedPath.endsWith('.tsx') && !normalizedPath.endsWith('.ts')) {
-        normalizedPath += '.tsx'
-      }
-      
-      const fileExists = existingPaths.has(normalizedPath) ||
-                        Array.from(existingPaths).some(p => 
-                          p.endsWith(normalizedPath) || 
-                          p.includes(normalizedPath.replace('.tsx', ''))
-                        )
-      
-      if (!fileExists && !seenPaths.has(normalizedPath)) {
-        seenPaths.add(normalizedPath)
-        missingFiles.push({
-          path: normalizedPath,
-          componentName: importedNames[0],
-          importedFrom: file.path
-        })
-      }
-    }
+    // ALLE lokalen Imports finden (sehr breite Regex)
+    // Matcht: import { X } from "@/...", import X from "@/...", import { X } from "./..."
+    const allImports = file.content.matchAll(/import\s+(?:\{([^}]+)\}|(\w+))\s+from\s+["'](@\/[^"']+|\.\.?\/[^"']+)["']/g)
     
-    // Finde Default Imports: import X from "@/components/X"
-    const defaultImports = file.content.matchAll(/import\s+(\w+)\s+from\s+["'](@\/components\/[^"']+|\.\/[^"']+)["']/g)
-    for (const match of defaultImports) {
-      const fullMatch = match[0]
-      if (fullMatch.includes('{')) continue
+    for (const match of allImports) {
+      const namedImports = match[1] // { X, Y }
+      const defaultImport = match[2] // X
+      const importPath = match[3]
       
-      const componentName = match[1]
-      const importPath = match[2]
+      // Ignoriere externe Pakete (react, next, etc.)
+      if (!importPath.startsWith('@/') && !importPath.startsWith('./') && !importPath.startsWith('../')) {
+        continue
+      }
       
+      // Normalisiere den Pfad
       let normalizedPath = importPath
         .replace('@/components/', 'components/')
+        .replace('@/lib/', 'lib/')
+        .replace('@/app/', 'app/')
         .replace('@/', '')
         .replace('./', '')
+        .replace('../', '')
       
-      if (!normalizedPath.endsWith('.tsx') && !normalizedPath.endsWith('.ts')) {
+      // Füge .tsx hinzu wenn keine Endung
+      if (!normalizedPath.endsWith('.tsx') && !normalizedPath.endsWith('.ts') && !normalizedPath.endsWith('.css')) {
         normalizedPath += '.tsx'
       }
       
-      const fileExists = existingPaths.has(normalizedPath) ||
-                        Array.from(existingPaths).some(p => 
-                          p.endsWith(normalizedPath) || 
-                          p.includes(normalizedPath.replace('.tsx', ''))
-                        )
+      // Prüfe ob Datei existiert (verschiedene Varianten)
+      const pathVariants = [
+        normalizedPath,
+        normalizedPath.replace('.tsx', ''),
+        normalizedPath.replace('.ts', ''),
+        `components/${normalizedPath}`,
+        normalizedPath.replace('components/', ''),
+      ]
+      
+      const fileExists = pathVariants.some(variant => existingPaths.has(variant))
       
       if (!fileExists && !seenPaths.has(normalizedPath)) {
         seenPaths.add(normalizedPath)
+        
+        // Bestimme Komponenten-Name
+        let componentName = ''
+        if (namedImports) {
+          componentName = namedImports.split(',')[0].trim().replace(/\s+as\s+\w+/, '')
+        } else if (defaultImport) {
+          componentName = defaultImport
+        } else {
+          // Fallback: aus Pfad extrahieren
+          componentName = normalizedPath.split('/').pop()?.replace('.tsx', '').replace('.ts', '') || 'Component'
+        }
+        
         missingFiles.push({
           path: normalizedPath,
           componentName,
           importedFrom: file.path
         })
+        
+        console.log(`[findMissingImports] Fehlend: ${normalizedPath} (${componentName}) - importiert von ${file.path}`)
       }
     }
   }
@@ -1139,73 +1148,12 @@ function findMissingImports(files: ParsedCodeFile[]): MissingFileInfo[] {
 
 function autoGenerateMissingFiles(files: ParsedCodeFile[]): ParsedCodeFile[] {
   const result = [...files]
-  const existingPaths = new Set(files.map(f => f.path))
-  const missingFiles = new Map<string, string>() // path -> componentName
   
-  // Sammle alle lokalen Imports aus allen Dateien
-  for (const file of files) {
-    // Finde Named Imports: import { X } from "@/components/X"
-    const namedImports = file.content.matchAll(/import\s+\{\s*([^}]+)\s*\}\s+from\s+["'](@\/components\/[^"']+|\.\/[^"']+)["']/g)
-    for (const match of namedImports) {
-      const importedNames = match[1].split(',').map(n => n.trim())
-      const importPath = match[2]
-      
-      // Normalisiere Pfad
-      let normalizedPath = importPath
-        .replace('@/components/', 'components/')
-        .replace('@/', '')
-        .replace('./', '')
-      
-      if (!normalizedPath.endsWith('.tsx') && !normalizedPath.endsWith('.ts')) {
-        normalizedPath += '.tsx'
-      }
-      
-      // Prüfe ob Datei existiert
-      const fileExists = existingPaths.has(normalizedPath) ||
-                        Array.from(existingPaths).some(p => 
-                          p.endsWith(normalizedPath) || 
-                          p.includes(normalizedPath.replace('.tsx', ''))
-                        )
-      
-      if (!fileExists && !missingFiles.has(normalizedPath)) {
-        // Verwende den ersten importierten Namen als Komponenten-Name
-        const componentName = importedNames[0]
-        missingFiles.set(normalizedPath, componentName)
-      }
-    }
-    
-    // Finde Default Imports: import X from "@/components/X"
-    const defaultImports = file.content.matchAll(/import\s+(\w+)\s+from\s+["'](@\/components\/[^"']+|\.\/[^"']+)["']/g)
-    for (const match of defaultImports) {
-      const fullMatch = match[0]
-      if (fullMatch.includes('{')) continue // Überspringe Named Imports
-      
-      const componentName = match[1]
-      const importPath = match[2]
-      
-      let normalizedPath = importPath
-        .replace('@/components/', 'components/')
-        .replace('@/', '')
-        .replace('./', '')
-      
-      if (!normalizedPath.endsWith('.tsx') && !normalizedPath.endsWith('.ts')) {
-        normalizedPath += '.tsx'
-      }
-      
-      const fileExists = existingPaths.has(normalizedPath) ||
-                        Array.from(existingPaths).some(p => 
-                          p.endsWith(normalizedPath) || 
-                          p.includes(normalizedPath.replace('.tsx', ''))
-                        )
-      
-      if (!fileExists && !missingFiles.has(normalizedPath)) {
-        missingFiles.set(normalizedPath, componentName)
-      }
-    }
-  }
+  // Nutze die verbesserte findMissingImports Funktion
+  const missingFileInfos = findMissingImports(files)
   
   // Generiere Skeleton-Dateien für fehlende Imports
-  for (const [filePath, componentName] of missingFiles) {
+  for (const { path: filePath, componentName } of missingFileInfos) {
     // Bestimme ob es ein Context ist
     const isContext = filePath.toLowerCase().includes('context')
     
