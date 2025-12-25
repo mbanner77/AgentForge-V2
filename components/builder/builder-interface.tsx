@@ -567,6 +567,29 @@ export default function RootLayout({
         
         console.log("[Deploy] Verarbeite Dateien:", files.map(f => f.path))
         
+        // Funktion zum Bereinigen von Code für Next.js
+        const cleanCodeForNextJS = (content: string): string => {
+          let cleaned = content
+          // Entferne "use client" (wird später wieder hinzugefügt)
+          cleaned = cleaned.replace(/^["']use client["'];?\s*\n?/gm, '')
+          // Entferne ReactDOM imports und createRoot
+          cleaned = cleaned.replace(/import\s+.*\s+from\s+["']react-dom\/client["'];?\s*\n?/g, '')
+          cleaned = cleaned.replace(/import\s+ReactDOM\s+from\s+["']react-dom["'];?\s*\n?/g, '')
+          cleaned = cleaned.replace(/createRoot\(.*?\)\.render\([\s\S]*?\);?\s*\n?/g, '')
+          cleaned = cleaned.replace(/ReactDOM\.render\([\s\S]*?\);?\s*\n?/g, '')
+          // Entferne metadata exports
+          cleaned = cleaned.replace(/export\s+const\s+metadata\s*:\s*Metadata\s*=\s*\{[\s\S]*?\};\s*\n?/g, '')
+          cleaned = cleaned.replace(/export\s+const\s+metadata\s*=\s*\{[\s\S]*?\};\s*\n?/g, '')
+          // Entferne Metadata imports
+          cleaned = cleaned.replace(/import\s+type\s*\{\s*Metadata\s*\}\s*from\s+["']next["'];?\s*\n?/g, '')
+          cleaned = cleaned.replace(/import\s*\{\s*Metadata\s*\}\s*from\s+["']next["'];?\s*\n?/g, '')
+          // Entferne CSS imports
+          cleaned = cleaned.replace(/import\s+["'][^"']*\.css["'];?\s*\n?/g, '')
+          // Entferne leere Zeilen am Anfang
+          cleaned = cleaned.replace(/^\s*\n+/, '')
+          return cleaned
+        }
+        
         const filteredFiles = files
           .filter(f => {
             const fileName = f.path.split('/').pop() || ''
@@ -575,7 +598,7 @@ export default function RootLayout({
               console.log(`[Deploy] Überspringe ausgeschlossene Datei: ${f.path}`)
               return false
             }
-            // Filtere Dateien im app/ Verzeichnis (außer Komponenten)
+            // Filtere Dateien im app/ Verzeichnis (außer page.tsx)
             if (f.path.includes('app/') && fileName === 'layout.tsx') {
               console.log(`[Deploy] Überspringe layout.tsx: ${f.path}`)
               return false
@@ -588,19 +611,8 @@ export default function RootLayout({
             if (path.startsWith("src/")) {
               path = path.slice(4)
             }
-            // Bereinige Next.js inkompatiblen Code
-            let content = f.content
-            content = content.replace(/^["']use client["'];?\s*/gm, '')
-            content = content.replace(/import\s+.*\s+from\s+["']react-dom\/client["'];?\s*/g, '')
-            content = content.replace(/createRoot\(.*\)\.render\([\s\S]*?\);?/g, '')
-            // Entferne metadata export (nicht erlaubt in "use client" Komponenten)
-            content = content.replace(/export\s+const\s+metadata\s*:\s*Metadata\s*=\s*\{[\s\S]*?\};\s*/g, '')
-            content = content.replace(/export\s+const\s+metadata\s*=\s*\{[\s\S]*?\};\s*/g, '')
-            // Entferne Metadata type import
-            content = content.replace(/import\s+type\s*\{\s*Metadata\s*\}\s*from\s+["']next["'];?\s*/g, '')
-            content = content.replace(/import\s*\{\s*Metadata\s*\}\s*from\s+["']next["'];?\s*/g, '')
-            // Entferne CSS imports (globals.css etc.)
-            content = content.replace(/import\s+["'][^"']*\.css["'];?\s*/g, '')
+            // Bereinige Code für Next.js
+            const content = cleanCodeForNextJS(f.content)
             return { path, content }
           })
         
@@ -638,30 +650,53 @@ export default function RootLayout({
         // Erstelle app/page.tsx mit der Hauptkomponente
         let mainComponent: string
         if (appFile) {
-          // Stelle sicher, dass export default vorhanden ist
           let content = appFile.content
-          // Ersetze "export default function App" mit "export default function Page"
+          
+          // Ersetze verschiedene App-Funktionsnamen mit Page
           content = content.replace(/export\s+default\s+function\s+App\s*\(/g, 'export default function Page(')
+          content = content.replace(/export\s+default\s+function\s+Home\s*\(/g, 'export default function Page(')
+          content = content.replace(/export\s+default\s+function\s+Main\s*\(/g, 'export default function Page(')
+          
           // Falls kein default export, füge Wrapper hinzu
           if (!content.includes('export default')) {
-            // Extrahiere Komponentenname aus dem Dateinamen
-            const componentName = appFile.path.split('/').pop()?.replace(/\.(tsx|jsx)$/, '') || 'Component'
-            content = `${content}
-
-export default ${componentName};`
+            // Suche nach einer exportierten Funktion und mache sie zum default
+            const funcMatch = content.match(/export\s+function\s+(\w+)\s*\(/)
+            if (funcMatch) {
+              content = content.replace(/export\s+function\s+(\w+)\s*\(/g, 'export default function Page(')
+            } else {
+              // Extrahiere Komponentenname aus dem Dateinamen
+              const componentName = appFile.path.split('/').pop()?.replace(/\.(tsx|jsx)$/, '') || 'Component'
+              // Prüfe ob es eine const Komponente gibt
+              const constMatch = content.match(/(?:const|let)\s+(\w+)\s*[=:]\s*(?:\(\)|function|\([^)]*\)\s*=>)/)
+              if (constMatch) {
+                content = `${content}\n\nexport default ${constMatch[1]};`
+              } else {
+                content = `${content}\n\nexport default ${componentName};`
+              }
+            }
           }
+          
+          // Stelle sicher dass "use client" am Anfang steht
+          mainComponent = `"use client";\n\n${content}`
+        } else {
+          // Fallback: Erstelle eine einfache Seite
+          console.warn("[Deploy] Keine Haupt-Komponente gefunden, erstelle Fallback")
           mainComponent = `"use client";
 
-${content}`
-        } else {
-          mainComponent = `"use client";
+import { useState } from "react";
 
 export default function Page() {
   return (
-    <div style={{ padding: 20, background: '#f5f5f5', minHeight: '100vh' }}>
-      <h1>Keine Komponente gefunden</h1>
-      <p>Bitte generiere eine React-Komponente mit export default.</p>
-    </div>
+    <main className="min-h-screen p-8 bg-gray-50">
+      <div className="max-w-4xl mx-auto">
+        <h1 className="text-3xl font-bold text-gray-900 mb-4">
+          Willkommen
+        </h1>
+        <p className="text-gray-600">
+          Die App wird generiert. Bitte starte eine neue Generierung.
+        </p>
+      </div>
+    </main>
   );
 }`
         }
@@ -671,13 +706,21 @@ export default function Page() {
           .filter(f => f !== appFile)
           .map(f => {
             let path = f.path
+            let content = f.content
+            
             // Komponenten kommen unter components/ wenn sie nicht schon dort sind
             if (!path.startsWith('components/') && !path.startsWith('app/') && !path.startsWith('lib/')) {
               if (path.endsWith('.tsx') || path.endsWith('.jsx')) {
                 path = `components/${path}`
               }
             }
-            return { path, content: f.content }
+            
+            // Füge "use client" zu TSX/JSX Komponenten hinzu wenn nicht vorhanden
+            if ((path.endsWith('.tsx') || path.endsWith('.jsx')) && !content.includes('"use client"')) {
+              content = `"use client";\n\n${content}`
+            }
+            
+            return { path, content }
           })
 
         // Aktualisiere projectFiles um app/page.tsx einzufügen

@@ -340,66 +340,69 @@ Das Projekt wird auf Render.com deployed. WICHTIGE REGELN:
 - vite.config.ts`,
 
     coder: `
-## 🚀 DEPLOYMENT-ZIEL: RENDER.COM (Next.js)
-Dein Code wird auf Render.com mit Next.js deployed!
+## 🚀 DEPLOYMENT-ZIEL: RENDER.COM (Next.js) - STRIKTE REGELN
 
-**KRITISCH - NEXT.JS APP ROUTER STRUKTUR:**
-\`\`\`
-app/
-  page.tsx        ← Hauptseite (NICHT App.tsx!)
-  layout.tsx      ← Root Layout
-components/
-  Calendar.tsx    ← Komponenten hier
-\`\`\`
+**WICHTIG: Generiere NUR diese Dateien:**
+1. \`app/page.tsx\` - Die Hauptseite (PFLICHT!)
+2. \`components/*.tsx\` - Komponenten
 
-**CODE-FORMAT für Render:**
+**EXAKTES FORMAT - KOPIERE DIESE STRUKTUR:**
+
 \`\`\`typescript
 // filepath: app/page.tsx
 "use client";
 
 import { useState } from "react";
-import { Calendar } from "@/components/Calendar";
+import { MyComponent } from "@/components/MyComponent";
 
 export default function Page() {
-  return <Calendar />;
+  return (
+    <main className="min-h-screen p-8">
+      <MyComponent />
+    </main>
+  );
 }
 \`\`\`
 
 \`\`\`typescript
-// filepath: components/Calendar.tsx
+// filepath: components/MyComponent.tsx
 "use client";
 
-export function Calendar() {
-  // Komponenten-Code
+import { useState } from "react";
+
+export function MyComponent() {
+  const [value, setValue] = useState("");
+  
+  return (
+    <div className="p-4">
+      {/* Dein UI Code hier */}
+    </div>
+  );
 }
 \`\`\`
 
-**VERBOTEN (verursacht Build-Fehler auf Render):**
-❌ src/main.tsx oder src/App.tsx
-❌ ReactDOM.createRoot()
-❌ import from "react-dom/client"
-❌ vite.config.ts
-❌ export const metadata in "use client" Komponenten!
-❌ import "./globals.css" in Komponenten
-❌ import type { Metadata } from "next" in Client-Komponenten
+**CHECKLISTE VOR AUSGABE:**
+□ Jede Datei beginnt mit \`// filepath: PFAD\`
+□ \`app/page.tsx\` existiert mit \`export default function Page()\`
+□ Alle Komponenten haben \`"use client";\` als ERSTE Zeile
+□ Imports nutzen \`@/components/Name\` (nicht relative Pfade)
+□ KEIN \`export const metadata\` in Client-Komponenten
+□ KEINE CSS-Imports (kein \`import "./styles.css"\`)
 
-**NIEMALS DIESE DATEIEN GENERIEREN (werden automatisch erstellt):**
-❌ package.json - NIEMALS generieren!
-❌ tsconfig.json - NIEMALS generieren!
-❌ next.config.js/ts - NIEMALS generieren!
-❌ layout.tsx - NIEMALS generieren!
-❌ .gitignore, README.md - NIEMALS generieren!
+**ABSOLUT VERBOTEN:**
+❌ App.tsx, main.tsx, index.tsx - EXISTIEREN NICHT IN NEXT.JS
+❌ ReactDOM.createRoot() - VERBOTEN
+❌ import from "react-dom/client" - VERBOTEN
+❌ package.json, tsconfig.json - WERDEN AUTOMATISCH ERSTELLT
+❌ layout.tsx - WIRD AUTOMATISCH ERSTELLT
+❌ export const metadata - NUR IN SERVER COMPONENTS ERLAUBT
+❌ import "./globals.css" - NUR IN LAYOUT ERLAUBT
 
-**KRITISCH - METADATA REGEL:**
-metadata exports sind NUR in Server Components (OHNE "use client") erlaubt!
-In Client-Komponenten (MIT "use client") ist metadata VERBOTEN!
-
-**PFLICHT:**
-✅ "use client" am Anfang von Client-Komponenten (OHNE metadata!)
-✅ app/page.tsx als Hauptseite
-✅ export default function für Seiten
-✅ @/components/X für Imports
-✅ CSS nur in layout.tsx importieren`,
+**FEHLER-BEISPIELE DIE DU VERMEIDEN MUSST:**
+❌ FALSCH: \`export default function App()\` → ✅ RICHTIG: \`export default function Page()\`
+❌ FALSCH: \`src/App.tsx\` → ✅ RICHTIG: \`app/page.tsx\`
+❌ FALSCH: \`import "./App.css"\` → ✅ RICHTIG: Tailwind Classes nutzen
+❌ FALSCH: \`export const metadata = {...}\` in "use client" → ✅ RICHTIG: Entfernen`,
 
     reviewer: `
 ## 🚀 RENDER.COM DEPLOYMENT - REVIEW FOKUS
