@@ -557,14 +557,30 @@ export default function RootLayout({
         ]
         
         // Filtere und transformiere generierte Dateien für Next.js
-        const EXCLUDED_FILES = ['main.tsx', 'main.ts', 'index.tsx', 'index.ts', 'index.css', 'index.html', 'vite.config.ts', 'vite-env.d.ts']
+        // WICHTIG: Config-Dateien werden von projectFiles bereitgestellt, nicht vom Agent!
+        const EXCLUDED_FILES = [
+          'main.tsx', 'main.ts', 'index.tsx', 'index.ts', 'index.css', 'index.html', 
+          'vite.config.ts', 'vite-env.d.ts',
+          'package.json', 'package-lock.json', 'tsconfig.json', 'next.config.js', 'next.config.ts',
+          'next-env.d.ts', '.gitignore', 'README.md', 'layout.tsx'
+        ]
         
         console.log("[Deploy] Verarbeite Dateien:", files.map(f => f.path))
         
         const filteredFiles = files
           .filter(f => {
             const fileName = f.path.split('/').pop() || ''
-            return !EXCLUDED_FILES.includes(fileName)
+            // Filtere config-Dateien und Vite-spezifische Dateien
+            if (EXCLUDED_FILES.includes(fileName)) {
+              console.log(`[Deploy] Überspringe ausgeschlossene Datei: ${f.path}`)
+              return false
+            }
+            // Filtere Dateien im app/ Verzeichnis (außer Komponenten)
+            if (f.path.includes('app/') && fileName === 'layout.tsx') {
+              console.log(`[Deploy] Überspringe layout.tsx: ${f.path}`)
+              return false
+            }
+            return true
           })
           .map(f => {
             let path = f.path.startsWith("/") ? f.path.slice(1) : f.path

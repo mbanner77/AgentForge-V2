@@ -383,6 +383,13 @@ export function Calendar() {
 ❌ import "./globals.css" in Komponenten
 ❌ import type { Metadata } from "next" in Client-Komponenten
 
+**NIEMALS DIESE DATEIEN GENERIEREN (werden automatisch erstellt):**
+❌ package.json - NIEMALS generieren!
+❌ tsconfig.json - NIEMALS generieren!
+❌ next.config.js/ts - NIEMALS generieren!
+❌ layout.tsx - NIEMALS generieren!
+❌ .gitignore, README.md - NIEMALS generieren!
+
 **KRITISCH - METADATA REGEL:**
 metadata exports sind NUR in Server Components (OHNE "use client") erlaubt!
 In Client-Komponenten (MIT "use client") ist metadata VERBOTEN!

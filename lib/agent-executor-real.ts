@@ -1336,20 +1336,39 @@ ${fileContexts.join("\n\n")}
               message: `API-Antwort erhalten (${duration}s)`,
             })
 
-            // Füge generierte Dateien hinzu
+            // Füge generierte Dateien hinzu oder aktualisiere bestehende
             if (result.files.length > 0) {
+              const existingFiles = getFiles()
               for (const file of result.files) {
-                addFile({
-                  path: file.path,
-                  content: file.content,
-                  language: file.language,
-                  status: "created",
-                })
-                addLog({
-                  level: "info",
-                  agent: agentType,
-                  message: `Datei erstellt: ${file.path}`,
-                })
+                // Prüfe ob Datei bereits existiert
+                const existingFile = existingFiles.find(f => 
+                  f.path === file.path || 
+                  f.path.endsWith(file.path) || 
+                  file.path.endsWith(f.path.split('/').pop() || '')
+                )
+                
+                if (existingFile) {
+                  // Aktualisiere bestehende Datei
+                  updateFileByPath(existingFile.path, file.content)
+                  addLog({
+                    level: "info",
+                    agent: agentType,
+                    message: `Datei aktualisiert: ${existingFile.path}`,
+                  })
+                } else {
+                  // Erstelle neue Datei
+                  addFile({
+                    path: file.path,
+                    content: file.content,
+                    language: file.language,
+                    status: "created",
+                  })
+                  addLog({
+                    level: "info",
+                    agent: agentType,
+                    message: `Datei erstellt: ${file.path}`,
+                  })
+                }
               }
             }
 
