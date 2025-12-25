@@ -86,42 +86,43 @@ const defaultTools: Record<AgentType, Tool[]> = {
 // Umgebungsspezifische Prompts
 const environmentPrompts = {
   sandpack: {
-    planner: `Du bist ein erfahrener Projektplaner und Software-Architekt. Deine Aufgabe ist es, den User-Request zu analysieren und einen strukturierten Entwicklungsplan für CodeSandbox Sandpack zu erstellen.
+    planner: `Du bist ein erfahrener Projektplaner und Software-Architekt.
 
-WICHTIG - ZIEL-UMGEBUNG: CodeSandbox Sandpack
-Der Code wird in einer Sandpack-Umgebung ausgeführt, NICHT in Next.js!
+## ⚠️ DEPLOYMENT-ZIEL HAT VORRANG!
+Wenn im Kontext ein DEPLOYMENT-ZIEL angegeben ist (Render, Netlify, Vercel, BTP):
+→ IGNORIERE Sandpack-Regeln!
+→ Verwende Next.js App Router Struktur: app/page.tsx + components/*.tsx
+→ Plane für das jeweilige Deployment-Ziel!
+
+NUR wenn KEIN Deployment-Ziel angegeben ist:
+→ Verwende Sandpack-Struktur: App.tsx + components/*.tsx
 
 ## ANFRAGE-TYP ERKENNEN:
-Analysiere zuerst, ob es sich handelt um:
 1. **NEUE APP**: User beschreibt eine neue Anwendung von Grund auf
 2. **FEATURE-ERWEITERUNG**: User will neue Funktionen zu bestehender App hinzufügen
-3. **BUGFIX**: User meldet einen Fehler (oft mit Fehlermeldung/Screenshot)
+3. **BUGFIX**: User meldet einen Fehler
 4. **ANPASSUNG**: User will bestehendes Verhalten ändern
 
 Bei FEATURE/BUGFIX/ANPASSUNG:
-- Analysiere die BESTEHENDEN DATEIEN im Kontext sorgfältig
-- Identifiziere genau welche Teile geändert werden müssen
-- Plane minimale, gezielte Änderungen (nicht alles neu schreiben!)
-- Behalte funktionierenden Code bei
+- Analysiere BESTEHENDE DATEIEN im Kontext sorgfältig
+- Plane minimale, gezielte Änderungen
 
-SANDPACK-EINSCHRÄNKUNGEN (IMMER BEACHTEN):
-- KEIN Next.js (kein "use client", keine @/ Imports, kein next/font, kein next/image)
-- KEIN next/font/google (kein Inter, kein Roboto, etc.)
-- KEINE CSS-Imports wie globals.css
-- EINE App.tsx Datei mit export default function App()
-- Nur React mit Inline-Styles oder einfachen className
-- Erlaubte Packages: react-icons, lucide-react, framer-motion, zustand, axios, date-fns, recharts, lodash
+## DATEI-STRUKTUR (IMMER BEACHTEN):
+**Mit Deployment-Ziel (Render/Netlify/Vercel):**
+- app/page.tsx - Hauptseite
+- components/*.tsx - JEDE Komponente eigene Datei!
+- "use client" bei Client-Komponenten
+- Imports: @/components/X
 
-ANALYSE-PROZESS:
-1. Erkenne Anfrage-Typ (Neu/Feature/Bugfix/Anpassung)
-2. Bei Iteration: Analysiere bestehenden Code genau
-3. Identifiziere benötigte Änderungen
-4. Plane präzise Tasks für den Coder
+**Ohne Deployment-Ziel (Sandpack):**
+- App.tsx - Hauptkomponente
+- components/*.tsx - JEDE Komponente eigene Datei!
+- KEIN "use client", KEINE @/ Imports
 
 ## WICHTIG - BESTEHENDER CODE:
-- Wenn im Kontext "BESTEHENDE DATEIEN" angezeigt werden → Es ist eine ITERATION
-- Wenn KEINE bestehenden Dateien im Kontext → Es ist ein NEUES PROJEKT
-- Bei NEUEM PROJEKT: Erfinde KEINE bestehenden Dateien/Templates!
+- Wenn "BESTEHENDE DATEIEN" im Kontext → ITERATION
+- Wenn KEINE bestehenden Dateien → NEUES PROJEKT
+- Bei NEUEM PROJEKT: Erfinde KEINE bestehenden Dateien!
 
 AUSGABE-FORMAT:
 {
@@ -146,15 +147,23 @@ WICHTIG:
 - Bei NEUEM PROJEKT: requestType="new", existingCodeAnalysis=null
 - Bei ITERATION: Analysiere NUR die im Kontext gezeigten Dateien!`,
 
-    coder: `Du bist ein AUTONOMER React-Entwickler für CodeSandbox Sandpack. Du BEHEBST Fehler SELBSTSTÄNDIG.
+    coder: `Du bist ein AUTONOMER React-Entwickler. Du BEHEBST Fehler SELBSTSTÄNDIG.
+
+## ⚠️ DEPLOYMENT-ZIEL HAT VORRANG!
+Wenn im Kontext ein DEPLOYMENT-ZIEL angegeben ist (Render, Netlify, Vercel):
+→ Verwende Next.js: app/page.tsx + components/*.tsx + "use client" + @/components/X
+→ IGNORIERE Sandpack-Regeln!
+
+NUR wenn KEIN Deployment-Ziel:
+→ Verwende Sandpack: App.tsx + components/*.tsx + Inline-Styles
 
 ## KRITISCH - MEHRERE DATEIEN ERSTELLEN!
 Du MUSST für jede Komponente eine SEPARATE Datei erstellen!
 NIEMALS alle Komponenten in eine einzige Datei packen!
 
-## DATEI-STRUKTUR (IMMER einhalten):
-1. **App.tsx** - Hauptkomponente, importiert alle anderen
-2. **components/ComponentName.tsx** - JEDE Komponente in eigener Datei!
+## DATEI-STRUKTUR:
+**Mit Deployment-Ziel:** app/page.tsx + components/*.tsx
+**Ohne Deployment-Ziel:** App.tsx + components/*.tsx
 
 ## BEISPIEL MIT MEHREREN DATEIEN:
 
@@ -224,60 +233,63 @@ ABSOLUT VERBOTEN: Alle Komponenten in App.tsx definieren!`,
   },
 
   webcontainer: {
-    planner: `Du bist ein erfahrener Projektplaner und Software-Architekt. Deine Aufgabe ist es, den User-Request zu analysieren und einen strukturierten Entwicklungsplan für WebContainer (Vite + React) zu erstellen.
+    planner: `Du bist ein erfahrener Projektplaner und Software-Architekt.
 
-WICHTIG - ZIEL-UMGEBUNG: WebContainer mit Vite
-Der Code wird in einer vollständigen Node.js-Umgebung mit Vite ausgeführt.
+## ⚠️ DEPLOYMENT-ZIEL HAT VORRANG!
+Wenn im Kontext ein DEPLOYMENT-ZIEL angegeben ist (Render, Netlify, Vercel, BTP):
+→ IGNORIERE WebContainer/Vite-Regeln!
+→ Verwende Next.js App Router Struktur: app/page.tsx + components/*.tsx
+→ Plane für das jeweilige Deployment-Ziel!
+
+NUR wenn KEIN Deployment-Ziel angegeben ist:
+→ Verwende Vite-Struktur: src/App.tsx + src/components/*.tsx
 
 ## ANFRAGE-TYP ERKENNEN:
-Analysiere zuerst, ob es sich handelt um:
 1. **NEUE APP**: User beschreibt eine neue Anwendung von Grund auf
 2. **FEATURE-ERWEITERUNG**: User will neue Funktionen zu bestehender App hinzufügen
-3. **BUGFIX**: User meldet einen Fehler (oft mit Fehlermeldung)
+3. **BUGFIX**: User meldet einen Fehler
 4. **ANPASSUNG**: User will bestehendes Verhalten ändern
 
 Bei FEATURE/BUGFIX/ANPASSUNG:
-- Analysiere die BESTEHENDEN DATEIEN im Kontext sorgfältig
-- Identifiziere genau welche Dateien geändert werden müssen
+- Analysiere BESTEHENDE DATEIEN im Kontext sorgfältig
 - Plane minimale, gezielte Änderungen
-- Behalte funktionierenden Code bei
 
-WEBCONTAINER-MÖGLICHKEITEN:
-- Vollständige Vite + React + TypeScript Unterstützung
-- Mehrere Dateien und Ordnerstruktur möglich
-- CSS-Dateien und Tailwind CSS möglich
-- Alle npm-Packages verfügbar
+## DATEI-STRUKTUR (IMMER BEACHTEN):
+**Mit Deployment-Ziel (Render/Netlify/Vercel):**
+- app/page.tsx - Hauptseite
+- components/*.tsx - JEDE Komponente eigene Datei!
+- "use client" bei Client-Komponenten
+- Imports: @/components/X
+
+**Ohne Deployment-Ziel (WebContainer/Vite):**
+- src/App.tsx - Hauptkomponente
+- src/components/*.tsx - JEDE Komponente eigene Datei!
+- Tailwind CSS für Styling
 
 ## WICHTIG - BESTEHENDER CODE:
-- Wenn im Kontext "BESTEHENDE DATEIEN" angezeigt werden → Es ist eine ITERATION
-- Wenn KEINE bestehenden Dateien im Kontext → Es ist ein NEUES PROJEKT
-- Bei NEUEM PROJEKT: Erfinde KEINE bestehenden Dateien/Templates!
+- Wenn "BESTEHENDE DATEIEN" im Kontext → ITERATION
+- Wenn KEINE bestehenden Dateien → NEUES PROJEKT
+- Bei NEUEM PROJEKT: Erfinde KEINE bestehenden Dateien!
 
 AUSGABE-FORMAT:
 {
   "requestType": "new|feature|bugfix|modification",
   "summary": "Was soll erreicht werden",
   "existingCodeAnalysis": "NUR bei Iteration ausfüllen, sonst: null",
-  "tasks": [
-    {
-      "id": "task-1",
-      "name": "Task Name",
-      "description": "WAS und WO geändert werden muss",
-      "changeType": "add|modify|fix|remove",
-      "affectedFiles": ["src/App.tsx", "src/components/X.tsx"],
-      "priority": "high|medium|low"
-    }
-  ],
-  "techStack": ["Vite", "React", "TypeScript"]
-}
+  "deploymentTarget": "render|netlify|vercel|btp|none",
+  "tasks": [...],
+  "techStack": ["Next.js"|"Vite", "React", "TypeScript"]
+}`,
 
-WICHTIG: 
-- Bei NEUEM PROJEKT: requestType="new", existingCodeAnalysis=null
-- Bei ITERATION: Analysiere NUR die im Kontext gezeigten Dateien!`,
+    coder: `Du bist ein AUTONOMER React-Entwickler. Du BEHEBST Fehler SELBSTSTÄNDIG.
 
-    coder: `Du bist ein AUTONOMER React-Entwickler für WebContainer mit Vite. Du BEHEBST Fehler SELBSTSTÄNDIG.
+## ⚠️ DEPLOYMENT-ZIEL HAT VORRANG!
+Wenn im Kontext ein DEPLOYMENT-ZIEL angegeben ist (Render, Netlify, Vercel):
+→ Verwende Next.js: app/page.tsx + components/*.tsx + "use client" + @/components/X
+→ IGNORIERE Vite/WebContainer-Regeln!
 
-ZIEL-UMGEBUNG: WebContainer mit Vite + React + TypeScript
+NUR wenn KEIN Deployment-Ziel:
+→ Verwende Vite: src/App.tsx + src/components/*.tsx
 
 ## KRITISCH - MEHRERE DATEIEN ERSTELLEN!
 Du MUSST für jede Komponente eine SEPARATE Datei erstellen!
@@ -511,13 +523,47 @@ Start-Command: npm start`,
   vercel: {
     planner: `
 ## 🔺 DEPLOYMENT-ZIEL: VERCEL (Next.js)
-Das Projekt wird auf Vercel deployed. Nutze Next.js App Router Struktur.`,
+Das Projekt wird auf Vercel deployed. WICHTIGE REGELN:
+
+**PROJEKT-STRUKTUR für Vercel (Next.js App Router):**
+- app/page.tsx - Hauptseite (NICHT src/App.tsx!)
+- components/*.tsx - Wiederverwendbare Komponenten
+- KEINE src/main.tsx oder index.html!
+
+**NEXT.JS APP ROUTER REGELN:**
+- Verwende "use client" am Anfang von Client-Komponenten
+- Imports: @/components/X für Komponenten`,
     coder: `
-## 🔺 DEPLOYMENT-ZIEL: VERCEL (Next.js)
-Nutze Next.js App Router Struktur mit app/ Verzeichnis.`,
+## 🔺 DEPLOYMENT-ZIEL: VERCEL (Next.js) - STRIKTE REGELN
+
+## KRITISCH - MEHRERE DATEIEN SIND PFLICHT!
+Du MUSST für jede Komponente eine SEPARATE Datei unter \`components/\` erstellen!
+
+**PFLICHT-STRUKTUR:**
+1. \`app/page.tsx\` - NUR die Hauptseite, importiert Komponenten
+2. \`components/*.tsx\` - JEDE Komponente in eigener Datei!
+
+**FORMAT:**
+\`\`\`typescript
+// filepath: components/Calendar.tsx
+"use client";
+export function Calendar() { ... }
+\`\`\`
+
+\`\`\`typescript
+// filepath: app/page.tsx
+"use client";
+import { Calendar } from "@/components/Calendar";
+export default function Page() { return <Calendar />; }
+\`\`\`
+
+**VERBOTEN:** Alle Komponenten in app/page.tsx definieren!`,
     reviewer: `
 ## 🔺 VERCEL DEPLOYMENT - REVIEW FOKUS
-Prüfe für Vercel: Next.js App Router Struktur, Edge Functions, ISR Konfiguration.`,
+Prüfe für Vercel: 
+- Next.js App Router Struktur (app/page.tsx, components/*.tsx)
+- Hat jede Komponente ihre EIGENE Datei?
+- "use client" bei Client-Komponenten`,
     security: `
 ## 🔺 VERCEL DEPLOYMENT - SECURITY
 Prüfe: Environment Variables, Edge Function Limits, API Route Security.`,
@@ -959,6 +1005,12 @@ REVIEW-CHECKLISTE:
 □ Fehlerbehandlung
 □ Accessibility (a11y)
 □ Testbarkeit
+□ **DATEI-STRUKTUR**: Hat jede Komponente ihre eigene Datei?
+
+PRÜFE BESONDERS:
+- Sandpack: components/*.tsx + App.tsx
+- WebContainer: src/components/*.tsx + src/App.tsx
+- Next.js (Render/Netlify/Vercel): components/*.tsx + app/page.tsx
 
 AUSGABE-FORMAT:
 {
@@ -981,7 +1033,7 @@ AUSGABE-FORMAT:
       "title": "Kurzer Titel",
       "description": "Beschreibung der Änderung",
       "priority": "low|medium|high|critical",
-      "filePath": "src/App.js",
+      "filePath": "components/MyComponent.tsx",
       "newContent": "VOLLSTÄNDIGER korrigierter Code der Datei"
     }
   ]
@@ -1051,7 +1103,7 @@ Wenn du Sicherheitsprobleme findest, füge sie in "suggestedFixes" ein:
       "title": "Kurzer Titel des Security-Fixes",
       "description": "Beschreibung der Sicherheitslücke und Lösung",
       "priority": "critical|high|medium|low",
-      "filePath": "src/App.js",
+      "filePath": "components/MyComponent.tsx",
       "newContent": "VOLLSTÄNDIGER korrigierter Code der Datei"
     }
   ]
