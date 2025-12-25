@@ -576,6 +576,86 @@ function validateAgentResult(
             }
           }
         }
+        
+        // KRITISCH: Fehlende React Hook Imports
+        const usedHooks = ['useState', 'useEffect', 'useCallback', 'useMemo', 'useRef', 'useContext', 'useReducer']
+        for (const hook of usedHooks) {
+          if (file.content.includes(`${hook}(`) || file.content.includes(`${hook}<`)) {
+            // Prüfe ob der Hook importiert wurde
+            const hasImport = file.content.includes(`import`) && 
+                             (file.content.includes(`{ ${hook}`) || 
+                              file.content.includes(`{${hook}`) ||
+                              file.content.includes(`, ${hook}`) ||
+                              file.content.includes(`${hook},`) ||
+                              file.content.includes(`${hook} }`))
+            if (!hasImport) {
+              criticalIssues.push(`FATAL: ${file.path} verwendet ${hook}() aber importiert es nicht von "react"`)
+              score -= 25
+            }
+          }
+        }
+        
+        // KRITISCH: Fehlende key prop bei .map()
+        const mapWithJSX = file.content.match(/\.map\s*\([^)]*\)\s*=>\s*[(<]/g)
+        if (mapWithJSX && mapWithJSX.length > 0) {
+          // Prüfe ob key prop vorhanden ist in der Nähe von map
+          const hasKeyProp = file.content.includes('key={') || file.content.includes('key=')
+          if (!hasKeyProp && file.content.includes('.map(')) {
+            issues.push(`${file.path}: .map() ohne key prop gefunden - kann zu React-Warnungen führen`)
+            score -= 10
+          }
+        }
+        
+        // KRITISCH: Ungültige JSX - nicht geschlossene Tags
+        const selfClosingTags = ['img', 'br', 'hr', 'input', 'meta', 'link']
+        for (const tag of selfClosingTags) {
+          const openTag = new RegExp(`<${tag}[^>]*>(?!\\s*<\\/${tag}>)`, 'gi')
+          const matches = file.content.match(openTag)
+          if (matches) {
+            for (const match of matches) {
+              if (!match.includes('/>')) {
+                criticalIssues.push(`FATAL: ${file.path} hat nicht geschlossenes <${tag}> Tag - nutze <${tag} />`)
+                score -= 20
+              }
+            }
+          }
+        }
+        
+        // KRITISCH: async/await in Client-Komponenten ohne useEffect
+        const hasUseClient = file.content.includes('"use client"') || file.content.includes("'use client'")
+        if (hasUseClient) {
+          const hasAsyncComponent = /export\s+(default\s+)?async\s+function/.test(file.content)
+          if (hasAsyncComponent) {
+            criticalIssues.push(`FATAL: ${file.path} ist async aber hat "use client" - Client-Komponenten können nicht async sein!`)
+            score -= 30
+          }
+        }
+        
+        // KRITISCH: Server Actions in Client-Komponenten
+        if (hasUseClient && file.content.includes('"use server"')) {
+          criticalIssues.push(`FATAL: ${file.path} hat "use client" UND "use server" - nicht erlaubt!`)
+          score -= 30
+        }
+        
+        // Fehlende return statement in Komponenten
+        const functionMatches = file.content.matchAll(/export\s+(default\s+)?function\s+(\w+)[^{]*\{/g)
+        for (const match of functionMatches) {
+          const funcName = match[2]
+          // Finde den Funktionskörper (vereinfacht)
+          const startIndex = match.index! + match[0].length
+          const funcBody = file.content.substring(startIndex, startIndex + 500)
+          if (!funcBody.includes('return') && !funcBody.includes('=>')) {
+            issues.push(`${file.path}: Komponente ${funcName} hat möglicherweise kein return statement`)
+            score -= 10
+          }
+        }
+        
+        // TypeScript: Fehlende Typen bei Props
+        const propsWithoutType = file.content.match(/function\s+\w+\s*\(\s*\{\s*\w+[^:}]*\}\s*\)/g)
+        if (propsWithoutType && propsWithoutType.length > 0) {
+          issues.push(`${file.path}: Props ohne TypeScript-Typen gefunden`)
+          score -= 5
+        }
       }
     }
     
@@ -587,6 +667,23 @@ function validateAgentResult(
     if (componentCount > 3 && files.length === 1) {
       criticalIssues.push(`WARNUNG: ${componentCount} Komponenten in nur 1 Datei - sollte aufgeteilt werden!`)
       score -= 25
+    }
+    
+    // KRITISCH: Circular Dependencies erkennen (vereinfacht)
+    for (const file of files) {
+      const fileImports = allImports.get(file.path) || []
+      for (const imp of fileImports) {
+        // Prüfe ob importierte Datei zurück importiert
+        const targetPath = imp.from.replace('@/components/', 'components/').replace('@/', '') + '.tsx'
+        const targetImports = allImports.get(targetPath) || []
+        for (const targetImp of targetImports) {
+          const targetImportPath = targetImp.from.replace('@/components/', 'components/').replace('@/', '') + '.tsx'
+          if (targetImportPath === file.path || targetImportPath.includes(file.path.replace('.tsx', ''))) {
+            issues.push(`Mögliche Circular Dependency: ${file.path} ↔ ${targetPath}`)
+            score -= 15
+          }
+        }
+      }
     }
     
     // Prüfe ob Antwort nur Anweisungen enthält statt Code
