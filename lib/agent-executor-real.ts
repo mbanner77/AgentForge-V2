@@ -6,6 +6,7 @@ import { sendChatRequest, getProviderFromModel } from "./api-client"
 import type { AgentType, Message, WorkflowStep, ProjectFile, AgentSuggestion } from "./types"
 import { marketplaceAgents } from "./marketplace-agents"
 import { getMcpServerById } from "./mcp-servers"
+import { getBestPracticesForRequest, getCriticalBestPractices } from "./best-practices-knowledge"
 
 // RAG-Kontext für Agenten abrufen (mit Agent-spezifischer Filterung)
 async function fetchRagContext(
@@ -2661,6 +2662,20 @@ export function useAgentExecutor() {
         if (deployPrompt) {
           config.systemPrompt += "\n\n" + deployPrompt
           console.log(`[Agent Executor] Deployment-Target ${deployTarget} Prompt für ${agentType} hinzugefügt`)
+        }
+      }
+      
+      // RAG: Best Practices für Coder hinzufügen
+      if (agentType === "coder") {
+        // Kritische Best Practices immer hinzufügen
+        const criticalPractices = getCriticalBestPractices()
+        config.systemPrompt += "\n\n" + criticalPractices
+        
+        // Kontext-basierte Best Practices aus User-Request
+        const relevantPractices = getBestPracticesForRequest(userRequest)
+        if (relevantPractices) {
+          config.systemPrompt += "\n" + relevantPractices
+          console.log(`[Agent Executor] Best Practices für Coder hinzugefügt`)
         }
       }
       
