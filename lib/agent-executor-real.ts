@@ -113,6 +113,226 @@ function analyzeComponents(files: { path: string; content: string }[]): { name: 
   return components
 }
 
+// INTELLIGENTES CONTEXT WINDOW MANAGEMENT
+// Priorisiert wichtige Dateien und kürzt unwichtige
+interface ContextPriority {
+  file: string
+  priority: number // 1-10, höher = wichtiger
+  reason: string
+}
+
+function prioritizeFilesForContext(
+  files: { path: string; content: string }[],
+  userRequest: string,
+  maxChars: number
+): { prioritizedFiles: { path: string; content: string; truncated: boolean }[]; totalChars: number; droppedFiles: string[] } {
+  // Berechne Priorität für jede Datei
+  const priorities: ContextPriority[] = files.map(f => {
+    let priority = 5 // Basis
+    const path = f.path.toLowerCase()
+    const request = userRequest.toLowerCase()
+    
+    // Hauptdateien haben höchste Priorität
+    if (path.includes('page.tsx') || path.includes('app.tsx')) priority += 3
+    if (path.includes('layout.tsx')) priority += 2
+    
+    // Dateien die im Request erwähnt werden
+    const fileName = path.split('/').pop() || ''
+    if (request.includes(fileName.replace('.tsx', '').replace('.ts', ''))) priority += 4
+    
+    // Context/Provider sind wichtig für Architektur-Verständnis
+    if (f.content.includes('createContext') || f.content.includes('Provider')) priority += 2
+    
+    // Komponenten unter components/ sind wichtig
+    if (path.includes('components/')) priority += 1
+    
+    // Konfigurationsdateien niedriger
+    if (path.includes('config') || path.includes('.json')) priority -= 2
+    
+    // Sehr lange Dateien abwerten
+    if (f.content.length > 5000) priority -= 1
+    if (f.content.length > 10000) priority -= 2
+    
+    return { file: f.path, priority: Math.max(1, Math.min(10, priority)), reason: '' }
+  })
+  
+  // Sortiere nach Priorität (höchste zuerst)
+  const sortedFiles = [...files].sort((a, b) => {
+    const prioA = priorities.find(p => p.file === a.path)?.priority || 5
+    const prioB = priorities.find(p => p.file === b.path)?.priority || 5
+    return prioB - prioA
+  })
+  
+  // Füge Dateien hinzu bis maxChars erreicht
+  const result: { path: string; content: string; truncated: boolean }[] = []
+  let totalChars = 0
+  const droppedFiles: string[] = []
+  
+  for (const file of sortedFiles) {
+    const fileChars = file.content.length + file.path.length + 50 // Header overhead
+    
+    if (totalChars + fileChars <= maxChars) {
+      // Datei passt komplett
+      result.push({ path: file.path, content: file.content, truncated: false })
+      totalChars += fileChars
+    } else if (totalChars < maxChars * 0.9) {
+      // Datei kürzen wenn noch Platz
+      const availableChars = maxChars - totalChars - 100
+      if (availableChars > 500) {
+        const truncatedContent = file.content.substring(0, availableChars) + '\n// ... (gekürzt)'
+        result.push({ path: file.path, content: truncatedContent, truncated: true })
+        totalChars += availableChars + 100
+      } else {
+        droppedFiles.push(file.path)
+      }
+    } else {
+      droppedFiles.push(file.path)
+    }
+  }
+  
+  return { prioritizedFiles: result, totalChars, droppedFiles }
+}
+
+// PLANNER-OUTPUT PARSER: Extrahiert strukturierte Tasks
+interface PlannerTask {
+  id: string
+  name: string
+  description: string
+  changeType: 'add' | 'modify' | 'fix' | 'remove'
+  affectedFiles: string[]
+  priority: 'high' | 'medium' | 'low'
+}
+
+function parsePlannerOutput(plannerContent: string): { tasks: PlannerTask[]; summary: string; requestType: string } {
+  let tasks: PlannerTask[] = []
+  let summary = ''
+  let requestType = 'new'
+  
+  // Versuche JSON zu parsen
+  try {
+    const jsonMatch = plannerContent.match(/\{[\s\S]*"tasks"[\s\S]*\}/g)
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0])
+      if (parsed.tasks && Array.isArray(parsed.tasks)) {
+        tasks = parsed.tasks.map((t: Record<string, unknown>, i: number) => ({
+          id: (t.id as string) || `task-${i + 1}`,
+          name: (t.name as string) || 'Unbenannter Task',
+          description: (t.description as string) || '',
+          changeType: (t.changeType as 'add' | 'modify' | 'fix' | 'remove') || 'add',
+          affectedFiles: (t.affectedFiles as string[]) || (t.affectedCode ? [t.affectedCode as string] : []),
+          priority: (t.priority as 'high' | 'medium' | 'low') || 'medium',
+        }))
+      }
+      summary = (parsed.summary as string) || ''
+      requestType = (parsed.requestType as string) || 'new'
+    }
+  } catch {
+    // Fallback: Extrahiere Tasks aus Markdown
+    const taskMatches = plannerContent.matchAll(/(?:task|aufgabe|schritt)\s*[-:]?\s*\d*\.?\s*(.+?)(?:\n|$)/gi)
+    let taskNum = 1
+    for (const match of taskMatches) {
+      tasks.push({
+        id: `task-${taskNum++}`,
+        name: match[1].trim(),
+        description: '',
+        changeType: 'add',
+        affectedFiles: [],
+        priority: 'medium',
+      })
+    }
+  }
+  
+  return { tasks, summary, requestType }
+}
+
+// RESPONSE CACHE für wiederholte Anfragen
+const responseCache = new Map<string, { content: string; files: ParsedCodeFile[]; timestamp: number }>()
+const CACHE_TTL = 5 * 60 * 1000 // 5 Minuten
+
+function getCacheKey(agentType: string, request: string, context: string): string {
+  // Einfacher Hash
+  const str = `${agentType}:${request}:${context.substring(0, 500)}`
+  let hash = 0
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i)
+    hash = ((hash << 5) - hash) + char
+    hash = hash & hash
+  }
+  return hash.toString(36)
+}
+
+function getFromCache(key: string): { content: string; files: ParsedCodeFile[] } | null {
+  const cached = responseCache.get(key)
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+    console.log(`[Cache] Hit für Key: ${key}`)
+    return { content: cached.content, files: cached.files }
+  }
+  if (cached) {
+    responseCache.delete(key) // Abgelaufen
+  }
+  return null
+}
+
+function setCache(key: string, content: string, files: ParsedCodeFile[]): void {
+  // Begrenze Cache-Größe
+  if (responseCache.size > 50) {
+    const oldest = responseCache.keys().next().value
+    if (oldest) responseCache.delete(oldest)
+  }
+  responseCache.set(key, { content, files, timestamp: Date.now() })
+}
+
+// Spezifische Fehlermeldungen für verschiedene Fehlertypen
+function getSpecificErrorMessage(error: unknown): { message: string; suggestion: string; recoverable: boolean } {
+  const errorStr = String(error)
+  
+  if (errorStr.includes('rate limit') || errorStr.includes('429')) {
+    return {
+      message: 'API Rate Limit erreicht',
+      suggestion: 'Warte 30 Sekunden und versuche es erneut, oder wechsle zu einem anderen Modell.',
+      recoverable: true,
+    }
+  }
+  
+  if (errorStr.includes('context length') || errorStr.includes('maximum context')) {
+    return {
+      message: 'Kontext zu groß für das Modell',
+      suggestion: 'Das Projekt hat zu viele/große Dateien. Versuche ein Modell mit größerem Context Window (z.B. Claude 3.5 Sonnet).',
+      recoverable: false,
+    }
+  }
+  
+  if (errorStr.includes('401') || errorStr.includes('unauthorized') || errorStr.includes('invalid_api_key')) {
+    return {
+      message: 'Ungültiger API-Key',
+      suggestion: 'Prüfe den API-Key in den Einstellungen. Stelle sicher, dass er korrekt kopiert wurde.',
+      recoverable: false,
+    }
+  }
+  
+  if (errorStr.includes('500') || errorStr.includes('502') || errorStr.includes('503')) {
+    return {
+      message: 'API-Server nicht erreichbar',
+      suggestion: 'Der Provider hat temporäre Probleme. Versuche es in einigen Minuten erneut.',
+      recoverable: true,
+    }
+  }
+  
+  if (errorStr.includes('timeout') || errorStr.includes('ETIMEDOUT')) {
+    return {
+      message: 'Zeitüberschreitung',
+      suggestion: 'Die Anfrage hat zu lange gedauert. Versuche eine einfachere Anfrage oder ein schnelleres Modell.',
+      recoverable: true,
+    }
+  }
+  
+  return {
+    message: 'Unbekannter Fehler',
+    suggestion: `Fehlerdetails: ${errorStr.substring(0, 200)}`,
+    recoverable: false,
+  }
+}
+
 interface ParsedCodeFile {
   path: string
   content: string
@@ -1018,29 +1238,35 @@ export function useAgentExecutor() {
       // Baue die Nachrichten für den Agent
       const existingFiles = getFiles()
       
-      // Bei Iterationen: Zeige Dateiinhalt, aber limitiere Größe
-      const MAX_CONTEXT_CHARS = 50000 // ~12k Tokens
+      // INTELLIGENTES CONTEXT WINDOW MANAGEMENT
+      // Priorisiert wichtige Dateien basierend auf dem Request
+      const MAX_CONTEXT_CHARS = 60000 // ~15k Tokens (erhöht für besseren Kontext)
       let filesContext = ""
       
       if (existingFiles.length > 0) {
-        let totalChars = 0
-        const fileContexts: string[] = []
+        // Nutze intelligente Priorisierung
+        const { prioritizedFiles, totalChars, droppedFiles } = prioritizeFilesForContext(
+          existingFiles.map(f => ({ path: f.path, content: f.content })),
+          userRequest,
+          MAX_CONTEXT_CHARS
+        )
         
-        for (const f of existingFiles) {
-          const fileContext = `### ${f.path}\n\`\`\`${f.language || 'typescript'}\n${f.content}\n\`\`\``
-          if (totalChars + fileContext.length < MAX_CONTEXT_CHARS) {
-            fileContexts.push(fileContext)
-            totalChars += fileContext.length
-          } else {
-            // Nur Dateinamen für restliche Dateien
-            fileContexts.push(`### ${f.path} (Inhalt gekürzt - ${f.content.length} Zeichen)`)
-          }
+        const fileContexts: string[] = []
+        for (const f of prioritizedFiles) {
+          const truncatedNote = f.truncated ? ' (gekürzt)' : ''
+          fileContexts.push(`### ${f.path}${truncatedNote}\n\`\`\`typescript\n${f.content}\n\`\`\``)
         }
         
-        filesContext = `\n\n## ⚠️ ITERATIONS-MODUS AKTIV - BESTEHENDE DATEIEN (${existingFiles.length} Dateien):
+        // Zeige ausgelassene Dateien
+        let droppedNote = ''
+        if (droppedFiles.length > 0) {
+          droppedNote = `\n\n📁 **Weitere Dateien (nicht im Kontext):** ${droppedFiles.join(', ')}`
+        }
+        
+        filesContext = `\n\n## ⚠️ ITERATIONS-MODUS AKTIV - BESTEHENDE DATEIEN (${existingFiles.length} Dateien, ${Math.round(totalChars / 1000)}k Zeichen):
 Dies ist eine Folge-Anfrage zu einem bestehenden Projekt. Analysiere den bestehenden Code sorgfältig!
 
-${fileContexts.join("\n\n")}
+${fileContexts.join("\n\n")}${droppedNote}
 
 ## WICHTIGE ANWEISUNGEN FÜR DIESE ITERATION:
 1. Erkenne ob es ein BUGFIX, FEATURE oder ANPASSUNG ist
@@ -1058,12 +1284,32 @@ ${fileContexts.join("\n\n")}
       let previousContext = ""
       if (previousOutput) {
         // Erkenne Agent-Typ aus vorherigem Output
-        const isPlannerOutput = previousOutput.includes("## Plan") || previousOutput.includes("## Aufgaben") || previousOutput.includes("## Features")
+        const isPlannerOutput = previousOutput.includes("## Plan") || previousOutput.includes("## Aufgaben") || previousOutput.includes("## Features") || previousOutput.includes('"tasks"')
         const isCoderOutput = previousOutput.includes("```") && (previousOutput.includes("export") || previousOutput.includes("function") || previousOutput.includes("const"))
         const isReviewerOutput = previousOutput.includes("## Review") || previousOutput.includes("Verbesserung") || previousOutput.includes("Problem")
         
         if (isPlannerOutput && agentType === "coder") {
-          previousContext = `\n\n## 📋 PLAN VOM PLANNER (Folge diesem Plan exakt!):\n${previousOutput}\n\n**WICHTIG:** Implementiere ALLE Punkte aus dem Plan. Erstelle vollständige, lauffähige Dateien.`
+          // STRUKTURIERTER PLANNER-OUTPUT PARSER
+          const parsedPlan = parsePlannerOutput(previousOutput)
+          
+          let taskList = ''
+          if (parsedPlan.tasks.length > 0) {
+            taskList = '\n\n**📋 STRUKTURIERTE TASKS (arbeite diese der Reihe nach ab):**\n'
+            for (const task of parsedPlan.tasks) {
+              taskList += `\n${task.id}. **${task.name}** [${task.priority}]\n`
+              if (task.description) taskList += `   ${task.description}\n`
+              if (task.affectedFiles.length > 0) taskList += `   Dateien: ${task.affectedFiles.join(', ')}\n`
+            }
+          }
+          
+          previousContext = `\n\n## 📋 PLAN VOM PLANNER:
+**Zusammenfassung:** ${parsedPlan.summary || 'Keine Zusammenfassung'}
+**Typ:** ${parsedPlan.requestType}
+${taskList}
+
+${previousOutput}
+
+**WICHTIG:** Implementiere ALLE Tasks. Erstelle für JEDE Komponente eine EIGENE Datei!`
         } else if (isCoderOutput && agentType === "reviewer") {
           previousContext = `\n\n## 💻 CODE VOM CODER (Prüfe diesen Code):\n${previousOutput}\n\n**AUFGABE:** Analysiere den Code auf Bugs, Best Practices, Performance und Sicherheit.`
         } else if (isReviewerOutput && agentType === "coder") {
@@ -1796,30 +2042,48 @@ ORIGINAL-ANFRAGE: ${userRequest}
 
             previousOutput = result.content
           } catch (error) {
+            // VERBESSERTE FEHLERBEHANDLUNG mit spezifischen Meldungen
+            const specificError = getSpecificErrorMessage(error)
             const errorMessage = error instanceof Error ? error.message : "Unbekannter Fehler"
             
             addLog({
               level: "error",
               agent: agentType,
-              message: `Fehler: ${errorMessage}`,
+              message: `❌ ${specificError.message}: ${errorMessage}`,
+            })
+            
+            addLog({
+              level: "info",
+              agent: agentType,
+              message: `💡 Tipp: ${specificError.suggestion}`,
             })
 
             updateWorkflowStep(`step-${agentType}`, {
               status: "error",
-              description: errorMessage,
+              description: `${specificError.message}: ${errorMessage}`,
               error: errorMessage,
               endTime: new Date(),
             })
 
             addMessage({
               role: "assistant",
-              content: `❌ Fehler beim ${agentName}: ${errorMessage}`,
+              content: `❌ **${specificError.message}** beim ${agentName}\n\n${errorMessage}\n\n💡 **Tipp:** ${specificError.suggestion}`,
               agent: agentType,
             })
 
-            // Bei Fehler abbrechen
-            setError(errorMessage)
-            break
+            // Bei wiederholbaren Fehlern nicht sofort abbrechen
+            if (!specificError.recoverable) {
+              setError(`${specificError.message}: ${errorMessage}`)
+              break
+            } else {
+              addLog({
+                level: "warn",
+                agent: agentType,
+                message: `Fehler ist möglicherweise temporär - versuche es später erneut`,
+              })
+              setError(`${specificError.message}: ${errorMessage}`)
+              break
+            }
           }
         }
       } finally {
