@@ -661,6 +661,390 @@ function generateTestsForProject(files: ParsedCodeFile[]): GeneratedTest[] {
   return tests
 }
 
+// ============================================================
+// DIFF PREVIEW SYSTEM
+// Zeigt Änderungen zwischen alter und neuer Version
+// ============================================================
+
+interface DiffLine {
+  type: 'added' | 'removed' | 'unchanged'
+  content: string
+  lineNumber: number
+}
+
+interface FileDiff {
+  path: string
+  oldContent: string
+  newContent: string
+  lines: DiffLine[]
+  additions: number
+  deletions: number
+  isNew: boolean
+  isDeleted: boolean
+}
+
+function generateDiff(oldContent: string, newContent: string): DiffLine[] {
+  const oldLines = oldContent.split('\n')
+  const newLines = newContent.split('\n')
+  const diffLines: DiffLine[] = []
+  
+  // Einfacher Diff-Algorithmus (für komplexere Fälle könnte man diff-match-patch nutzen)
+  const maxLines = Math.max(oldLines.length, newLines.length)
+  
+  let oldIndex = 0
+  let newIndex = 0
+  let lineNumber = 1
+  
+  while (oldIndex < oldLines.length || newIndex < newLines.length) {
+    const oldLine = oldLines[oldIndex]
+    const newLine = newLines[newIndex]
+    
+    if (oldLine === newLine) {
+      diffLines.push({ type: 'unchanged', content: oldLine || '', lineNumber: lineNumber++ })
+      oldIndex++
+      newIndex++
+    } else if (oldLine === undefined) {
+      diffLines.push({ type: 'added', content: newLine, lineNumber: lineNumber++ })
+      newIndex++
+    } else if (newLine === undefined) {
+      diffLines.push({ type: 'removed', content: oldLine, lineNumber: lineNumber++ })
+      oldIndex++
+    } else {
+      // Zeile wurde geändert - zeige als removed + added
+      diffLines.push({ type: 'removed', content: oldLine, lineNumber: lineNumber })
+      diffLines.push({ type: 'added', content: newLine, lineNumber: lineNumber++ })
+      oldIndex++
+      newIndex++
+    }
+  }
+  
+  return diffLines
+}
+
+function generateFileDiffs(
+  existingFiles: { path: string; content: string }[],
+  newFiles: ParsedCodeFile[]
+): FileDiff[] {
+  const diffs: FileDiff[] = []
+  const existingMap = new Map(existingFiles.map(f => [f.path, f.content]))
+  
+  // Neue oder geänderte Dateien
+  for (const newFile of newFiles) {
+    const oldContent = existingMap.get(newFile.path) || ''
+    const isNew = !existingMap.has(newFile.path)
+    
+    if (isNew || oldContent !== newFile.content) {
+      const lines = generateDiff(oldContent, newFile.content)
+      const additions = lines.filter(l => l.type === 'added').length
+      const deletions = lines.filter(l => l.type === 'removed').length
+      
+      diffs.push({
+        path: newFile.path,
+        oldContent,
+        newContent: newFile.content,
+        lines,
+        additions,
+        deletions,
+        isNew,
+        isDeleted: false
+      })
+    }
+  }
+  
+  return diffs
+}
+
+function formatDiffForDisplay(diff: FileDiff): string {
+  let output = `## ${diff.isNew ? '🆕' : '📝'} ${diff.path}\n`
+  output += `+${diff.additions} -${diff.deletions}\n\n`
+  output += '```diff\n'
+  
+  for (const line of diff.lines.slice(0, 50)) { // Limitiere auf 50 Zeilen
+    const prefix = line.type === 'added' ? '+' : line.type === 'removed' ? '-' : ' '
+    output += `${prefix} ${line.content}\n`
+  }
+  
+  if (diff.lines.length > 50) {
+    output += `\n... und ${diff.lines.length - 50} weitere Zeilen\n`
+  }
+  
+  output += '```\n'
+  return output
+}
+
+// ============================================================
+// REFACTORING SUGGESTIONS SYSTEM
+// Schlägt Code-Verbesserungen vor
+// ============================================================
+
+interface RefactoringSuggestion {
+  type: 'extract_component' | 'extract_hook' | 'split_file' | 'rename' | 'simplify' | 'remove_duplication'
+  title: string
+  description: string
+  file: string
+  priority: 'high' | 'medium' | 'low'
+  codeExample?: string
+}
+
+function analyzeForRefactoring(files: ParsedCodeFile[]): RefactoringSuggestion[] {
+  const suggestions: RefactoringSuggestion[] = []
+  
+  for (const file of files) {
+    if (!file.path.endsWith('.tsx') && !file.path.endsWith('.jsx')) continue
+    
+    const lines = file.content.split('\n').length
+    const componentCount = (file.content.match(/export\s+(?:default\s+)?function\s+\w+/g) || []).length
+    const useStateCount = (file.content.match(/useState/g) || []).length
+    const useEffectCount = (file.content.match(/useEffect/g) || []).length
+    
+    // 1. Datei zu groß
+    if (lines > 200) {
+      suggestions.push({
+        type: 'split_file',
+        title: '📁 Datei aufteilen',
+        description: `${file.path} hat ${lines} Zeilen. Erwäge, sie in kleinere Module aufzuteilen.`,
+        file: file.path,
+        priority: lines > 400 ? 'high' : 'medium'
+      })
+    }
+    
+    // 2. Zu viele Komponenten in einer Datei
+    if (componentCount > 2) {
+      suggestions.push({
+        type: 'extract_component',
+        title: '🧩 Komponenten extrahieren',
+        description: `${file.path} enthält ${componentCount} Komponenten. Jede sollte in einer eigenen Datei sein.`,
+        file: file.path,
+        priority: 'high',
+        codeExample: `// Erstelle separate Dateien:\n// components/ComponentA.tsx\n// components/ComponentB.tsx`
+      })
+    }
+    
+    // 3. Zu viel State - Hook extrahieren
+    if (useStateCount > 5) {
+      suggestions.push({
+        type: 'extract_hook',
+        title: '🪝 Custom Hook extrahieren',
+        description: `${file.path} hat ${useStateCount}x useState. Erwäge einen Custom Hook.`,
+        file: file.path,
+        priority: 'medium',
+        codeExample: `// hooks/use${file.path.split('/').pop()?.replace('.tsx', '')}State.ts\nexport function use${file.path.split('/').pop()?.replace('.tsx', '')}State() {\n  const [state1, setState1] = useState(...);\n  // ...\n  return { state1, setState1, ... };\n}`
+      })
+    }
+    
+    // 4. Zu viele Effects
+    if (useEffectCount > 3) {
+      suggestions.push({
+        type: 'extract_hook',
+        title: '🪝 Effects in Hook auslagern',
+        description: `${file.path} hat ${useEffectCount}x useEffect. Erwäge, sie in einen Custom Hook zu verschieben.`,
+        file: file.path,
+        priority: 'medium'
+      })
+    }
+    
+    // 5. Inline Styles zu CSS
+    const inlineStyleCount = (file.content.match(/style=\{\{/g) || []).length
+    if (inlineStyleCount > 5) {
+      suggestions.push({
+        type: 'simplify',
+        title: '🎨 Inline Styles zu Tailwind/CSS',
+        description: `${file.path} hat ${inlineStyleCount}x inline styles. Nutze Tailwind-Klassen stattdessen.`,
+        file: file.path,
+        priority: 'low'
+      })
+    }
+    
+    // 6. Duplizierter Code erkennen (vereinfacht)
+    const functionBodies = file.content.match(/\{[^{}]{50,200}\}/g) || []
+    const uniqueBodies = new Set(functionBodies)
+    if (functionBodies.length > uniqueBodies.size + 2) {
+      suggestions.push({
+        type: 'remove_duplication',
+        title: '♻️ Duplizierung entfernen',
+        description: `${file.path} enthält möglicherweise duplizierten Code. Erwäge eine gemeinsame Funktion.`,
+        file: file.path,
+        priority: 'medium'
+      })
+    }
+    
+    // 7. Lange Funktionen
+    const longFunctions = file.content.match(/function\s+\w+[^{]*\{[^}]{500,}/g) || []
+    if (longFunctions.length > 0) {
+      suggestions.push({
+        type: 'simplify',
+        title: '📏 Lange Funktion vereinfachen',
+        description: `${file.path} hat ${longFunctions.length} sehr lange Funktion(en). Erwäge, sie aufzuteilen.`,
+        file: file.path,
+        priority: 'medium'
+      })
+    }
+  }
+  
+  // Sortiere nach Priorität
+  const priorityOrder = { high: 0, medium: 1, low: 2 }
+  suggestions.sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority])
+  
+  return suggestions
+}
+
+// ============================================================
+// DEPENDENCY GRAPH SYSTEM
+// Visualisiert Import-Beziehungen
+// ============================================================
+
+interface DependencyNode {
+  path: string
+  imports: string[]
+  importedBy: string[]
+  isExternal: boolean
+}
+
+interface DependencyGraph {
+  nodes: Map<string, DependencyNode>
+  edges: { from: string; to: string }[]
+  circularDeps: string[][]
+}
+
+function buildDependencyGraph(files: ParsedCodeFile[]): DependencyGraph {
+  const nodes = new Map<string, DependencyNode>()
+  const edges: { from: string; to: string }[] = []
+  
+  // Initialisiere Nodes
+  for (const file of files) {
+    nodes.set(file.path, {
+      path: file.path,
+      imports: [],
+      importedBy: [],
+      isExternal: false
+    })
+  }
+  
+  // Analysiere Imports
+  for (const file of files) {
+    const importMatches = file.content.matchAll(/import\s+(?:\{[^}]+\}|\w+)\s+from\s+["']([^"']+)["']/g)
+    
+    for (const match of importMatches) {
+      const importPath = match[1]
+      const isLocal = importPath.startsWith('@/') || importPath.startsWith('./') || importPath.startsWith('../')
+      
+      if (isLocal) {
+        // Normalisiere Pfad
+        let normalizedPath = importPath
+          .replace('@/components/', 'components/')
+          .replace('@/', '')
+          .replace('./', '')
+          .replace('../', '')
+        
+        if (!normalizedPath.endsWith('.tsx') && !normalizedPath.endsWith('.ts')) {
+          normalizedPath += '.tsx'
+        }
+        
+        // Finde passende Datei
+        const targetFile = files.find(f => 
+          f.path === normalizedPath || 
+          f.path.endsWith(normalizedPath) ||
+          f.path.includes(normalizedPath.replace('.tsx', ''))
+        )
+        
+        if (targetFile) {
+          const node = nodes.get(file.path)
+          if (node) {
+            node.imports.push(targetFile.path)
+          }
+          
+          const targetNode = nodes.get(targetFile.path)
+          if (targetNode) {
+            targetNode.importedBy.push(file.path)
+          }
+          
+          edges.push({ from: file.path, to: targetFile.path })
+        }
+      }
+    }
+  }
+  
+  // Erkenne zirkuläre Dependencies
+  const circularDeps: string[][] = []
+  
+  function findCircular(start: string, visited: Set<string>, path: string[]): void {
+    if (visited.has(start)) {
+      const cycleStart = path.indexOf(start)
+      if (cycleStart !== -1) {
+        const cycle = path.slice(cycleStart)
+        // Prüfe ob dieser Zyklus schon gefunden wurde
+        const cycleKey = [...cycle].sort().join(',')
+        const existingKeys = circularDeps.map(c => [...c].sort().join(','))
+        if (!existingKeys.includes(cycleKey)) {
+          circularDeps.push(cycle)
+        }
+      }
+      return
+    }
+    
+    visited.add(start)
+    path.push(start)
+    
+    const node = nodes.get(start)
+    if (node) {
+      for (const imp of node.imports) {
+        findCircular(imp, new Set(visited), [...path])
+      }
+    }
+  }
+  
+  for (const [path] of nodes) {
+    findCircular(path, new Set(), [])
+  }
+  
+  return { nodes, edges, circularDeps }
+}
+
+function formatDependencyGraph(graph: DependencyGraph): string {
+  let output = '## 🔗 Dependency Graph\n\n'
+  
+  // Zeige Dateien mit meisten Imports (potenzielle "God Files")
+  const sortedByImports = [...graph.nodes.values()]
+    .sort((a, b) => b.imports.length - a.imports.length)
+    .slice(0, 5)
+  
+  if (sortedByImports.length > 0) {
+    output += '### 📥 Meiste Imports:\n'
+    for (const node of sortedByImports) {
+      if (node.imports.length > 0) {
+        output += `- **${node.path}** (${node.imports.length} Imports)\n`
+      }
+    }
+    output += '\n'
+  }
+  
+  // Zeige Dateien die am meisten importiert werden (Core-Dateien)
+  const sortedByImportedBy = [...graph.nodes.values()]
+    .sort((a, b) => b.importedBy.length - a.importedBy.length)
+    .slice(0, 5)
+  
+  if (sortedByImportedBy.length > 0) {
+    output += '### 📤 Meistgenutzte Module:\n'
+    for (const node of sortedByImportedBy) {
+      if (node.importedBy.length > 0) {
+        output += `- **${node.path}** (von ${node.importedBy.length} Dateien genutzt)\n`
+      }
+    }
+    output += '\n'
+  }
+  
+  // Zeige zirkuläre Dependencies
+  if (graph.circularDeps.length > 0) {
+    output += '### ⚠️ Zirkuläre Dependencies:\n'
+    for (const cycle of graph.circularDeps) {
+      output += `- ${cycle.join(' → ')} → ${cycle[0]}\n`
+    }
+    output += '\n'
+  }
+  
+  return output
+}
+
 // Spezifische Fehlermeldungen für verschiedene Fehlertypen
 function getSpecificErrorMessage(error: unknown): { message: string; suggestion: string; recoverable: boolean } {
   const errorStr = String(error)
