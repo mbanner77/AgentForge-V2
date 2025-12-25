@@ -404,25 +404,40 @@ function validateAgentResult(
     }
     
     // Sammle alle Imports und Exports für Cross-File Validierung
-    const allExports = new Map<string, string[]>() // file -> exported names
-    const allImports = new Map<string, { from: string; names: string[] }[]>()
+    const allExports = new Map<string, { named: string[]; hasDefault: boolean }>()
+    const allImports = new Map<string, { from: string; names: string[]; isDefault: boolean }[]>()
     
     for (const file of files) {
-      // Sammle Exports
-      const exportMatches = file.content.matchAll(/export\s+(?:function|const|class)\s+(\w+)/g)
-      const exports: string[] = []
-      for (const match of exportMatches) {
-        exports.push(match[1])
+      // Sammle Named Exports: export function X, export const X
+      const namedExportMatches = file.content.matchAll(/export\s+(?:function|const|class)\s+(\w+)/g)
+      const namedExports: string[] = []
+      for (const match of namedExportMatches) {
+        namedExports.push(match[1])
       }
-      allExports.set(file.path, exports)
       
-      // Sammle Imports
-      const importMatches = file.content.matchAll(/import\s+\{([^}]+)\}\s+from\s+["']([^"']+)["']/g)
-      const imports: { from: string; names: string[] }[] = []
-      for (const match of importMatches) {
+      // Prüfe auf Default Export
+      const hasDefault = /export\s+default\s+(?:function|class|const)/.test(file.content)
+      
+      allExports.set(file.path, { named: namedExports, hasDefault })
+      
+      // Sammle Named Imports: import { X } from
+      const namedImportMatches = file.content.matchAll(/import\s+\{([^}]+)\}\s+from\s+["']([^"']+)["']/g)
+      const imports: { from: string; names: string[]; isDefault: boolean }[] = []
+      for (const match of namedImportMatches) {
         const names = match[1].split(',').map(n => n.trim())
-        imports.push({ from: match[2], names })
+        imports.push({ from: match[2], names, isDefault: false })
       }
+      
+      // Sammle Default Imports: import X from (OHNE geschweifte Klammern!)
+      const defaultImportMatches = file.content.matchAll(/import\s+(\w+)\s+from\s+["']([^"']+)["']/g)
+      for (const match of defaultImportMatches) {
+        // Prüfe ob es nicht ein Named Import ist (der hat { })
+        const fullMatch = match[0]
+        if (!fullMatch.includes('{')) {
+          imports.push({ from: match[2], names: [match[1]], isDefault: true })
+        }
+      }
+      
       allImports.set(file.path, imports)
     }
     
@@ -466,16 +481,37 @@ function validateAgentResult(
         }
       }
       
-      // KRITISCH: Fehlende Imports prüfen
+      // KRITISCH: Import/Export Mismatch prüfen
       const fileImports = allImports.get(file.path) || []
       for (const imp of fileImports) {
         if (imp.from.startsWith('@/components/')) {
-          const targetFile = imp.from.replace('@/components/', 'components/') + '.tsx'
-          const targetExports = allExports.get(targetFile) || []
-          for (const name of imp.names) {
-            if (!targetExports.includes(name) && files.some(f => f.path === targetFile)) {
-              criticalIssues.push(`FATAL: ${file.path} importiert "${name}" aber ${targetFile} exportiert es nicht`)
-              score -= 20
+          // Normalisiere Pfad (handle /Calendar/Calendar und /Calendar)
+          let targetFile = imp.from.replace('@/components/', 'components/')
+          if (!targetFile.endsWith('.tsx')) targetFile += '.tsx'
+          
+          // Finde die Zieldatei (auch mit Unterordner)
+          const targetExportsData = allExports.get(targetFile) || 
+                                   allExports.get(targetFile.replace('.tsx', '/index.tsx')) ||
+                                   Array.from(allExports.entries()).find(([k]) => k.includes(targetFile.replace('.tsx', '')))?.[1]
+          
+          if (targetExportsData && typeof targetExportsData === 'object' && 'named' in targetExportsData) {
+            // KRITISCH: Default Import aber kein Default Export
+            if (imp.isDefault && !targetExportsData.hasDefault) {
+              const suggestedFix = targetExportsData.named.length > 0 
+                ? `Nutze: import { ${imp.names[0]} } from "${imp.from}"`
+                : ''
+              criticalIssues.push(`FATAL: ${file.path} nutzt "import ${imp.names[0]} from" aber Datei hat KEINEN default export! ${suggestedFix}`)
+              score -= 35
+            }
+            
+            // KRITISCH: Named Import aber Name nicht exportiert
+            if (!imp.isDefault) {
+              for (const name of imp.names) {
+                if (!targetExportsData.named.includes(name)) {
+                  criticalIssues.push(`FATAL: ${file.path} importiert { ${name} } aber wird nicht exportiert`)
+                  score -= 20
+                }
+              }
             }
           }
         }

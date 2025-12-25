@@ -434,10 +434,14 @@ export function Name() { ... }   // EINE Funktion pro Datei
 \`\`\`
 
 ### 3. IMPORT-REGELN (STRIKT!):
-- \`@/components/Calendar\` ✓ (NICHT \`./Calendar\` oder \`../components/Calendar\`)
-- \`@/components/CalendarContext\` ✓ für Context
-- Nur named exports: \`export function X\` (NICHT \`export default function\` in components/)
-- app/page.tsx: \`export default function Page()\`
+- IMMER Named Imports: \`import { Calendar } from "@/components/Calendar"\`
+- NIEMALS Default Imports: \`import Calendar from ...\` ❌ (führt zu Build-Fehler!)
+- components/ Dateien: \`export function X\` (KEIN export default!)
+- NUR app/page.tsx: \`export default function Page()\`
+
+**KRITISCH - DIESE FEHLER VERMEIDEN:**
+❌ \`import Calendar from "@/components/Calendar"\` → Build-Fehler!
+✓ \`import { Calendar } from "@/components/Calendar"\` → Korrekt!
 
 ### 4. TYPESCRIPT FEHLER VERMEIDEN:
 - ALLE Interfaces/Types VOR der Komponente definieren
