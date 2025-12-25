@@ -512,16 +512,36 @@ function validateAgentResult(
             `src/components/${targetFile}`,
           ]
           
+          // KRITISCH: Prüfe ob importierte Datei überhaupt existiert/erstellt wurde
+          let fileExists = false
           let targetExportsData = null
+          
           for (const possiblePath of possiblePaths) {
+            // Prüfe ob Datei in den generierten Dateien existiert
+            const fileFound = files.some(f => 
+              f.path === possiblePath || 
+              f.path.endsWith(possiblePath) ||
+              f.path.includes(possiblePath.replace('.tsx', ''))
+            )
+            if (fileFound) {
+              fileExists = true
+            }
+            
             const found = allExports.get(possiblePath) ||
                          Array.from(allExports.entries()).find(([k]) => 
                            k.endsWith(possiblePath) || k.includes(possiblePath.replace('.tsx', ''))
                          )?.[1]
             if (found) {
               targetExportsData = found
+              fileExists = true
               break
             }
+          }
+          
+          // KRITISCH: Datei wird importiert aber wurde nicht erstellt!
+          if (!fileExists) {
+            criticalIssues.push(`FATAL: ${file.path} importiert "${imp.from}" aber diese Datei wurde NICHT erstellt! Erstelle: ${targetFile}`)
+            score -= 40
           }
           
           if (targetExportsData && typeof targetExportsData === 'object' && 'named' in targetExportsData) {

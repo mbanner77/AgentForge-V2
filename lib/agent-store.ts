@@ -544,9 +544,15 @@ export default function Page() {
 ## ⚠️ VOR JEDER AUSGABE SELBST-CHECK:
 □ Jede Datei beginnt mit "use client"; ?
 □ Alle Imports vorhanden und mit @/components/ ?
+□ **KRITISCH: Für JEDEN Import eine Datei erstellt?**
 □ Alle Types/Interfaces definiert?
 □ Keine export default in components/ (nur in app/page.tsx)?
-□ Code ist VOLLSTÄNDIG (keine ..., TODO, etc.)?`,
+□ Code ist VOLLSTÄNDIG (keine ..., TODO, etc.)?
+
+## 🔴 HÄUFIGSTER FEHLER - VERMEIDE IHN:
+Wenn du \`import { X } from "@/components/X"\` schreibst,
+MUSST du auch \`// filepath: components/X.tsx\` erstellen!
+Sonst: "Module not found: Can't resolve '@/components/X'"`,
 
     reviewer: `
 ## 🚀 RENDER.COM DEPLOYMENT - REVIEW FOKUS
@@ -642,7 +648,11 @@ export function Calendar() { return <div>...</div>; }
 "use client";
 import { Calendar } from "@/components/Calendar";
 export default function Page() { return <Calendar />; }
-\`\`\``,
+\`\`\`
+
+## 🔴 HÄUFIGSTER FEHLER - VERMEIDE IHN:
+Wenn du \`import { X } from "@/components/X"\` schreibst,
+MUSST du auch \`// filepath: components/X.tsx\` erstellen!`,
     reviewer: `
 ## 🔺 VERCEL DEPLOYMENT - REVIEW FOKUS
 **KRITISCHE PRÜFUNGEN (Build-Fehler vermeiden):**
@@ -731,8 +741,13 @@ export default function Page() {
 ✓ Hat JEDE Komponente ihre EIGENE Datei unter components/?
 ✓ Jede Datei beginnt mit \`// filepath: PFAD\`
 ✓ \`app/page.tsx\` importiert Komponenten mit \`@/components/Name\`
+✓ **Für JEDEN Import existiert eine Datei?**
 □ Alle Komponenten haben \`"use client";\` als ERSTE Zeile
 □ Imports nutzen \`@/components/Name\` (nicht relative Pfade)
+
+## 🔴 HÄUFIGSTER FEHLER - VERMEIDE IHN:
+Wenn du \`import { X } from "@/components/X"\` schreibst,
+MUSST du auch \`// filepath: components/X.tsx\` erstellen!
 
 **ABSOLUT VERBOTEN:**
 ❌ App.tsx, main.tsx, index.tsx - EXISTIEREN NICHT IN NEXT.JS
