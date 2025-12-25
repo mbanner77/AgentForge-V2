@@ -830,6 +830,348 @@ function validateAgentResult(
         issues.push(`${file.path}: fetch() ohne Error Handling (try/catch)`)
         score -= 10
       }
+      
+      // === 50 WEITERE VALIDIERUNGEN ===
+      
+      // --- REACT/JSX VALIDIERUNGEN (1-10) ---
+      
+      // 1. Fehlende displayName bei forwardRef
+      if (file.content.includes('forwardRef') && !file.content.includes('displayName')) {
+        issues.push(`${file.path}: forwardRef ohne displayName - erschwert Debugging`)
+        score -= 3
+      }
+      
+      // 2. setState in useEffect ohne Cleanup
+      if (file.content.includes('useEffect') && file.content.includes('setState') && !file.content.includes('return ()')) {
+        issues.push(`${file.path}: setState in useEffect ohne Cleanup - mögliches Memory Leak`)
+        score -= 5
+      }
+      
+      // 3. Direktes DOM-Manipulation (document.getElementById)
+      if (file.content.includes('document.getElementById') || file.content.includes('document.querySelector')) {
+        issues.push(`${file.path}: Direkte DOM-Manipulation - nutze useRef stattdessen`)
+        score -= 8
+      }
+      
+      // 4. innerHTML Verwendung (XSS Risiko)
+      if (file.content.includes('innerHTML') || file.content.includes('dangerouslySetInnerHTML')) {
+        issues.push(`${file.path}: innerHTML/dangerouslySetInnerHTML - XSS Sicherheitsrisiko`)
+        score -= 15
+      }
+      
+      // 5. Event Handler ohne Binding/Arrow Function
+      if (file.content.match(/onClick=\{this\.\w+\}/) && !file.content.includes('bind(this)')) {
+        issues.push(`${file.path}: Event Handler ohne Binding - 'this' wird undefined sein`)
+        score -= 10
+      }
+      
+      // 6. useEffect mit Objekt/Array als Dependency
+      const effectWithObjectDep = file.content.match(/useEffect\([^,]+,\s*\[[^\]]*\{[^\]]*\]\)/g)
+      if (effectWithObjectDep) {
+        issues.push(`${file.path}: useEffect mit Objekt als Dependency - wird bei jedem Render ausgeführt`)
+        score -= 8
+      }
+      
+      // 7. Conditional Hook Calls
+      if (file.content.match(/if\s*\([^)]+\)\s*\{[^}]*use(State|Effect|Callback|Memo|Ref)\(/)) {
+        criticalIssues.push(`FATAL: ${file.path} ruft Hooks bedingt auf - verletzt Rules of Hooks!`)
+        score -= 30
+      }
+      
+      // 8. setState mit altem State ohne Callback
+      if (file.content.match(/set\w+\(\w+\s*[+\-*/]/)) {
+        issues.push(`${file.path}: setState mit altem State - nutze Callback-Form: setState(prev => prev + 1)`)
+        score -= 5
+      }
+      
+      // 9. Fehlendes Suspense für lazy Components
+      if (file.content.includes('React.lazy') && !file.content.includes('Suspense')) {
+        criticalIssues.push(`FATAL: ${file.path} verwendet React.lazy ohne Suspense Wrapper`)
+        score -= 20
+      }
+      
+      // 10. Uncontrolled zu Controlled Input Wechsel
+      if (file.content.match(/value=\{.*\|\|\s*["']["']\}/) || file.content.match(/value=\{.*\?\?.*\}/)) {
+        issues.push(`${file.path}: Input wechselt zwischen controlled/uncontrolled - nutze defaultValue oder initialen State`)
+        score -= 5
+      }
+      
+      // --- TYPESCRIPT VALIDIERUNGEN (11-20) ---
+      
+      // 11. @ts-ignore Verwendung
+      if (file.content.includes('@ts-ignore') || file.content.includes('@ts-nocheck')) {
+        issues.push(`${file.path}: @ts-ignore/@ts-nocheck - TypeScript Fehler sollten behoben werden`)
+        score -= 10
+      }
+      
+      // 12. Nicht-null Assertion (!) ohne Prüfung
+      const nonNullCount = (file.content.match(/\w+!/g) || []).length
+      if (nonNullCount > 5) {
+        issues.push(`${file.path}: ${nonNullCount}x Non-null Assertion (!) - könnte Runtime-Fehler verursachen`)
+        score -= 5
+      }
+      
+      // 13. Type Assertion ohne Grund
+      const asCount = (file.content.match(/\s+as\s+\w+/g) || []).length
+      if (asCount > 3) {
+        issues.push(`${file.path}: ${asCount}x Type Assertion (as) - prüfe ob nötig`)
+        score -= 3
+      }
+      
+      // 14. Fehlende Return Type bei Funktionen
+      if (file.content.match(/function\s+\w+\s*\([^)]*\)\s*\{/) && !file.content.match(/function\s+\w+\s*\([^)]*\):\s*\w+/)) {
+        issues.push(`${file.path}: Funktionen ohne expliziten Return Type`)
+        score -= 3
+      }
+      
+      // 15. Generic ohne Constraint
+      if (file.content.match(/<T>/) && !file.content.match(/<T\s+extends/)) {
+        issues.push(`${file.path}: Generic <T> ohne Constraint - könnte spezifischer sein`)
+        score -= 2
+      }
+      
+      // 16. Enum statt const (Tree-Shaking Problem)
+      if (file.content.includes('enum ') && !file.content.includes('const enum')) {
+        issues.push(`${file.path}: enum statt const enum - schlechteres Tree-Shaking`)
+        score -= 2
+      }
+      
+      // 17. Object statt Record Type
+      if (file.content.includes(': object') || file.content.includes('<object>')) {
+        issues.push(`${file.path}: 'object' Type - nutze Record<string, unknown> für bessere Typisierung`)
+        score -= 3
+      }
+      
+      // 18. Function Type zu generisch
+      if (file.content.includes(': Function') || file.content.includes('<Function>')) {
+        issues.push(`${file.path}: 'Function' Type - nutze spezifischen Funktionstyp`)
+        score -= 5
+      }
+      
+      // 19. Optionale Properties ohne undefined Check
+      if (file.content.match(/\?\.\w+\(/) && file.content.match(/\w+\?\s*:/)) {
+        // Gut - Optional Chaining wird verwendet
+      } else if (file.content.match(/\w+\?\s*:/) && !file.content.includes('?.')) {
+        issues.push(`${file.path}: Optionale Properties ohne Optional Chaining (?.)`)
+        score -= 3
+      }
+      
+      // 20. Index Signature mit any
+      if (file.content.match(/\[\w+:\s*string\]:\s*any/)) {
+        issues.push(`${file.path}: Index Signature mit any - nutze spezifischen Typ`)
+        score -= 5
+      }
+      
+      // --- NEXT.JS SPEZIFISCHE VALIDIERUNGEN (21-30) ---
+      
+      // 21. getServerSideProps in App Router
+      if (file.content.includes('getServerSideProps') && file.path.includes('app/')) {
+        criticalIssues.push(`FATAL: ${file.path} verwendet getServerSideProps im App Router - nutze Server Components`)
+        score -= 30
+      }
+      
+      // 22. getStaticProps in App Router
+      if (file.content.includes('getStaticProps') && file.path.includes('app/')) {
+        criticalIssues.push(`FATAL: ${file.path} verwendet getStaticProps im App Router - nutze generateStaticParams`)
+        score -= 30
+      }
+      
+      // 23. getInitialProps (veraltet)
+      if (file.content.includes('getInitialProps')) {
+        issues.push(`${file.path}: getInitialProps ist veraltet - nutze getServerSideProps oder App Router`)
+        score -= 10
+      }
+      
+      // 24. useRouter von next/router statt next/navigation
+      if (file.content.includes("from 'next/router'") || file.content.includes('from "next/router"')) {
+        if (file.path.includes('app/')) {
+          criticalIssues.push(`FATAL: ${file.path} importiert next/router im App Router - nutze next/navigation`)
+          score -= 25
+        }
+      }
+      
+      // 25. Head von next/head im App Router
+      if (file.content.includes("from 'next/head'") || file.content.includes('from "next/head"')) {
+        if (file.path.includes('app/')) {
+          criticalIssues.push(`FATAL: ${file.path} verwendet next/head im App Router - nutze Metadata API`)
+          score -= 25
+        }
+      }
+      
+      // 26. cookies()/headers() in Client Component
+      if (hasUseClient && (file.content.includes('cookies()') || file.content.includes('headers()'))) {
+        criticalIssues.push(`FATAL: ${file.path} verwendet cookies()/headers() in Client Component`)
+        score -= 25
+      }
+      
+      // 27. revalidatePath/revalidateTag in Client
+      if (hasUseClient && (file.content.includes('revalidatePath') || file.content.includes('revalidateTag'))) {
+        criticalIssues.push(`FATAL: ${file.path} verwendet revalidate* in Client Component - nur Server Actions`)
+        score -= 25
+      }
+      
+      // 28. redirect() in try/catch
+      if (file.content.includes('redirect(') && file.content.includes('try')) {
+        issues.push(`${file.path}: redirect() in try/catch - redirect wirft NEXT_REDIRECT Error`)
+        score -= 10
+      }
+      
+      // 29. notFound() in Client Component
+      if (hasUseClient && file.content.includes('notFound()')) {
+        criticalIssues.push(`FATAL: ${file.path} verwendet notFound() in Client Component`)
+        score -= 25
+      }
+      
+      // 30. Fehlende loading.tsx für lange Operationen
+      if (file.path.includes('page.tsx') && file.content.includes('await') && !file.content.includes('Suspense')) {
+        issues.push(`${file.path}: async page ohne loading.tsx oder Suspense`)
+        score -= 5
+      }
+      
+      // --- PERFORMANCE VALIDIERUNGEN (31-40) ---
+      
+      // 31. Große Arrays ohne useMemo
+      if (file.content.match(/\.filter\(.*\)\.map\(/) && !file.content.includes('useMemo')) {
+        issues.push(`${file.path}: filter().map() Chain ohne useMemo - könnte Performance-Problem sein`)
+        score -= 3
+      }
+      
+      // 32. Inline Object/Array in JSX Props
+      if (file.content.match(/\w+=\{\s*\[/) || file.content.match(/\w+=\{\s*\{(?!\s*\.\.\.)/)) {
+        const inlineCount = (file.content.match(/\w+=\{\s*[\[{]/g) || []).length
+        if (inlineCount > 3) {
+          issues.push(`${file.path}: ${inlineCount}x Inline Objects/Arrays in Props - verursacht Re-Renders`)
+          score -= 5
+        }
+      }
+      
+      // 33. Fehlende React.memo für List Items
+      if (file.content.includes('.map(') && file.content.includes('key=')) {
+        if (!file.content.includes('memo(') && !file.content.includes('React.memo')) {
+          issues.push(`${file.path}: List Items ohne React.memo - könnte Re-Render-Performance verbessern`)
+          score -= 2
+        }
+      }
+      
+      // 34. setInterval ohne Cleanup
+      if (file.content.includes('setInterval') && !file.content.includes('clearInterval')) {
+        criticalIssues.push(`FATAL: ${file.path} verwendet setInterval ohne clearInterval - Memory Leak!`)
+        score -= 20
+      }
+      
+      // 35. setTimeout ohne Cleanup in useEffect
+      if (file.content.includes('setTimeout') && file.content.includes('useEffect')) {
+        if (!file.content.includes('clearTimeout')) {
+          issues.push(`${file.path}: setTimeout in useEffect ohne clearTimeout`)
+          score -= 8
+        }
+      }
+      
+      // 36. Event Listener ohne Cleanup
+      if (file.content.includes('addEventListener') && !file.content.includes('removeEventListener')) {
+        criticalIssues.push(`FATAL: ${file.path} addEventListener ohne removeEventListener - Memory Leak!`)
+        score -= 20
+      }
+      
+      // 37. Große Bundle Imports
+      if (file.content.includes("import * as") || file.content.includes("import _ from 'lodash'")) {
+        issues.push(`${file.path}: Importiert gesamte Library - nutze spezifische Imports`)
+        score -= 8
+      }
+      
+      // 38. JSON.parse ohne Typisierung
+      if (file.content.includes('JSON.parse(') && !file.content.match(/JSON\.parse\([^)]+\)\s*as\s+\w+/)) {
+        issues.push(`${file.path}: JSON.parse ohne Type Assertion - Rückgabewert ist any`)
+        score -= 3
+      }
+      
+      // 39. Synchrone localStorage Zugriffe
+      if (file.content.includes('localStorage.getItem') || file.content.includes('sessionStorage.getItem')) {
+        if (!file.content.includes('useEffect') && !file.content.includes('typeof window')) {
+          issues.push(`${file.path}: localStorage ohne SSR-Check - funktioniert nicht auf Server`)
+          score -= 10
+        }
+      }
+      
+      // 40. window Zugriff ohne Check
+      if (file.content.includes('window.') && !file.content.includes('typeof window')) {
+        if (isNextJs && !hasUseClient) {
+          issues.push(`${file.path}: window Zugriff ohne typeof window Check - Server Error`)
+          score -= 10
+        }
+      }
+      
+      // --- SECURITY VALIDIERUNGEN (41-50) ---
+      
+      // 41. eval() Verwendung
+      if (file.content.includes('eval(')) {
+        criticalIssues.push(`FATAL: ${file.path} verwendet eval() - Sicherheitsrisiko!`)
+        score -= 30
+      }
+      
+      // 42. new Function() Verwendung
+      if (file.content.includes('new Function(')) {
+        criticalIssues.push(`FATAL: ${file.path} verwendet new Function() - wie eval(), Sicherheitsrisiko!`)
+        score -= 30
+      }
+      
+      // 43. Hardcoded Secrets
+      const secretPatterns = [
+        /api[_-]?key\s*[:=]\s*["'][^"']+["']/i,
+        /secret\s*[:=]\s*["'][^"']+["']/i,
+        /password\s*[:=]\s*["'][^"']+["']/i,
+        /token\s*[:=]\s*["'][^"']+["']/i,
+        /private[_-]?key\s*[:=]\s*["'][^"']+["']/i,
+      ]
+      for (const pattern of secretPatterns) {
+        if (pattern.test(file.content)) {
+          criticalIssues.push(`FATAL: ${file.path} enthält möglicherweise hardcoded Secrets!`)
+          score -= 30
+          break
+        }
+      }
+      
+      // 44. SQL Injection Risiko
+      if (file.content.match(/`SELECT.*\$\{/i) || file.content.match(/`INSERT.*\$\{/i) || file.content.match(/`UPDATE.*\$\{/i)) {
+        criticalIssues.push(`FATAL: ${file.path} mögliche SQL Injection - nutze Prepared Statements!`)
+        score -= 30
+      }
+      
+      // 45. Path Traversal Risiko
+      if (file.content.match(/fs\.(read|write).*\$\{/) || file.content.match(/path\.join.*\$\{.*req\./)) {
+        criticalIssues.push(`FATAL: ${file.path} mögliche Path Traversal - validiere User Input!`)
+        score -= 25
+      }
+      
+      // 46. Unsichere RegExp (ReDoS)
+      if (file.content.match(/new RegExp\([^)]*\+/)) {
+        issues.push(`${file.path}: Dynamische RegExp mit User Input - ReDoS Risiko`)
+        score -= 15
+      }
+      
+      // 47. HTTP statt HTTPS
+      if (file.content.match(/["']http:\/\/(?!localhost|127\.0\.0\.1)/)) {
+        issues.push(`${file.path}: HTTP URL statt HTTPS - unsichere Verbindung`)
+        score -= 10
+      }
+      
+      // 48. CORS * Wildcard
+      if (file.content.includes("'*'") && file.content.includes('Access-Control')) {
+        issues.push(`${file.path}: CORS Wildcard (*) - sollte spezifische Origins erlauben`)
+        score -= 10
+      }
+      
+      // 49. JWT ohne Expiry
+      if (file.content.includes('jwt.sign') && !file.content.includes('expiresIn')) {
+        issues.push(`${file.path}: JWT ohne expiresIn - Tokens sollten ablaufen`)
+        score -= 15
+      }
+      
+      // 50. Unverschlüsselte Daten in localStorage
+      if (file.content.includes('localStorage.setItem') && (file.content.includes('token') || file.content.includes('user'))) {
+        issues.push(`${file.path}: Sensible Daten in localStorage - nutze httpOnly Cookies`)
+        score -= 10
+      }
     }
   }
   
