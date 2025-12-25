@@ -1047,7 +1047,93 @@ function formatDependencyGraph(graph: DependencyGraph): string {
 }
 
 // ============================================================
-// AUTO-GENERATE MISSING FILES
+// FIND MISSING IMPORTS
+// Findet alle Imports die auf nicht-existierende Dateien verweisen
+// ============================================================
+
+interface MissingFileInfo {
+  path: string
+  componentName: string
+  importedFrom: string
+}
+
+function findMissingImports(files: ParsedCodeFile[]): MissingFileInfo[] {
+  const existingPaths = new Set(files.map(f => f.path))
+  const missingFiles: MissingFileInfo[] = []
+  const seenPaths = new Set<string>()
+  
+  for (const file of files) {
+    // Finde Named Imports: import { X } from "@/components/X"
+    const namedImports = file.content.matchAll(/import\s+\{\s*([^}]+)\s*\}\s+from\s+["'](@\/components\/[^"']+|\.\/[^"']+)["']/g)
+    for (const match of namedImports) {
+      const importedNames = match[1].split(',').map(n => n.trim())
+      const importPath = match[2]
+      
+      let normalizedPath = importPath
+        .replace('@/components/', 'components/')
+        .replace('@/', '')
+        .replace('./', '')
+      
+      if (!normalizedPath.endsWith('.tsx') && !normalizedPath.endsWith('.ts')) {
+        normalizedPath += '.tsx'
+      }
+      
+      const fileExists = existingPaths.has(normalizedPath) ||
+                        Array.from(existingPaths).some(p => 
+                          p.endsWith(normalizedPath) || 
+                          p.includes(normalizedPath.replace('.tsx', ''))
+                        )
+      
+      if (!fileExists && !seenPaths.has(normalizedPath)) {
+        seenPaths.add(normalizedPath)
+        missingFiles.push({
+          path: normalizedPath,
+          componentName: importedNames[0],
+          importedFrom: file.path
+        })
+      }
+    }
+    
+    // Finde Default Imports: import X from "@/components/X"
+    const defaultImports = file.content.matchAll(/import\s+(\w+)\s+from\s+["'](@\/components\/[^"']+|\.\/[^"']+)["']/g)
+    for (const match of defaultImports) {
+      const fullMatch = match[0]
+      if (fullMatch.includes('{')) continue
+      
+      const componentName = match[1]
+      const importPath = match[2]
+      
+      let normalizedPath = importPath
+        .replace('@/components/', 'components/')
+        .replace('@/', '')
+        .replace('./', '')
+      
+      if (!normalizedPath.endsWith('.tsx') && !normalizedPath.endsWith('.ts')) {
+        normalizedPath += '.tsx'
+      }
+      
+      const fileExists = existingPaths.has(normalizedPath) ||
+                        Array.from(existingPaths).some(p => 
+                          p.endsWith(normalizedPath) || 
+                          p.includes(normalizedPath.replace('.tsx', ''))
+                        )
+      
+      if (!fileExists && !seenPaths.has(normalizedPath)) {
+        seenPaths.add(normalizedPath)
+        missingFiles.push({
+          path: normalizedPath,
+          componentName,
+          importedFrom: file.path
+        })
+      }
+    }
+  }
+  
+  return missingFiles
+}
+
+// ============================================================
+// AUTO-GENERATE MISSING FILES (Fallback mit Skeletons)
 // Erstellt automatisch Skeleton-Dateien für fehlende Imports
 // ============================================================
 
@@ -3427,12 +3513,74 @@ Gib ALLE Dateien (auch die neuen) vollständig aus!`
         }
       }
 
-      // POST-PROCESSING: Automatisch fehlende Dateien erstellen
+      // POST-PROCESSING: Fehlende Dateien mit echtem Code generieren lassen
       let finalFiles = files
       if (agentType === "coder" && files.length > 0) {
-        finalFiles = autoGenerateMissingFiles(files)
-        if (finalFiles.length > files.length) {
-          console.log(`[Agent Executor] ${finalFiles.length - files.length} fehlende Dateien automatisch erstellt`)
+        const missingFileInfos = findMissingImports(files)
+        
+        if (missingFileInfos.length > 0) {
+          console.log(`[Agent Executor] ${missingFileInfos.length} fehlende Dateien erkannt, generiere echten Code...`)
+          
+          // Extrahiere Kontext aus bestehenden Dateien
+          const existingContext = files.map(f => `
+--- ${f.path} ---
+${f.content.substring(0, 500)}${f.content.length > 500 ? '...' : ''}
+`).join('\n')
+          
+          // Generiere echten Code für fehlende Dateien
+          const generateMissingPrompt = `
+## 🔴 KRITISCH: Diese Dateien werden importiert aber existieren nicht!
+
+${missingFileInfos.map(m => `- **${m.path}** (importiert als: ${m.componentName})`).join('\n')}
+
+## KONTEXT - So werden die Komponenten verwendet:
+${existingContext}
+
+## DEINE AUFGABE:
+Erstelle NUR die fehlenden Dateien mit VOLLSTÄNDIGER, FUNKTIONALER Implementierung.
+Basiere die Implementierung auf dem Kontext - schaue wie die Komponenten verwendet werden!
+
+REGELN:
+- JEDE Datei beginnt mit "use client";
+- Verwende TypeScript mit korrekten Types
+- Implementiere ECHTE Funktionalität, keine Platzhalter!
+- Nutze Tailwind CSS für Styling
+
+Gib NUR die fehlenden Dateien aus, im Format:
+\`\`\`typescript
+// filepath: components/ComponentName.tsx
+"use client";
+// ... vollständiger Code
+\`\`\`
+`
+          
+          try {
+            const missingResponse = await sendChatRequest({
+              messages: [
+                { role: "system", content: config.systemPrompt },
+                { role: "user", content: generateMissingPrompt }
+              ],
+              model: config.model,
+              temperature: 0.2,
+              maxTokens: config.maxTokens,
+              apiKey,
+              provider,
+            })
+            
+            const generatedFiles = parseCodeFromResponse(missingResponse.content)
+            if (generatedFiles.length > 0) {
+              finalFiles = [...files, ...generatedFiles]
+              console.log(`[Agent Executor] ${generatedFiles.length} fehlende Dateien mit echtem Code generiert`)
+            } else {
+              // Fallback: Skeleton wenn Generierung fehlschlägt
+              console.log(`[Agent Executor] Generierung fehlgeschlagen, verwende Skeletons`)
+              finalFiles = autoGenerateMissingFiles(files)
+            }
+          } catch (genError) {
+            console.warn(`[Agent Executor] Fehler bei Generierung fehlender Dateien:`, genError)
+            // Fallback: Skeleton
+            finalFiles = autoGenerateMissingFiles(files)
+          }
         }
       }
 
