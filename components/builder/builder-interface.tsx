@@ -811,68 +811,110 @@ export default function Page() {
         
       } else if (deployTarget === "render") {
         setDeployStep("render")
-        setDeployLogs(prev => [...prev, "", "Generiere Render Blueprint..."])
+        const projectSlug = repoName.toLowerCase().replace(/\s+/g, "-")
         
-        // Generiere Blueprint
-        const blueprintRes = await fetch("/api/render/deploy", {
+        // Prüfe ob bereits ein Render Service mit diesem Namen existiert
+        setDeployLogs(prev => [...prev, "", "Prüfe existierende Render Services..."])
+        const checkRes = await fetch("/api/render/deploy", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            action: "generate-blueprint",
-            config: {
-              projectName: repoName.toLowerCase().replace(/\s+/g, "-"),
-              projectType: "nextjs",
-              region: "frankfurt",
-              plan: "free",
-              autoDeploy: true,
-              healthCheckPath: "/",
-            },
-          }),
-        })
-        const blueprintData = await blueprintRes.json()
-        
-        if (blueprintData.success) {
-          setGeneratedBlueprint(blueprintData.blueprint)
-          setDeployLogs(prev => [...prev, "✓ render.yaml Blueprint generiert"])
-        }
-        
-        // Deploy zu Render
-        setDeployLogs(prev => [...prev, "", "Deploye zu Render.com..."])
-        const deployRes = await fetch("/api/render/deploy", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "deploy",
-            config: {
-              projectName: repoName.toLowerCase().replace(/\s+/g, "-"),
-              projectType: "nextjs",
-              region: "frankfurt",
-              plan: "starter", // Render API unterstützt kein "free" via API
-              repoUrl: repoUrl,
-            },
+            action: "check-service",
+            config: { projectName: projectSlug },
             apiKey: globalConfig.renderApiKey,
           }),
         })
-        const deployData = await deployRes.json()
+        const checkData = await checkRes.json()
         
-        if (deployData.logs) {
-          deployData.logs.forEach((log: string) => setDeployLogs(prev => [...prev, log]))
-        }
-        
-        if (deployData.success) {
-          setDeployResult(prev => ({ ...prev, renderUrl: deployData.serviceUrl }))
+        if (checkData.exists) {
+          // Service existiert bereits - nur GitHub aktualisieren für Auto-Deploy
+          setDeployLogs(prev => [
+            ...prev, 
+            `⚠️ Render Service "${projectSlug}" existiert bereits!`,
+            `📍 URL: ${checkData.serviceUrl}`,
+            "",
+            "→ GitHub wurde aktualisiert, Auto-Deploy auf Render wird ausgelöst...",
+            "→ Render erkennt die Änderungen und deployed automatisch.",
+          ])
+          
+          setDeployResult(prev => ({ 
+            ...prev, 
+            renderUrl: checkData.serviceUrl,
+            existingService: true 
+          }))
           setDeployStep("done")
-          toast.success("Render Deployment erfolgreich!")
+          toast.info(`Service existiert: Auto-Deploy via GitHub aktiviert`)
           
           addMessage({
             role: "assistant",
-            content: `🚀 **Deployment erfolgreich!**\n\n${repoUrl ? `**GitHub:** ${repoUrl}\n` : ""}**Render:** ${deployData.serviceUrl || "Wird erstellt..."}\n\nDein Projekt ist jetzt live!`,
+            content: `⚠️ **Render Service existiert bereits!**\n\n**Service:** ${projectSlug}\n**URL:** ${checkData.serviceUrl}\n\n✅ **GitHub wurde aktualisiert** - Render erkennt die Änderungen automatisch und startet ein neues Deployment.\n\n💡 Öffne die Render Dashboard um den Deployment-Status zu sehen.`,
             agent: "system",
           })
         } else {
-          setDeployResult(prev => ({ ...prev, error: deployData.error }))
-          setDeployStep("done")
-          toast.warning("Render Deployment mit Hinweisen abgeschlossen")
+          // Service existiert nicht - neuen erstellen
+          setDeployLogs(prev => [...prev, "✓ Kein existierender Service gefunden", "", "Generiere Render Blueprint..."])
+          
+          // Generiere Blueprint
+          const blueprintRes = await fetch("/api/render/deploy", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "generate-blueprint",
+              config: {
+                projectName: projectSlug,
+                projectType: "nextjs",
+                region: "frankfurt",
+                plan: "free",
+                autoDeploy: true,
+                healthCheckPath: "/",
+              },
+            }),
+          })
+          const blueprintData = await blueprintRes.json()
+          
+          if (blueprintData.success) {
+            setGeneratedBlueprint(blueprintData.blueprint)
+            setDeployLogs(prev => [...prev, "✓ render.yaml Blueprint generiert"])
+          }
+          
+          // Deploy zu Render
+          setDeployLogs(prev => [...prev, "", "Deploye zu Render.com..."])
+          const deployRes = await fetch("/api/render/deploy", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "deploy",
+              config: {
+                projectName: projectSlug,
+                projectType: "nextjs",
+                region: "frankfurt",
+                plan: "starter", // Render API unterstützt kein "free" via API
+                repoUrl: repoUrl,
+              },
+              apiKey: globalConfig.renderApiKey,
+            }),
+          })
+          const deployData = await deployRes.json()
+          
+          if (deployData.logs) {
+            deployData.logs.forEach((log: string) => setDeployLogs(prev => [...prev, log]))
+          }
+          
+          if (deployData.success) {
+            setDeployResult(prev => ({ ...prev, renderUrl: deployData.serviceUrl }))
+            setDeployStep("done")
+            toast.success("Render Deployment erfolgreich!")
+            
+            addMessage({
+              role: "assistant",
+              content: `🚀 **Deployment erfolgreich!**\n\n${repoUrl ? `**GitHub:** ${repoUrl}\n` : ""}**Render:** ${deployData.serviceUrl || "Wird erstellt..."}\n\nDein Projekt ist jetzt live!`,
+              agent: "system",
+            })
+          } else {
+            setDeployResult(prev => ({ ...prev, error: deployData.error }))
+            setDeployStep("done")
+            toast.warning("Render Deployment mit Hinweisen abgeschlossen")
+          }
         }
         
       } else {

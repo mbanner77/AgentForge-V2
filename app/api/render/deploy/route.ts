@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
     const { action, config, apiKey } = body as {
-      action: "validate" | "generate-blueprint" | "create-service" | "deploy" | "status"
+      action: "validate" | "generate-blueprint" | "create-service" | "deploy" | "status" | "check-service"
       config?: RenderDeploymentConfig & { includeDatabase?: boolean; includeWorker?: boolean }
       apiKey?: string
     }
@@ -37,6 +37,9 @@ export async function POST(request: NextRequest) {
       
       case "status":
         return handleStatus(config, apiKey)
+      
+      case "check-service":
+        return handleCheckService(config, apiKey)
       
       default:
         return NextResponse.json({ error: "Unknown action" }, { status: 400 })
@@ -112,6 +115,75 @@ async function testRenderConnection(apiKey: string) {
     return NextResponse.json({
       valid: false,
       errors: [`Verbindung fehlgeschlagen: ${error instanceof Error ? error.message : "Unknown"}`],
+    })
+  }
+}
+
+// Check if a service with the given name already exists
+async function handleCheckService(
+  config?: RenderDeploymentConfig,
+  apiKey?: string
+): Promise<NextResponse> {
+  if (!apiKey) {
+    return NextResponse.json({ 
+      exists: false, 
+      error: "API Key fehlt" 
+    })
+  }
+  
+  if (!config?.projectName) {
+    return NextResponse.json({ 
+      exists: false, 
+      error: "Project name fehlt" 
+    })
+  }
+
+  try {
+    // Hole alle Services vom Render Account
+    const response = await fetch("https://api.render.com/v1/services?limit=100", {
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Accept": "application/json",
+      },
+    })
+
+    if (!response.ok) {
+      console.error("Render API Error:", response.status)
+      return NextResponse.json({ 
+        exists: false, 
+        error: `Render API Fehler: ${response.status}` 
+      })
+    }
+
+    const services = await response.json()
+    
+    // Suche nach Service mit passendem Namen
+    const existingService = services.find((s: { service: { name: string; serviceDetails?: { url?: string } } }) => 
+      s.service.name.toLowerCase() === config.projectName.toLowerCase()
+    )
+
+    if (existingService) {
+      const serviceUrl = existingService.service.serviceDetails?.url || 
+        `https://${existingService.service.name}.onrender.com`
+      
+      return NextResponse.json({
+        exists: true,
+        serviceId: existingService.service.id,
+        serviceName: existingService.service.name,
+        serviceUrl,
+        message: `Service "${config.projectName}" existiert bereits auf Render.`,
+      })
+    }
+
+    return NextResponse.json({
+      exists: false,
+      message: `Kein Service mit Namen "${config.projectName}" gefunden.`,
+    })
+  } catch (error) {
+    console.error("Check Service Error:", error)
+    return NextResponse.json({ 
+      exists: false, 
+      error: error instanceof Error ? error.message : "Unknown error" 
     })
   }
 }
