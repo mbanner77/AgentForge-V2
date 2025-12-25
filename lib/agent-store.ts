@@ -403,14 +403,20 @@ Das Projekt wird auf Render.com deployed. WICHTIGE REGELN:
     coder: `
 ## 🚀 DEPLOYMENT-ZIEL: RENDER.COM (Next.js) - STRIKTE REGELN
 
+## ❌ FATALER FEHLER VERMEIDEN: DOPPELTE EXPORTS!
+- NIEMALS zwei \`export default\` in einer Datei!
+- NIEMALS Context, Provider, Hooks in \`app/page.tsx\` definieren!
+- Context/Provider → \`components/CalendarContext.tsx\`
+- Hooks → In der Context-Datei oder \`hooks/\` Ordner
+
 ## KRITISCH - MEHRERE DATEIEN SIND PFLICHT!
 Du MUSST für jede Komponente eine SEPARATE Datei unter \`components/\` erstellen!
 NIEMALS alle Komponenten in \`app/page.tsx\` packen!
 
 **PFLICHT-STRUKTUR (IMMER einhalten):**
-1. \`app/page.tsx\` - NUR die Hauptseite, importiert Komponenten
-2. \`components/Header.tsx\` - Header-Komponente
-3. \`components/Calendar.tsx\` - Kalender oder Hauptfeature
+1. \`app/page.tsx\` - NUR die Hauptseite (EINE export default!)
+2. \`components/CalendarContext.tsx\` - Context + Provider + useCalendar Hook
+3. \`components/Calendar.tsx\` - Kalender-Komponente
 4. \`components/EventList.tsx\` - Listen, etc.
 
 **BEISPIEL MIT MEHREREN DATEIEN:**
@@ -479,21 +485,19 @@ export default function Page() {
 
     reviewer: `
 ## 🚀 RENDER.COM DEPLOYMENT - REVIEW FOKUS
-Prüfe speziell für Render.com Deployment:
 
-**KRITISCHE FEHLER (Build wird fehlschlagen):**
-❌ "export const metadata" in Dateien mit "use client" → MUSS ENTFERNT WERDEN
-❌ "import type { Metadata } from 'next'" in Client-Komponenten
-❌ src/main.tsx, src/App.tsx → FALSCHES FRAMEWORK (Vite statt Next.js)
+**🚨 FATALE FEHLER (Build WIRD fehlschlagen):**
+❌ MEHRERE \`export default\` in einer Datei → SOFORT AUFTEILEN!
+❌ Context/Provider/Hooks in app/page.tsx → MUSS in components/!
+❌ Alle Komponenten in einer Datei → MUSS aufgeteilt werden!
+❌ "export const metadata" in "use client" Dateien
+❌ src/main.tsx, src/App.tsx → FALSCHES FRAMEWORK
 ❌ ReactDOM.createRoot() → VERBOTEN in Next.js
-❌ import "./globals.css" in Komponenten → NUR in layout.tsx erlaubt
-❌ package.json, tsconfig.json vom Agent generiert → WERDEN AUTOMATISCH ERSTELLT
 
 **STRUKTUR-CHECK:**
-✅ app/page.tsx als Hauptseite vorhanden?
-✅ "use client" am Anfang von Client-Komponenten?
-✅ components/*.tsx für wiederverwendbare Komponenten?
-✅ Imports mit @/components/X?
+✅ app/page.tsx hat NUR EINE export default?
+✅ Context/Provider in components/XContext.tsx?
+✅ Jede Komponente in eigener Datei?
 
 **BEI FEHLERN:**
 Gib KONKRETE KORREKTUREN mit vollständigem Code aus!`,
@@ -536,12 +540,18 @@ Das Projekt wird auf Vercel deployed. WICHTIGE REGELN:
     coder: `
 ## 🔺 DEPLOYMENT-ZIEL: VERCEL (Next.js) - STRIKTE REGELN
 
+## ❌ FATALER FEHLER VERMEIDEN: DOPPELTE EXPORTS!
+- NIEMALS zwei \`export default\` in einer Datei!
+- NIEMALS Context, Provider, Hooks in \`app/page.tsx\` definieren!
+- Context/Provider → \`components/CalendarContext.tsx\`
+
 ## KRITISCH - MEHRERE DATEIEN SIND PFLICHT!
 Du MUSST für jede Komponente eine SEPARATE Datei unter \`components/\` erstellen!
 
 **PFLICHT-STRUKTUR:**
-1. \`app/page.tsx\` - NUR die Hauptseite, importiert Komponenten
-2. \`components/*.tsx\` - JEDE Komponente in eigener Datei!
+1. \`app/page.tsx\` - NUR die Hauptseite (EINE export default!)
+2. \`components/CalendarContext.tsx\` - Context + Provider + Hook
+3. \`components/*.tsx\` - JEDE Komponente in eigener Datei!
 
 **FORMAT:**
 \`\`\`typescript
@@ -557,13 +567,15 @@ import { Calendar } from "@/components/Calendar";
 export default function Page() { return <Calendar />; }
 \`\`\`
 
-**VERBOTEN:** Alle Komponenten in app/page.tsx definieren!`,
+**VERBOTEN:** Context/Provider/Hooks in app/page.tsx!`,
     reviewer: `
 ## 🔺 VERCEL DEPLOYMENT - REVIEW FOKUS
-Prüfe für Vercel: 
-- Next.js App Router Struktur (app/page.tsx, components/*.tsx)
-- Hat jede Komponente ihre EIGENE Datei?
-- "use client" bei Client-Komponenten`,
+**KRITISCHE PRÜFUNGEN (Build-Fehler vermeiden):**
+❌ Mehrere \`export default\` in einer Datei? → FATALER FEHLER!
+❌ Context/Provider/Hooks in app/page.tsx? → MUSS in components/!
+❌ Alle Komponenten in einer Datei? → MUSS aufgeteilt werden!
+
+Prüfe: app/page.tsx + components/*.tsx Struktur`,
     security: `
 ## 🔺 VERCEL DEPLOYMENT - SECURITY
 Prüfe: Environment Variables, Edge Function Limits, API Route Security.`,
@@ -591,14 +603,20 @@ Das Projekt wird auf Netlify deployed. WICHTIGE REGELN:
     coder: `
 ## 🌐 DEPLOYMENT-ZIEL: NETLIFY (Next.js) - STRIKTE REGELN
 
+## ❌ FATALER FEHLER VERMEIDEN: DOPPELTE EXPORTS!
+- NIEMALS zwei \`export default\` in einer Datei!
+- NIEMALS Context, Provider, Hooks in \`app/page.tsx\` definieren!
+- Context/Provider → \`components/CalendarContext.tsx\`
+- Hooks → In der Context-Datei oder \`hooks/\` Ordner
+
 ## KRITISCH - MEHRERE DATEIEN SIND PFLICHT!
 Du MUSST für jede Komponente eine SEPARATE Datei unter \`components/\` erstellen!
 NIEMALS alle Komponenten in \`app/page.tsx\` packen!
 
 **PFLICHT-STRUKTUR (IMMER einhalten):**
-1. \`app/page.tsx\` - NUR die Hauptseite, importiert Komponenten
-2. \`components/Header.tsx\` - Header-Komponente
-3. \`components/Calendar.tsx\` - Kalender oder Hauptfeature
+1. \`app/page.tsx\` - NUR die Hauptseite (EINE export default!)
+2. \`components/CalendarContext.tsx\` - Context + Provider + useCalendar Hook
+3. \`components/Calendar.tsx\` - Kalender-Komponente
 4. \`components/EventList.tsx\` - Listen, etc.
 
 **BEISPIEL MIT MEHREREN DATEIEN:**
@@ -666,12 +684,13 @@ export default function Page() {
 ❌ package.json, tsconfig.json - WERDEN AUTOMATISCH ERSTELLT`,
     reviewer: `
 ## 🌐 NETLIFY DEPLOYMENT - REVIEW FOKUS
-Prüfe speziell für Netlify Deployment:
 
-**KRITISCHE FEHLER (Build wird fehlschlagen):**
-❌ "export const metadata" in Dateien mit "use client"
+**🚨 FATALE FEHLER (Build WIRD fehlschlagen):**
+❌ MEHRERE \`export default\` in einer Datei → SOFORT AUFTEILEN!
+❌ Context/Provider/Hooks in app/page.tsx → MUSS in components/!
+❌ Alle Komponenten in einer Datei → MUSS aufgeteilt werden!
+❌ "export const metadata" in "use client" Dateien
 ❌ src/main.tsx, src/App.tsx → FALSCHES FRAMEWORK
-❌ ReactDOM.createRoot() → VERBOTEN in Next.js
 
 **STRUKTUR-CHECK:**
 ✅ app/page.tsx als Hauptseite vorhanden?
