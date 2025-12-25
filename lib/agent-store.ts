@@ -313,7 +313,7 @@ export const getEnvironmentPrompt = (agent: "planner" | "coder", environment: "s
 }
 
 // Deployment-Target spezifische Prompt-Erweiterungen
-export type DeploymentTarget = "vercel" | "render" | "btp" | "github-only" | null
+export type DeploymentTarget = "vercel" | "render" | "netlify" | "btp" | "github-only" | null
 
 export const deploymentTargetPrompts: Record<string, { planner: string; coder: string; reviewer: string; security: string; executor: string }> = {
   render: {
@@ -463,6 +463,96 @@ Prüfe: Environment Variables, Edge Function Limits, API Route Security.`,
     executor: `
 ## 🔺 VERCEL DEPLOYMENT
 Deployment über Vercel CLI oder GitHub Integration.`,
+  },
+  
+  netlify: {
+    planner: `
+## 🌐 DEPLOYMENT-ZIEL: NETLIFY (Next.js)
+Das Projekt wird auf Netlify deployed. WICHTIGE REGELN:
+
+**PROJEKT-STRUKTUR für Netlify (Next.js App Router):**
+- app/page.tsx - Hauptseite (NICHT src/App.tsx!)
+- app/layout.tsx - Root Layout
+- components/*.tsx - Wiederverwendbare Komponenten
+- KEINE src/main.tsx oder index.html!
+
+**NEXT.JS APP ROUTER REGELN:**
+- Verwende "use client" am Anfang von Client-Komponenten
+- Exportiere Komponenten als "export default function ComponentName()"
+- Imports: @/components/X für Komponenten
+- KEINE Vite-spezifischen Dateien`,
+    coder: `
+## 🌐 DEPLOYMENT-ZIEL: NETLIFY (Next.js) - STRIKTE REGELN
+
+**WICHTIG: Generiere NUR diese Dateien:**
+1. \`app/page.tsx\` - Die Hauptseite (PFLICHT!)
+2. \`components/*.tsx\` - Komponenten
+
+**EXAKTES FORMAT - KOPIERE DIESE STRUKTUR:**
+
+\`\`\`typescript
+// filepath: app/page.tsx
+"use client";
+
+import { useState } from "react";
+import { MyComponent } from "@/components/MyComponent";
+
+export default function Page() {
+  return (
+    <main className="min-h-screen p-8">
+      <MyComponent />
+    </main>
+  );
+}
+\`\`\`
+
+\`\`\`typescript
+// filepath: components/MyComponent.tsx
+"use client";
+
+import { useState } from "react";
+
+export function MyComponent() {
+  const [value, setValue] = useState("");
+  
+  return (
+    <div className="p-4">
+      {/* Dein UI Code hier */}
+    </div>
+  );
+}
+\`\`\`
+
+**CHECKLISTE VOR AUSGABE:**
+□ Jede Datei beginnt mit \`// filepath: PFAD\`
+□ \`app/page.tsx\` existiert mit \`export default function Page()\`
+□ Alle Komponenten haben \`"use client";\` als ERSTE Zeile
+□ Imports nutzen \`@/components/Name\` (nicht relative Pfade)
+
+**ABSOLUT VERBOTEN:**
+❌ App.tsx, main.tsx, index.tsx - EXISTIEREN NICHT IN NEXT.JS
+❌ ReactDOM.createRoot() - VERBOTEN
+❌ package.json, tsconfig.json - WERDEN AUTOMATISCH ERSTELLT`,
+    reviewer: `
+## 🌐 NETLIFY DEPLOYMENT - REVIEW FOKUS
+Prüfe speziell für Netlify Deployment:
+
+**KRITISCHE FEHLER (Build wird fehlschlagen):**
+❌ "export const metadata" in Dateien mit "use client"
+❌ src/main.tsx, src/App.tsx → FALSCHES FRAMEWORK
+❌ ReactDOM.createRoot() → VERBOTEN in Next.js
+
+**STRUKTUR-CHECK:**
+✅ app/page.tsx als Hauptseite vorhanden?
+✅ "use client" am Anfang von Client-Komponenten?
+✅ Imports mit @/components/X?`,
+    security: `
+## 🌐 NETLIFY DEPLOYMENT - SECURITY
+Prüfe: Environment Variables über Netlify Dashboard, keine hardcodierten Secrets, API Route Security.`,
+    executor: `
+## 🌐 NETLIFY DEPLOYMENT
+Build-Command: npm install && npm run build
+Publish Directory: .next oder out`,
   },
   
   btp: {

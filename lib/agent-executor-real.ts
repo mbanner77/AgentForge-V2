@@ -596,19 +596,47 @@ function parseSuggestionsFromResponse(content: string, agent: string, existingFi
 function parseCodeFromResponse(content: string): ParsedCodeFile[] {
   const files: ParsedCodeFile[] = []
   
-  // Mehrere Patterns für Code-Blöcke
+  // Debug: Log content length and first 500 chars
+  console.log(`[parseCodeFromResponse] Content length: ${content.length}`)
+  console.log(`[parseCodeFromResponse] Content preview: ${content.substring(0, 500)}...`)
+  
+  // Mehrere Patterns für Code-Blöcke - ROBUSTER REGEX
+  // Akzeptiert: ```language\n, ```language \n, ```\n, ``` \n, mit \r\n oder \n
   // Pattern 1: ```language\n// filepath: path\ncode```
   // Pattern 2: ```language\ncode``` mit filepath im Code
   // Pattern 3: **filename** gefolgt von Code-Block
-  const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/gi
+  const codeBlockRegex = /```(\w+)?[ \t]*[\r\n]+([\s\S]*?)```/gi
+  
+  // Debug: Check if content contains code blocks at all
+  const hasBackticks = content.includes('```')
+  console.log(`[parseCodeFromResponse] Contains backticks: ${hasBackticks}`)
+  
+  if (!hasBackticks) {
+    console.warn(`[parseCodeFromResponse] WARNUNG: Keine Code-Blöcke gefunden! AI hat möglicherweise keinen Code generiert.`)
+    // Versuche Code ohne Backticks zu finden (Fallback)
+    const codePatterns = [
+      /\/\/\s*filepath:\s*([\w\-./]+\.(?:tsx?|jsx?|css|json))\s*[\r\n]+([\s\S]+?)(?=\/\/\s*filepath:|$)/gi,
+      /(?:^|\n)(?:import|export|function|const|"use client")/
+    ]
+    if (codePatterns[1].test(content)) {
+      console.log(`[parseCodeFromResponse] Code-artige Inhalte gefunden, aber keine Backticks. Versuche Extraktion...`)
+    }
+  }
   
   let match
+  let matchCount = 0
   while ((match = codeBlockRegex.exec(content)) !== null) {
+    matchCount++
     let language = match[1] || "typescript"
     let code = match[2]?.trim()
     let path: string | undefined
     
-    if (!code) continue
+    console.log(`[parseCodeFromResponse] Match ${matchCount}: language=${language}, code length=${code?.length || 0}`)
+    
+    if (!code) {
+      console.log(`[parseCodeFromResponse] Match ${matchCount}: Leerer Code, überspringe`)
+      continue
+    }
     
     // Versuche Pfad aus verschiedenen Formaten zu extrahieren
     // Format 1: // filepath: path/to/file.tsx oder // src/App.js
@@ -684,6 +712,64 @@ function parseCodeFromResponse(content: string): ParsedCodeFile[] {
       content: code,
       language,
     })
+    console.log(`[parseCodeFromResponse] Datei hinzugefügt: ${path} (${code.length} Zeichen)`)
+  }
+  
+  console.log(`[parseCodeFromResponse] ERGEBNIS: ${files.length} Dateien gefunden`)
+  if (files.length === 0 && hasBackticks) {
+    console.warn(`[parseCodeFromResponse] Code-Blöcke vorhanden aber keine Dateien extrahiert! Mögliches Regex-Problem.`)
+    // Zeige die ersten Backticks zum Debugging
+    const firstBacktick = content.indexOf('```')
+    if (firstBacktick >= 0) {
+      console.log(`[parseCodeFromResponse] Erster Code-Block (Position ${firstBacktick}): "${content.substring(firstBacktick, firstBacktick + 100)}..."`)
+    }
+  }
+  
+  // FALLBACK: Wenn keine Dateien gefunden, versuche Code ohne Backticks zu extrahieren
+  if (files.length === 0) {
+    console.log(`[parseCodeFromResponse] Versuche Fallback-Extraktion...`)
+    
+    // Suche nach // filepath: Patterns ohne Code-Block
+    const filepathPattern = /\/\/\s*filepath:\s*([\w\-./]+\.(?:tsx?|jsx?|css|json))\s*[\r\n]+([\s\S]+?)(?=\/\/\s*filepath:|$)/gi
+    let fpMatch
+    while ((fpMatch = filepathPattern.exec(content)) !== null) {
+      const path = fpMatch[1].trim()
+      let code = fpMatch[2].trim()
+      // Entferne trailing ``` falls vorhanden
+      code = code.replace(/```\s*$/, '').trim()
+      
+      if (code.length > 20) {
+        const ext = path.split('.').pop() || 'tsx'
+        const language = ext === 'css' ? 'css' : ext === 'json' ? 'json' : ext === 'js' ? 'javascript' : 'typescript'
+        files.push({ path, content: code, language })
+        console.log(`[parseCodeFromResponse] Fallback: Datei gefunden: ${path}`)
+      }
+    }
+    
+    // Wenn immer noch keine Dateien und es sieht nach React-Code aus
+    if (files.length === 0) {
+      const hasReactCode = content.includes('export default function') || 
+                           content.includes('import { useState') ||
+                           content.includes('import React')
+      if (hasReactCode) {
+        console.log(`[parseCodeFromResponse] React-Code erkannt ohne strukturierte Ausgabe, versuche Extraktion...`)
+        
+        // Versuche den gesamten Inhalt als App.tsx zu behandeln
+        const codeStart = content.indexOf('import')
+        if (codeStart >= 0) {
+          let code = content.substring(codeStart)
+          // Entferne Erklärungen nach dem Code (nach letzter })
+          const lastBrace = code.lastIndexOf('}')
+          if (lastBrace > 0) {
+            code = code.substring(0, lastBrace + 1)
+          }
+          if (code.length > 50) {
+            files.push({ path: 'App.tsx', content: code, language: 'typescript' })
+            console.log(`[parseCodeFromResponse] Fallback: App.tsx aus rohem Content extrahiert`)
+          }
+        }
+      }
+    }
   }
   
   return files

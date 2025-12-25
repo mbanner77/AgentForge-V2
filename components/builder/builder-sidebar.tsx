@@ -605,6 +605,12 @@ export function BuilderSidebar({ onClose }: BuilderSidebarProps) {
                         <span className="text-xs text-muted-foreground">(Next.js, $7/mo)</span>
                       </div>
                     </SelectItem>
+                    <SelectItem value="netlify">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">Netlify</span>
+                        <span className="text-xs text-muted-foreground">(Kostenlos)</span>
+                      </div>
+                    </SelectItem>
                     <SelectItem value="btp">
                       <div className="flex items-center gap-2">
                         <span className="font-medium">SAP BTP</span>
@@ -625,6 +631,9 @@ export function BuilderSidebar({ onClose }: BuilderSidebarProps) {
                   )}
                   {(globalConfig as { deploymentTarget?: string }).deploymentTarget === "vercel" && (
                     <span>🔺 Agenten generieren Next.js Code für Vercel</span>
+                  )}
+                  {(globalConfig as { deploymentTarget?: string }).deploymentTarget === "netlify" && (
+                    <span>🌐 Agenten generieren Next.js Code für Netlify</span>
                   )}
                   {(globalConfig as { deploymentTarget?: string }).deploymentTarget === "btp" && (
                     <span>🏢 Agenten generieren SAP Fiori/SAPUI5 Code</span>
