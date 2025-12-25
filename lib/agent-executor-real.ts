@@ -16,6 +16,9 @@ async function fetchRagContext(
 ): Promise<string> {
   if (!apiKey) return ""
   
+  // Coder bekommt mehr Kontext für bessere Code-Generierung
+  const maxTokens = agentId === "coder" ? 4000 : 2000
+  
   try {
     const response = await fetch("/api/rag/search", {
       method: "POST",
@@ -24,7 +27,7 @@ async function fetchRagContext(
         query,
         apiKey,
         buildContext: true,
-        maxTokens: 2000,
+        maxTokens,
         agentId,
         provider,
       }),
@@ -38,6 +41,76 @@ async function fetchRagContext(
     console.warn("[RAG] Fehler beim Abrufen des Kontexts:", error)
     return ""
   }
+}
+
+// Dependency-Analyse: Extrahiert installierte Pakete aus package.json
+function analyzeDependencies(packageJsonContent: string): { dependencies: string[], devDependencies: string[], scripts: Record<string, string> } {
+  try {
+    const pkg = JSON.parse(packageJsonContent)
+    return {
+      dependencies: Object.keys(pkg.dependencies || {}),
+      devDependencies: Object.keys(pkg.devDependencies || {}),
+      scripts: pkg.scripts || {},
+    }
+  } catch {
+    return { dependencies: [], devDependencies: [], scripts: {} }
+  }
+}
+
+// Code-Pattern-Suche: Findet bestimmte Patterns in den bestehenden Dateien
+function searchCodePatterns(files: { path: string; content: string }[], patterns: string[]): { pattern: string; matches: { file: string; line: number; context: string }[] }[] {
+  const results: { pattern: string; matches: { file: string; line: number; context: string }[] }[] = []
+  
+  for (const pattern of patterns) {
+    const matches: { file: string; line: number; context: string }[] = []
+    const regex = new RegExp(pattern, 'gi')
+    
+    for (const file of files) {
+      const lines = file.content.split('\n')
+      lines.forEach((line, index) => {
+        if (regex.test(line)) {
+          matches.push({
+            file: file.path,
+            line: index + 1,
+            context: line.trim().substring(0, 100),
+          })
+        }
+        regex.lastIndex = 0 // Reset regex
+      })
+    }
+    
+    if (matches.length > 0) {
+      results.push({ pattern, matches: matches.slice(0, 5) }) // Max 5 Matches pro Pattern
+    }
+  }
+  
+  return results
+}
+
+// Komponenten-Analyse: Findet alle React-Komponenten in den Dateien
+function analyzeComponents(files: { path: string; content: string }[]): { name: string; file: string; hasState: boolean; hasEffects: boolean; props: string[] }[] {
+  const components: { name: string; file: string; hasState: boolean; hasEffects: boolean; props: string[] }[] = []
+  
+  for (const file of files) {
+    if (!file.path.endsWith('.tsx') && !file.path.endsWith('.jsx')) continue
+    
+    // Finde Funktions-Komponenten
+    const funcMatches = file.content.matchAll(/export\s+(default\s+)?function\s+(\w+)\s*\(([^)]*)\)/g)
+    for (const match of funcMatches) {
+      const name = match[2]
+      const propsStr = match[3]
+      
+      components.push({
+        name,
+        file: file.path,
+        hasState: file.content.includes('useState'),
+        hasEffects: file.content.includes('useEffect'),
+        props: propsStr ? propsStr.split(',').map(p => p.trim().split(':')[0].replace(/[{}]/g, '').trim()).filter(Boolean) : [],
+      })
+    }
+  }
+  
+  return components
 }
 
 interface ParsedCodeFile {
@@ -1037,6 +1110,55 @@ ${fileContexts.join("\n\n")}
       const enabledTools = config.tools?.filter((t: { enabled: boolean }) => t.enabled) || []
       let toolsContext = ""
       
+      // INTELLIGENTE CODE-ANALYSE für Coder (automatisch aktiviert)
+      if (agentType === "coder" && existingFiles.length > 0) {
+        const analysisContext: string[] = []
+        
+        // Komponenten-Analyse
+        const components = analyzeComponents(existingFiles)
+        if (components.length > 0) {
+          analysisContext.push(`\n## 📊 KOMPONENTEN-ANALYSE (${components.length} gefunden):`)
+          for (const comp of components.slice(0, 10)) {
+            const features = [
+              comp.hasState ? "State" : "",
+              comp.hasEffects ? "Effects" : "",
+              comp.props.length > 0 ? `Props: ${comp.props.join(", ")}` : ""
+            ].filter(Boolean).join(", ")
+            analysisContext.push(`- **${comp.name}** (${comp.file})${features ? ` [${features}]` : ""}`)
+          }
+        }
+        
+        // Dependency-Analyse
+        const packageJson = existingFiles.find(f => f.path.includes("package.json"))
+        if (packageJson) {
+          const deps = analyzeDependencies(packageJson.content)
+          if (deps.dependencies.length > 0) {
+            analysisContext.push(`\n## 📦 VERFÜGBARE PACKAGES:`)
+            analysisContext.push(`Dependencies: ${deps.dependencies.join(", ")}`)
+            if (deps.devDependencies.length > 0) {
+              analysisContext.push(`DevDeps: ${deps.devDependencies.join(", ")}`)
+            }
+          }
+        }
+        
+        // Pattern-Suche für häufige Probleme
+        const criticalPatterns = searchCodePatterns(existingFiles, [
+          'export\\s+default.*export\\s+default', // Doppelte exports
+          'createContext.*Provider', // Context Pattern
+          'useState|useEffect|useCallback', // Hooks
+        ])
+        if (criticalPatterns.length > 0) {
+          analysisContext.push(`\n## 🔍 CODE-PATTERNS GEFUNDEN:`)
+          for (const p of criticalPatterns) {
+            analysisContext.push(`- Pattern "${p.pattern}": ${p.matches.length} Treffer`)
+          }
+        }
+        
+        if (analysisContext.length > 0) {
+          toolsContext += analysisContext.join("\n")
+        }
+      }
+      
       if (enabledTools.length > 0) {
         const toolDescriptions: string[] = []
         
@@ -1057,17 +1179,11 @@ ${fileContexts.join("\n\n")}
               toolDescriptions.push(`- **${toolName}**: Du kannst Dateien erstellen und modifizieren. Gib Code in \`\`\`typescript // filepath: Dateiname.tsx\`\`\` Blöcken aus.`)
               break
             case "dependency_analyzer":
-              // Analysiere package.json wenn vorhanden
-              const packageJson = existingFiles.find(f => f.path.includes("package.json"))
-              if (packageJson) {
-                try {
-                  const pkg = JSON.parse(packageJson.content)
-                  const deps = Object.keys(pkg.dependencies || {}).join(", ")
-                  const devDeps = Object.keys(pkg.devDependencies || {}).join(", ")
-                  toolDescriptions.push(`- **${toolName}**: Dependencies: ${deps || "keine"} | DevDeps: ${devDeps || "keine"}`)
-                } catch {
-                  toolDescriptions.push(`- **${toolName}**: package.json vorhanden aber nicht parsebar.`)
-                }
+              // Nutze die neue analyzeDependencies Funktion
+              const pkgJson = existingFiles.find(f => f.path.includes("package.json"))
+              if (pkgJson) {
+                const deps = analyzeDependencies(pkgJson.content)
+                toolDescriptions.push(`- **${toolName}**: Dependencies: ${deps.dependencies.join(", ") || "keine"} | DevDeps: ${deps.devDependencies.join(", ") || "keine"}`)
               } else {
                 toolDescriptions.push(`- **${toolName}**: Keine package.json gefunden.`)
               }
