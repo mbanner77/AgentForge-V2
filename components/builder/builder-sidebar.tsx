@@ -136,7 +136,7 @@ export function BuilderSidebar({ onClose }: BuilderSidebarProps) {
   }
 
   return (
-    <div className="flex h-full w-80 flex-col border-r border-border bg-card">
+    <div className="flex h-full w-96 flex-col border-r border-border bg-card">
       <div className="flex h-14 items-center justify-between border-b border-border px-4">
         <div className="flex items-center gap-2">
           <Image src="/images/realcore-logo.png" alt="RealCore Logo" width={100} height={24} className="h-6 w-auto" />
