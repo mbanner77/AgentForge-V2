@@ -749,15 +749,15 @@ export function useAgentExecutor() {
       if (agentType === "planner" || agentType === "coder") {
         config.systemPrompt = getEnvironmentPrompt(agentType, targetEnv)
         console.log(`[Agent Executor] Verwende ${targetEnv}-Prompt für ${agentType}`)
-        
-        // Füge Deployment-Target spezifischen Prompt hinzu
-        const deployTarget = (globalConfig as { deploymentTarget?: string }).deploymentTarget as DeploymentTarget
-        if (deployTarget) {
-          const deployPrompt = getDeploymentTargetPrompt(agentType, deployTarget)
-          if (deployPrompt) {
-            config.systemPrompt += "\n\n" + deployPrompt
-            console.log(`[Agent Executor] Deployment-Target ${deployTarget} Prompt für ${agentType} hinzugefügt`)
-          }
+      }
+      
+      // Füge Deployment-Target spezifischen Prompt für ALLE Agenten hinzu
+      const deployTarget = (globalConfig as { deploymentTarget?: string }).deploymentTarget as DeploymentTarget
+      if (deployTarget) {
+        const deployPrompt = getDeploymentTargetPrompt(agentType, deployTarget)
+        if (deployPrompt) {
+          config.systemPrompt += "\n\n" + deployPrompt
+          console.log(`[Agent Executor] Deployment-Target ${deployTarget} Prompt für ${agentType} hinzugefügt`)
         }
       }
       

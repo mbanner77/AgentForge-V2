@@ -315,7 +315,7 @@ export const getEnvironmentPrompt = (agent: "planner" | "coder", environment: "s
 // Deployment-Target spezifische Prompt-Erweiterungen
 export type DeploymentTarget = "vercel" | "render" | "btp" | "github-only" | null
 
-export const deploymentTargetPrompts: Record<string, { planner: string; coder: string }> = {
+export const deploymentTargetPrompts: Record<string, { planner: string; coder: string; reviewer: string; security: string; executor: string }> = {
   render: {
     planner: `
 ## 🚀 DEPLOYMENT-ZIEL: RENDER.COM (Next.js)
@@ -400,6 +400,48 @@ In Client-Komponenten (MIT "use client") ist metadata VERBOTEN!
 ✅ export default function für Seiten
 ✅ @/components/X für Imports
 ✅ CSS nur in layout.tsx importieren`,
+
+    reviewer: `
+## 🚀 RENDER.COM DEPLOYMENT - REVIEW FOKUS
+Prüfe speziell für Render.com Deployment:
+
+**KRITISCHE FEHLER (Build wird fehlschlagen):**
+❌ "export const metadata" in Dateien mit "use client" → MUSS ENTFERNT WERDEN
+❌ "import type { Metadata } from 'next'" in Client-Komponenten
+❌ src/main.tsx, src/App.tsx → FALSCHES FRAMEWORK (Vite statt Next.js)
+❌ ReactDOM.createRoot() → VERBOTEN in Next.js
+❌ import "./globals.css" in Komponenten → NUR in layout.tsx erlaubt
+❌ package.json, tsconfig.json vom Agent generiert → WERDEN AUTOMATISCH ERSTELLT
+
+**STRUKTUR-CHECK:**
+✅ app/page.tsx als Hauptseite vorhanden?
+✅ "use client" am Anfang von Client-Komponenten?
+✅ components/*.tsx für wiederverwendbare Komponenten?
+✅ Imports mit @/components/X?
+
+**BEI FEHLERN:**
+Gib KONKRETE KORREKTUREN mit vollständigem Code aus!`,
+
+    security: `
+## 🚀 RENDER.COM DEPLOYMENT - SECURITY FOKUS
+Prüfe speziell für Render.com Deployment:
+
+**RENDER-SPEZIFISCHE SICHERHEIT:**
+- Keine hardcodierten API-Keys oder Secrets
+- Environment Variables über Render Dashboard, nicht im Code
+- HTTPS wird von Render automatisch bereitgestellt
+- CORS-Einstellungen für API-Routes prüfen
+
+**NEXT.JS SICHERHEIT:**
+- Server Components für sensible Operationen nutzen
+- API Routes unter app/api/ für Backend-Logik
+- Keine sensiblen Daten in Client-Komponenten`,
+
+    executor: `
+## 🚀 RENDER.COM DEPLOYMENT
+Deployment-Ziel ist Render.com mit Next.js.
+Build-Command: npm install && npm run build
+Start-Command: npm start`,
   },
   
   vercel: {
@@ -409,6 +451,15 @@ Das Projekt wird auf Vercel deployed. Nutze Next.js App Router Struktur.`,
     coder: `
 ## 🔺 DEPLOYMENT-ZIEL: VERCEL (Next.js)
 Nutze Next.js App Router Struktur mit app/ Verzeichnis.`,
+    reviewer: `
+## 🔺 VERCEL DEPLOYMENT - REVIEW FOKUS
+Prüfe für Vercel: Next.js App Router Struktur, Edge Functions, ISR Konfiguration.`,
+    security: `
+## 🔺 VERCEL DEPLOYMENT - SECURITY
+Prüfe: Environment Variables, Edge Function Limits, API Route Security.`,
+    executor: `
+## 🔺 VERCEL DEPLOYMENT
+Deployment über Vercel CLI oder GitHub Integration.`,
   },
   
   btp: {
@@ -418,13 +469,24 @@ Das Projekt wird auf SAP Business Technology Platform deployed.`,
     coder: `
 ## 🏢 DEPLOYMENT-ZIEL: SAP BTP
 Generiere SAP Fiori / SAPUI5 kompatiblen Code.`,
+    reviewer: `
+## 🏢 SAP BTP DEPLOYMENT - REVIEW FOKUS
+Prüfe: MTA Struktur, xs-security.json, CDS Modelle, Fiori Elements Annotations.`,
+    security: `
+## 🏢 SAP BTP DEPLOYMENT - SECURITY
+Prüfe: XSUAA Konfiguration, OAuth2 Scopes, Destination Security, Content Security Policy.`,
+    executor: `
+## 🏢 SAP BTP DEPLOYMENT
+Build mit MTA Build Tool, Deploy über CF CLI.`,
   },
 }
 
 // Hilfsfunktion für Deployment-Target Prompt
-export const getDeploymentTargetPrompt = (agent: "planner" | "coder", target: DeploymentTarget): string => {
+export const getDeploymentTargetPrompt = (agent: string, target: DeploymentTarget): string => {
   if (!target || target === "github-only") return ""
-  return deploymentTargetPrompts[target]?.[agent] || ""
+  const targetPrompts = deploymentTargetPrompts[target]
+  if (!targetPrompts) return ""
+  return targetPrompts[agent as keyof typeof targetPrompts] || ""
 }
 
 // Iterations-spezifische Prompt-Erweiterungen
