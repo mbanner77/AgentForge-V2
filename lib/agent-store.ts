@@ -391,67 +391,79 @@ Das Projekt wird auf Render.com deployed. WICHTIGE REGELN:
     coder: `
 ## 🚀 DEPLOYMENT-ZIEL: RENDER.COM (Next.js) - STRIKTE REGELN
 
-**WICHTIG: Generiere NUR diese Dateien:**
-1. \`app/page.tsx\` - Die Hauptseite (PFLICHT!)
-2. \`components/*.tsx\` - Komponenten
+## KRITISCH - MEHRERE DATEIEN SIND PFLICHT!
+Du MUSST für jede Komponente eine SEPARATE Datei unter \`components/\` erstellen!
+NIEMALS alle Komponenten in \`app/page.tsx\` packen!
 
-**EXAKTES FORMAT - KOPIERE DIESE STRUKTUR:**
+**PFLICHT-STRUKTUR (IMMER einhalten):**
+1. \`app/page.tsx\` - NUR die Hauptseite, importiert Komponenten
+2. \`components/Header.tsx\` - Header-Komponente
+3. \`components/Calendar.tsx\` - Kalender oder Hauptfeature
+4. \`components/EventList.tsx\` - Listen, etc.
+
+**BEISPIEL MIT MEHREREN DATEIEN:**
+
+\`\`\`typescript
+// filepath: components/Calendar.tsx
+"use client";
+
+import { useState } from "react";
+
+export function Calendar() {
+  const [date, setDate] = useState(new Date());
+  
+  return (
+    <div className="p-4 bg-gray-800 rounded-lg">
+      {/* Calendar UI */}
+    </div>
+  );
+}
+\`\`\`
+
+\`\`\`typescript
+// filepath: components/EventList.tsx
+"use client";
+
+import { useState } from "react";
+
+export function EventList() {
+  return (
+    <div className="p-4">
+      {/* Event List UI */}
+    </div>
+  );
+}
+\`\`\`
 
 \`\`\`typescript
 // filepath: app/page.tsx
 "use client";
 
 import { useState } from "react";
-import { MyComponent } from "@/components/MyComponent";
+import { Calendar } from "@/components/Calendar";
+import { EventList } from "@/components/EventList";
 
 export default function Page() {
   return (
-    <main className="min-h-screen p-8">
-      <MyComponent />
+    <main className="min-h-screen p-8 bg-gray-900">
+      <Calendar />
+      <EventList />
     </main>
   );
 }
 \`\`\`
 
-\`\`\`typescript
-// filepath: components/MyComponent.tsx
-"use client";
-
-import { useState } from "react";
-
-export function MyComponent() {
-  const [value, setValue] = useState("");
-  
-  return (
-    <div className="p-4">
-      {/* Dein UI Code hier */}
-    </div>
-  );
-}
-\`\`\`
-
 **CHECKLISTE VOR AUSGABE:**
-□ Jede Datei beginnt mit \`// filepath: PFAD\`
-□ \`app/page.tsx\` existiert mit \`export default function Page()\`
-□ Alle Komponenten haben \`"use client";\` als ERSTE Zeile
-□ Imports nutzen \`@/components/Name\` (nicht relative Pfade)
-□ KEIN \`export const metadata\` in Client-Komponenten
-□ KEINE CSS-Imports (kein \`import "./styles.css"\`)
+✓ Hat JEDE Komponente ihre EIGENE Datei unter components/?
+✓ Jede Datei beginnt mit \`// filepath: PFAD\`
+✓ \`app/page.tsx\` importiert Komponenten mit \`@/components/Name\`
+✓ Alle Komponenten haben \`"use client";\` als ERSTE Zeile
 
 **ABSOLUT VERBOTEN:**
-❌ App.tsx, main.tsx, index.tsx - EXISTIEREN NICHT IN NEXT.JS
-❌ ReactDOM.createRoot() - VERBOTEN
-❌ import from "react-dom/client" - VERBOTEN
-❌ package.json, tsconfig.json - WERDEN AUTOMATISCH ERSTELLT
-❌ layout.tsx - WIRD AUTOMATISCH ERSTELLT
-❌ export const metadata - NUR IN SERVER COMPONENTS ERLAUBT
-❌ import "./globals.css" - NUR IN LAYOUT ERLAUBT
-
-**FEHLER-BEISPIELE DIE DU VERMEIDEN MUSST:**
-❌ FALSCH: \`export default function App()\` → ✅ RICHTIG: \`export default function Page()\`
-❌ FALSCH: \`src/App.tsx\` → ✅ RICHTIG: \`app/page.tsx\`
-❌ FALSCH: \`import "./App.css"\` → ✅ RICHTIG: Tailwind Classes nutzen
-❌ FALSCH: \`export const metadata = {...}\` in "use client" → ✅ RICHTIG: Entfernen`,
+❌ Alle Komponenten in app/page.tsx definieren
+❌ App.tsx, main.tsx, index.tsx
+❌ ReactDOM.createRoot()
+❌ package.json, tsconfig.json, layout.tsx (werden automatisch erstellt)`,
 
     reviewer: `
 ## 🚀 RENDER.COM DEPLOYMENT - REVIEW FOKUS
@@ -533,48 +545,72 @@ Das Projekt wird auf Netlify deployed. WICHTIGE REGELN:
     coder: `
 ## 🌐 DEPLOYMENT-ZIEL: NETLIFY (Next.js) - STRIKTE REGELN
 
-**WICHTIG: Generiere NUR diese Dateien:**
-1. \`app/page.tsx\` - Die Hauptseite (PFLICHT!)
-2. \`components/*.tsx\` - Komponenten
+## KRITISCH - MEHRERE DATEIEN SIND PFLICHT!
+Du MUSST für jede Komponente eine SEPARATE Datei unter \`components/\` erstellen!
+NIEMALS alle Komponenten in \`app/page.tsx\` packen!
 
-**EXAKTES FORMAT - KOPIERE DIESE STRUKTUR:**
+**PFLICHT-STRUKTUR (IMMER einhalten):**
+1. \`app/page.tsx\` - NUR die Hauptseite, importiert Komponenten
+2. \`components/Header.tsx\` - Header-Komponente
+3. \`components/Calendar.tsx\` - Kalender oder Hauptfeature
+4. \`components/EventList.tsx\` - Listen, etc.
+
+**BEISPIEL MIT MEHREREN DATEIEN:**
+
+\`\`\`typescript
+// filepath: components/Calendar.tsx
+"use client";
+
+import { useState } from "react";
+
+export function Calendar() {
+  const [date, setDate] = useState(new Date());
+  
+  return (
+    <div className="p-4 bg-gray-800 rounded-lg">
+      {/* Calendar UI */}
+    </div>
+  );
+}
+\`\`\`
+
+\`\`\`typescript
+// filepath: components/EventList.tsx
+"use client";
+
+import { useState } from "react";
+
+export function EventList() {
+  return (
+    <div className="p-4">
+      {/* Event List UI */}
+    </div>
+  );
+}
+\`\`\`
 
 \`\`\`typescript
 // filepath: app/page.tsx
 "use client";
 
 import { useState } from "react";
-import { MyComponent } from "@/components/MyComponent";
+import { Calendar } from "@/components/Calendar";
+import { EventList } from "@/components/EventList";
 
 export default function Page() {
   return (
-    <main className="min-h-screen p-8">
-      <MyComponent />
+    <main className="min-h-screen p-8 bg-gray-900">
+      <Calendar />
+      <EventList />
     </main>
   );
 }
 \`\`\`
 
-\`\`\`typescript
-// filepath: components/MyComponent.tsx
-"use client";
-
-import { useState } from "react";
-
-export function MyComponent() {
-  const [value, setValue] = useState("");
-  
-  return (
-    <div className="p-4">
-      {/* Dein UI Code hier */}
-    </div>
-  );
-}
-\`\`\`
-
 **CHECKLISTE VOR AUSGABE:**
-□ Jede Datei beginnt mit \`// filepath: PFAD\`
-□ \`app/page.tsx\` existiert mit \`export default function Page()\`
+✓ Hat JEDE Komponente ihre EIGENE Datei unter components/?
+✓ Jede Datei beginnt mit \`// filepath: PFAD\`
+✓ \`app/page.tsx\` importiert Komponenten mit \`@/components/Name\`
 □ Alle Komponenten haben \`"use client";\` als ERSTE Zeile
 □ Imports nutzen \`@/components/Name\` (nicht relative Pfade)
 
