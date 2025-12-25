@@ -396,15 +396,20 @@ export function BuilderSidebar({ onClose }: BuilderSidebarProps) {
                       <div className="space-y-2">
                         <div className="flex items-center justify-between">
                           <Label className="text-sm">Max Tokens</Label>
-                          <span className="text-xs text-muted-foreground">{config.maxTokens}</span>
+                          <span className="text-xs text-muted-foreground">{config.maxTokens.toLocaleString()}</span>
                         </div>
                         <Slider
                           value={[config.maxTokens]}
                           onValueChange={([maxTokens]) => updateAgentConfig(agentType, { maxTokens })}
-                          min={500}
-                          max={8000}
-                          step={100}
+                          min={1000}
+                          max={agentType === "coder" ? 64000 : 16000}
+                          step={1000}
                         />
+                        {agentType === "coder" && (
+                          <p className="text-xs text-muted-foreground">
+                            Für komplexe Apps: 16000-32000 empfohlen
+                          </p>
+                        )}
                       </div>
 
                       {/* System Prompt */}
