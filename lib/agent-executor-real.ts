@@ -88,13 +88,13 @@ function searchCodePatterns(files: { path: string; content: string }[], patterns
 }
 
 // Komponenten-Analyse: Findet alle React-Komponenten in den Dateien
-function analyzeComponents(files: { path: string; content: string }[]): { name: string; file: string; hasState: boolean; hasEffects: boolean; props: string[] }[] {
-  const components: { name: string; file: string; hasState: boolean; hasEffects: boolean; props: string[] }[] = []
+function analyzeComponents(files: { path: string; content: string }[]): { name: string; file: string; hasState: boolean; hasEffects: boolean; props: string[]; type: 'function' | 'arrow' | 'class' }[] {
+  const components: { name: string; file: string; hasState: boolean; hasEffects: boolean; props: string[]; type: 'function' | 'arrow' | 'class' }[] = []
   
   for (const file of files) {
     if (!file.path.endsWith('.tsx') && !file.path.endsWith('.jsx')) continue
     
-    // Finde Funktions-Komponenten
+    // Finde Funktions-Komponenten: export function Name() oder export default function Name()
     const funcMatches = file.content.matchAll(/export\s+(default\s+)?function\s+(\w+)\s*\(([^)]*)\)/g)
     for (const match of funcMatches) {
       const name = match[2]
@@ -106,7 +106,44 @@ function analyzeComponents(files: { path: string; content: string }[]): { name: 
         hasState: file.content.includes('useState'),
         hasEffects: file.content.includes('useEffect'),
         props: propsStr ? propsStr.split(',').map(p => p.trim().split(':')[0].replace(/[{}]/g, '').trim()).filter(Boolean) : [],
+        type: 'function',
       })
+    }
+    
+    // Finde Arrow-Function Komponenten: export const Name = () => oder const Name: React.FC = ()
+    const arrowMatches = file.content.matchAll(/(?:export\s+)?const\s+(\w+)(?::\s*(?:React\.)?FC[^=]*)?\s*=\s*(?:\([^)]*\)|[^=])\s*=>/g)
+    for (const match of arrowMatches) {
+      const name = match[1]
+      // Prüfe ob es eine Komponente ist (startet mit Großbuchstabe und gibt JSX zurück)
+      if (name[0] === name[0].toUpperCase() && (file.content.includes(`<`) || file.content.includes('return'))) {
+        // Vermeide Duplikate
+        if (!components.some(c => c.name === name && c.file === file.path)) {
+          components.push({
+            name,
+            file: file.path,
+            hasState: file.content.includes('useState'),
+            hasEffects: file.content.includes('useEffect'),
+            props: [],
+            type: 'arrow',
+          })
+        }
+      }
+    }
+    
+    // Finde forwardRef Komponenten: forwardRef<Type, Props>((props, ref) => ...)
+    const forwardRefMatches = file.content.matchAll(/(?:export\s+)?const\s+(\w+)\s*=\s*(?:React\.)?forwardRef/g)
+    for (const match of forwardRefMatches) {
+      const name = match[1]
+      if (!components.some(c => c.name === name && c.file === file.path)) {
+        components.push({
+          name,
+          file: file.path,
+          hasState: file.content.includes('useState'),
+          hasEffects: file.content.includes('useEffect'),
+          props: [],
+          type: 'arrow',
+        })
+      }
     }
   }
   
@@ -1365,12 +1402,13 @@ ${previousOutput}
         if (components.length > 0) {
           analysisContext.push(`\n## 📊 KOMPONENTEN-ANALYSE (${components.length} gefunden):`)
           for (const comp of components.slice(0, 10)) {
+            const typeIcon = comp.type === 'arrow' ? '→' : comp.type === 'function' ? 'ƒ' : '©'
             const features = [
               comp.hasState ? "State" : "",
               comp.hasEffects ? "Effects" : "",
               comp.props.length > 0 ? `Props: ${comp.props.join(", ")}` : ""
             ].filter(Boolean).join(", ")
-            analysisContext.push(`- **${comp.name}** (${comp.file})${features ? ` [${features}]` : ""}`)
+            analysisContext.push(`- ${typeIcon} **${comp.name}** (${comp.file})${features ? ` [${features}]` : ""}`)
           }
         }
         
@@ -1559,16 +1597,22 @@ ${previousOutput}
         console.log(`[Agent Executor] Iterations-Modus für ${agentType} aktiviert (${existingFiles.length} bestehende Dateien)`)
       }
 
+      const systemContent = config.systemPrompt + iterationContext + projectContext + filesContext + toolsContext + mcpContext + (ragContext ? `\n\n${ragContext}` : "")
+      const userContent = userRequest + previousContext
+      
       const messages: { role: "system" | "user" | "assistant"; content: string }[] = [
-        {
-          role: "system",
-          content: config.systemPrompt + iterationContext + projectContext + filesContext + toolsContext + mcpContext + (ragContext ? `\n\n${ragContext}` : ""),
-        },
-        {
-          role: "user",
-          content: userRequest + previousContext,
-        },
+        { role: "system", content: systemContent },
+        { role: "user", content: userContent },
       ]
+
+      // CACHE-CHECK: Prüfe ob identische Anfrage bereits beantwortet wurde
+      const cacheKey = getCacheKey(agentType, userRequest, filesContext)
+      const cachedResponse = getFromCache(cacheKey)
+      if (cachedResponse && agentType !== "coder") {
+        // Cache nur für nicht-Coder Agenten nutzen (Coder sollte immer frisch generieren)
+        console.log(`[Agent Executor] Cache-Hit für ${agentType}`)
+        return cachedResponse
+      }
 
       // Retry-Logik für robustere Agent-Ausführung
       let lastError: Error | null = null
@@ -1687,10 +1731,11 @@ ${previousOutput}
         }
       }
 
-      return {
-        content: response.content,
-        files,
-      }
+      // CACHE-SET: Speichere erfolgreiche Antwort im Cache
+      const result = { content: response.content, files }
+      setCache(cacheKey, result.content, result.files)
+      
+      return result
     },
     [agentConfigs, globalConfig, currentProject, getFiles, customAgentConfigs]
   )
