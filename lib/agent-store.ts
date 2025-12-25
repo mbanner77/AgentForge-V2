@@ -415,53 +415,104 @@ Das Projekt wird auf Render.com deployed. WICHTIGE REGELN:
 - vite.config.ts`,
 
     coder: `
-## 🚀 DEPLOYMENT-ZIEL: RENDER.COM (Next.js) - STRIKTE REGELN
+## 🚀 RENDER.COM (Next.js) - FEHLERFREIE CODE-GENERIERUNG
 
-## ❌ FATALER FEHLER VERMEIDEN: DOPPELTE EXPORTS!
-- NIEMALS zwei \`export default\` in einer Datei!
-- NIEMALS Context, Provider, Hooks in \`app/page.tsx\` definieren!
-- Context/Provider → \`components/CalendarContext.tsx\`
-- Hooks → In der Context-Datei oder \`hooks/\` Ordner
+## 🔴 KRITISCHE REGELN (Build-Fehler wenn nicht befolgt!):
 
-## KRITISCH - MEHRERE DATEIEN SIND PFLICHT!
-Du MUSST für jede Komponente eine SEPARATE Datei unter \`components/\` erstellen!
-NIEMALS alle Komponenten in \`app/page.tsx\` packen!
+### 1. DATEI-STRUKTUR
+- \`app/page.tsx\` - NUR Hauptseite, EINE export default, importiert alle Komponenten
+- \`components/*.tsx\` - JEDE Komponente in eigener Datei
+- \`components/*Context.tsx\` - Context + Provider + Hook zusammen
 
-**PFLICHT-STRUKTUR (IMMER einhalten):**
-1. \`app/page.tsx\` - NUR die Hauptseite (EINE export default!)
-2. \`components/CalendarContext.tsx\` - Context + Provider + useCalendar Hook
-3. \`components/Calendar.tsx\` - Kalender-Komponente
-4. \`components/EventList.tsx\` - Listen, etc.
+### 2. JEDE DATEI MUSS HABEN:
+\`\`\`
+"use client";                    // ERSTE Zeile (vor allen imports!)
+import { ... } from "react";     // React imports
+import { X } from "@/components/X"; // Komponenten-Imports mit @/
+// ... Code
+export function Name() { ... }   // EINE Funktion pro Datei
+\`\`\`
 
-**BEISPIEL MIT MEHREREN DATEIEN:**
+### 3. IMPORT-REGELN (STRIKT!):
+- \`@/components/Calendar\` ✓ (NICHT \`./Calendar\` oder \`../components/Calendar\`)
+- \`@/components/CalendarContext\` ✓ für Context
+- Nur named exports: \`export function X\` (NICHT \`export default function\` in components/)
+- app/page.tsx: \`export default function Page()\`
+
+### 4. TYPESCRIPT FEHLER VERMEIDEN:
+- ALLE Interfaces/Types VOR der Komponente definieren
+- Props IMMER typisieren: \`function Button({ onClick }: { onClick: () => void })\`
+- State typisieren: \`useState<Event[]>([])\`
+- KEINE \`any\` Types verwenden!
+
+### 5. VOLLSTÄNDIGKEIT:
+- ALLE imports die verwendet werden müssen vorhanden sein
+- ALLE Funktionen müssen implementiert sein (KEINE \`// TODO\` oder \`...\`)
+- ALLE Event-Handler müssen definiert sein
+- JSX muss vollständig und geschlossen sein
+
+## BEISPIEL EINER FEHLERFREIEN APP:
+
+\`\`\`typescript
+// filepath: components/CalendarContext.tsx
+"use client";
+
+import { createContext, useContext, useState, useCallback, ReactNode } from "react";
+
+interface CalendarEvent {
+  id: string;
+  title: string;
+  date: Date;
+}
+
+interface CalendarContextType {
+  events: CalendarEvent[];
+  addEvent: (event: Omit<CalendarEvent, "id">) => void;
+  deleteEvent: (id: string) => void;
+}
+
+const CalendarContext = createContext<CalendarContextType | null>(null);
+
+export function useCalendar() {
+  const context = useContext(CalendarContext);
+  if (!context) throw new Error("useCalendar must be used within CalendarProvider");
+  return context;
+}
+
+export function CalendarProvider({ children }: { children: ReactNode }) {
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
+  
+  const addEvent = useCallback((event: Omit<CalendarEvent, "id">) => {
+    setEvents(prev => [...prev, { ...event, id: crypto.randomUUID() }]);
+  }, []);
+  
+  const deleteEvent = useCallback((id: string) => {
+    setEvents(prev => prev.filter(e => e.id !== id));
+  }, []);
+  
+  return (
+    <CalendarContext.Provider value={{ events, addEvent, deleteEvent }}>
+      {children}
+    </CalendarContext.Provider>
+  );
+}
+\`\`\`
 
 \`\`\`typescript
 // filepath: components/Calendar.tsx
 "use client";
 
 import { useState } from "react";
+import { useCalendar } from "@/components/CalendarContext";
 
 export function Calendar() {
-  const [date, setDate] = useState(new Date());
+  const { events, addEvent } = useCalendar();
+  const [currentDate, setCurrentDate] = useState(new Date());
   
   return (
     <div className="p-4 bg-gray-800 rounded-lg">
-      {/* Calendar UI */}
-    </div>
-  );
-}
-\`\`\`
-
-\`\`\`typescript
-// filepath: components/EventList.tsx
-"use client";
-
-import { useState } from "react";
-
-export function EventList() {
-  return (
-    <div className="p-4">
-      {/* Event List UI */}
+      <h2 className="text-xl font-bold text-white mb-4">Kalender</h2>
+      {/* Vollständige Implementierung */}
     </div>
   );
 }
@@ -471,31 +522,27 @@ export function EventList() {
 // filepath: app/page.tsx
 "use client";
 
-import { useState } from "react";
+import { CalendarProvider } from "@/components/CalendarContext";
 import { Calendar } from "@/components/Calendar";
-import { EventList } from "@/components/EventList";
 
 export default function Page() {
   return (
-    <main className="min-h-screen p-8 bg-gray-900">
-      <Calendar />
-      <EventList />
-    </main>
+    <CalendarProvider>
+      <main className="min-h-screen p-8 bg-gray-900 text-white">
+        <h1 className="text-3xl font-bold mb-8">Kalender App</h1>
+        <Calendar />
+      </main>
+    </CalendarProvider>
   );
 }
 \`\`\`
 
-**CHECKLISTE VOR AUSGABE:**
-✓ Hat JEDE Komponente ihre EIGENE Datei unter components/?
-✓ Jede Datei beginnt mit \`// filepath: PFAD\`
-✓ \`app/page.tsx\` importiert Komponenten mit \`@/components/Name\`
-✓ Alle Komponenten haben \`"use client";\` als ERSTE Zeile
-
-**ABSOLUT VERBOTEN:**
-❌ Alle Komponenten in app/page.tsx definieren
-❌ App.tsx, main.tsx, index.tsx
-❌ ReactDOM.createRoot()
-❌ package.json, tsconfig.json, layout.tsx (werden automatisch erstellt)`,
+## ⚠️ VOR JEDER AUSGABE SELBST-CHECK:
+□ Jede Datei beginnt mit "use client"; ?
+□ Alle Imports vorhanden und mit @/components/ ?
+□ Alle Types/Interfaces definiert?
+□ Keine export default in components/ (nur in app/page.tsx)?
+□ Code ist VOLLSTÄNDIG (keine ..., TODO, etc.)?`,
 
     reviewer: `
 ## 🚀 RENDER.COM DEPLOYMENT - REVIEW FOKUS

@@ -393,6 +393,7 @@ function validateAgentResult(
   const issues: string[] = []
   const criticalIssues: string[] = []
   let score = 100
+  const isNextJs = deploymentTarget && deploymentTarget !== "github-only"
 
   // Coder-Agent Validierung
   if (agentType === "coder") {
@@ -402,25 +403,88 @@ function validateAgentResult(
       score -= 40
     }
     
-    // KRITISCH: Prüfe auf doppelte export default (Build-Fehler!)
+    // Sammle alle Imports und Exports für Cross-File Validierung
+    const allExports = new Map<string, string[]>() // file -> exported names
+    const allImports = new Map<string, { from: string; names: string[] }[]>()
+    
     for (const file of files) {
+      // Sammle Exports
+      const exportMatches = file.content.matchAll(/export\s+(?:function|const|class)\s+(\w+)/g)
+      const exports: string[] = []
+      for (const match of exportMatches) {
+        exports.push(match[1])
+      }
+      allExports.set(file.path, exports)
+      
+      // Sammle Imports
+      const importMatches = file.content.matchAll(/import\s+\{([^}]+)\}\s+from\s+["']([^"']+)["']/g)
+      const imports: { from: string; names: string[] }[] = []
+      for (const match of importMatches) {
+        const names = match[1].split(',').map(n => n.trim())
+        imports.push({ from: match[2], names })
+      }
+      allImports.set(file.path, imports)
+    }
+    
+    for (const file of files) {
+      // KRITISCH: Prüfe auf doppelte export default (Build-Fehler!)
       const exportDefaultCount = (file.content.match(/export\s+default\s+function/g) || []).length
       if (exportDefaultCount > 1) {
-        criticalIssues.push(`FATAL: ${file.path} hat ${exportDefaultCount}x "export default" - Build wird fehlschlagen!`)
+        criticalIssues.push(`FATAL: ${file.path} hat ${exportDefaultCount}x "export default"`)
         score -= 50
       }
       
       // KRITISCH: Context/Provider in app/page.tsx (für Next.js)
-      if (file.path.includes("page.tsx") && deploymentTarget && deploymentTarget !== "github-only") {
-        if (file.content.includes("createContext") || file.content.includes("Provider")) {
-          criticalIssues.push(`FATAL: ${file.path} enthält Context/Provider - muss in components/ sein!`)
+      if (file.path.includes("page.tsx") && isNextJs) {
+        if (file.content.includes("createContext") || file.content.includes("Provider value=")) {
+          criticalIssues.push(`FATAL: ${file.path} enthält Context/Provider - muss in components/`)
           score -= 40
         }
       }
       
+      // KRITISCH: Fehlende "use client" bei Client-Komponenten (Next.js)
+      if (isNextJs && (file.path.endsWith('.tsx') || file.path.endsWith('.jsx'))) {
+        const hasClientCode = file.content.includes('useState') || 
+                             file.content.includes('useEffect') ||
+                             file.content.includes('onClick') ||
+                             file.content.includes('onChange')
+        const hasUseClient = file.content.trimStart().startsWith('"use client"') ||
+                            file.content.trimStart().startsWith("'use client'")
+        if (hasClientCode && !hasUseClient) {
+          criticalIssues.push(`FATAL: ${file.path} braucht "use client" (hat Client-Code)`)
+          score -= 30
+        }
+      }
+      
+      // KRITISCH: Relative Imports statt @/components (Next.js)
+      if (isNextJs) {
+        if (file.content.includes('from "./') || file.content.includes('from "../')) {
+          if (file.content.includes('/components/') || file.content.includes('Component')) {
+            criticalIssues.push(`FATAL: ${file.path} verwendet relative Imports - nutze @/components/`)
+            score -= 25
+          }
+        }
+      }
+      
+      // KRITISCH: Fehlende Imports prüfen
+      const fileImports = allImports.get(file.path) || []
+      for (const imp of fileImports) {
+        if (imp.from.startsWith('@/components/')) {
+          const targetFile = imp.from.replace('@/components/', 'components/') + '.tsx'
+          const targetExports = allExports.get(targetFile) || []
+          for (const name of imp.names) {
+            if (!targetExports.includes(name) && files.some(f => f.path === targetFile)) {
+              criticalIssues.push(`FATAL: ${file.path} importiert "${name}" aber ${targetFile} exportiert es nicht`)
+              score -= 20
+            }
+          }
+        }
+      }
+      
       // Unvollständiger Code
-      if (file.content.includes("// ... rest") || file.content.includes("// TODO") || file.content.includes("...")) {
-        issues.push(`${file.path}: Enthält unvollständigen Code (...)`)
+      if (file.content.includes("// ... rest") || file.content.includes("// TODO") || 
+          file.content.match(/\.\.\.[^.]/)) {
+        issues.push(`${file.path}: Enthält unvollständigen Code`)
         score -= 20
       }
       
@@ -1655,8 +1719,60 @@ ${previousOutput}
       // Parse Code-Dateien aus der Antwort (nur für Coder-Agent)
       const files = agentType === "coder" ? parseCodeFromResponse(response.content) : []
       
-      // Validiere Agent-Ergebnis
-      const validation = validateAgentResult(agentType, response.content, files)
+      // Hole deploymentTarget für Validierung (bereits oben als deployTarget definiert)
+      const currentDeployTarget = (globalConfig as { deploymentTarget?: string }).deploymentTarget as DeploymentTarget || null
+      
+      // Validiere Agent-Ergebnis mit Deployment-Target
+      const validation = validateAgentResult(agentType, response.content, files, currentDeployTarget)
+      
+      // Bei kritischen Fehlern: Automatische Korrektur
+      if (agentType === "coder" && validation.criticalIssues.length > 0) {
+        console.log(`[Agent Executor] ${validation.criticalIssues.length} kritische Fehler erkannt, starte Auto-Korrektur...`)
+        
+        const correctionPrompt = `
+## ⚠️ DEIN CODE HAT KRITISCHE FEHLER DIE DEN BUILD BRECHEN!
+
+${validation.criticalIssues.map(e => `❌ ${e}`).join('\n')}
+${validation.issues.length > 0 ? `\n⚠️ Weitere Probleme:\n${validation.issues.map(e => `- ${e}`).join('\n')}` : ''}
+
+## KORRIGIERE JETZT:
+1. Für JEDEN kritischen Fehler: Behebe ihn SOFORT
+2. Gib den VOLLSTÄNDIGEN korrigierten Code aus
+3. JEDE Datei muss mit "use client"; beginnen (Next.js)
+4. Imports MÜSSEN @/components/ verwenden
+5. KEINE export default in components/ Dateien
+
+Gib ALLE Dateien nochmal vollständig aus!`
+
+        const correctionMessages = [
+          ...messages,
+          { role: "assistant" as const, content: response.content },
+          { role: "user" as const, content: correctionPrompt }
+        ]
+        
+        try {
+          const correctionResponse = await sendChatRequest({
+            messages: correctionMessages,
+            model: config.model,
+            temperature: 0.1, // Sehr niedrig für konsistente Korrektur
+            maxTokens: config.maxTokens,
+            apiKey,
+            provider,
+          })
+          
+          const correctedFiles = parseCodeFromResponse(correctionResponse.content)
+          const correctedValidation = validateAgentResult(agentType, correctionResponse.content, correctedFiles, currentDeployTarget)
+          
+          // Wenn Korrektur besser ist, verwende sie
+          if (correctedValidation.criticalIssues.length < validation.criticalIssues.length ||
+              correctedValidation.score > validation.score) {
+            console.log(`[Agent Executor] Auto-Korrektur erfolgreich: ${validation.criticalIssues.length} → ${correctedValidation.criticalIssues.length} kritische Fehler`)
+            return { content: correctionResponse.content, files: correctedFiles }
+          }
+        } catch (correctionError) {
+          console.warn(`[Agent Executor] Auto-Korrektur fehlgeschlagen:`, correctionError)
+        }
+      }
       
       // Intelligente Fehler-Erkennung
       const detectedErrors = detectErrorsInOutput(response.content)
