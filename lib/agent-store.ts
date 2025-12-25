@@ -149,6 +149,12 @@ WICHTIG:
 
     coder: `Du bist ein AUTONOMER React-Entwickler. Du BEHEBST Fehler SELBSTSTÄNDIG.
 
+## 🧠 STRUKTURIERTES VORGEHEN (Task-by-Task)
+1. Analysiere JEDEN Task aus dem Planner-Output
+2. Für JEDEN Task: Erstelle die benötigten Dateien
+3. VALIDIERE deinen Output mental vor der Ausgabe
+4. Stelle sicher: KEINE doppelten exports, KEINE fehlenden Imports
+
 ## ⚠️ DEPLOYMENT-ZIEL HAT VORRANG!
 Wenn im Kontext ein DEPLOYMENT-ZIEL angegeben ist (Render, Netlify, Vercel):
 → Verwende Next.js: app/page.tsx + components/*.tsx + "use client" + @/components/X
@@ -160,10 +166,11 @@ NUR wenn KEIN Deployment-Ziel:
 ## KRITISCH - MEHRERE DATEIEN ERSTELLEN!
 Du MUSST für jede Komponente eine SEPARATE Datei erstellen!
 NIEMALS alle Komponenten in eine einzige Datei packen!
+NIEMALS Context/Provider in der Hauptdatei (page.tsx/App.tsx) definieren!
 
 ## DATEI-STRUKTUR:
-**Mit Deployment-Ziel:** app/page.tsx + components/*.tsx
-**Ohne Deployment-Ziel:** App.tsx + components/*.tsx
+**Mit Deployment-Ziel:** app/page.tsx + components/*.tsx + components/XContext.tsx
+**Ohne Deployment-Ziel:** App.tsx + components/*.tsx + components/XContext.tsx
 
 ## BEISPIEL MIT MEHREREN DATEIEN:
 
@@ -283,6 +290,12 @@ AUSGABE-FORMAT:
 
     coder: `Du bist ein AUTONOMER React-Entwickler. Du BEHEBST Fehler SELBSTSTÄNDIG.
 
+## 🧠 STRUKTURIERTES VORGEHEN (Task-by-Task)
+1. Analysiere JEDEN Task aus dem Planner-Output
+2. Für JEDEN Task: Erstelle die benötigten Dateien
+3. VALIDIERE deinen Output mental vor der Ausgabe
+4. Stelle sicher: KEINE doppelten exports, KEINE fehlenden Imports
+
 ## ⚠️ DEPLOYMENT-ZIEL HAT VORRANG!
 Wenn im Kontext ein DEPLOYMENT-ZIEL angegeben ist (Render, Netlify, Vercel):
 → Verwende Next.js: app/page.tsx + components/*.tsx + "use client" + @/components/X
@@ -294,6 +307,7 @@ NUR wenn KEIN Deployment-Ziel:
 ## KRITISCH - MEHRERE DATEIEN ERSTELLEN!
 Du MUSST für jede Komponente eine SEPARATE Datei erstellen!
 NIEMALS alle Komponenten in eine einzige Datei packen!
+NIEMALS Context/Provider in der Hauptdatei (page.tsx/App.tsx) definieren!
 
 ## DATEI-STRUKTUR (IMMER einhalten):
 1. **src/App.tsx** - Hauptkomponente, importiert alle anderen
@@ -999,8 +1013,8 @@ const createDefaultAgentConfig = (type: AgentType): AgentConfig => {
       name: "Coder Agent",
       enabled: true,
       model: "gpt-4o",
-      temperature: 0.2,
-      maxTokens: 8000,
+      temperature: 0.1, // Niedriger für konsistentere Outputs
+      maxTokens: 16000, // Erhöht für komplexe Apps
       systemPrompt: environmentPrompts.sandpack.coder, // Default: Sandpack
       autoRetry: true,
       streaming: true,

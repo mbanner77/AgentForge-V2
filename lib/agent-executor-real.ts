@@ -50,30 +50,47 @@ interface ParsedCodeFile {
 interface ValidationResult {
   isValid: boolean
   issues: string[]
+  criticalIssues: string[] // Fatale Fehler die Retry erfordern
   score: number // 0-100
 }
 
 function validateAgentResult(
   agentType: AgentType,
   content: string,
-  files: ParsedCodeFile[]
+  files: ParsedCodeFile[],
+  deploymentTarget?: DeploymentTarget
 ): ValidationResult {
   const issues: string[] = []
+  const criticalIssues: string[] = []
   let score = 100
 
   // Coder-Agent Validierung
   if (agentType === "coder") {
     // Muss mindestens eine Code-Datei enthalten
     if (files.length === 0) {
-      issues.push("Keine Code-Dateien generiert")
+      criticalIssues.push("Keine Code-Dateien generiert")
       score -= 40
     }
     
-    // Prüfe auf häufige Fehler
+    // KRITISCH: Prüfe auf doppelte export default (Build-Fehler!)
     for (const file of files) {
+      const exportDefaultCount = (file.content.match(/export\s+default\s+function/g) || []).length
+      if (exportDefaultCount > 1) {
+        criticalIssues.push(`FATAL: ${file.path} hat ${exportDefaultCount}x "export default" - Build wird fehlschlagen!`)
+        score -= 50
+      }
+      
+      // KRITISCH: Context/Provider in app/page.tsx (für Next.js)
+      if (file.path.includes("page.tsx") && deploymentTarget && deploymentTarget !== "github-only") {
+        if (file.content.includes("createContext") || file.content.includes("Provider")) {
+          criticalIssues.push(`FATAL: ${file.path} enthält Context/Provider - muss in components/ sein!`)
+          score -= 40
+        }
+      }
+      
       // Unvollständiger Code
-      if (file.content.includes("// ... rest") || file.content.includes("// TODO")) {
-        issues.push(`${file.path}: Enthält unvollständigen Code`)
+      if (file.content.includes("// ... rest") || file.content.includes("// TODO") || file.content.includes("...")) {
+        issues.push(`${file.path}: Enthält unvollständigen Code (...)`)
         score -= 20
       }
       
@@ -89,7 +106,27 @@ function validateAgentResult(
           issues.push(`${file.path}: Fehlende Imports`)
           score -= 15
         }
+        
+        // Prüfe auf fehlende "use client" für Next.js
+        if (deploymentTarget && deploymentTarget !== "github-only") {
+          if (file.content.includes("useState") || file.content.includes("useEffect")) {
+            if (!file.content.includes('"use client"') && !file.content.includes("'use client'")) {
+              issues.push(`${file.path}: Fehlende "use client" Direktive für Client-Komponente`)
+              score -= 10
+            }
+          }
+        }
       }
+    }
+    
+    // KRITISCH: Alle Komponenten in einer Datei?
+    const componentCount = files.reduce((count, f) => {
+      const matches = f.content.match(/export\s+(default\s+)?function\s+\w+/g) || []
+      return count + matches.length
+    }, 0)
+    if (componentCount > 3 && files.length === 1) {
+      criticalIssues.push(`WARNUNG: ${componentCount} Komponenten in nur 1 Datei - sollte aufgeteilt werden!`)
+      score -= 25
     }
     
     // Prüfe ob Antwort nur Anweisungen enthält statt Code
@@ -100,7 +137,7 @@ function validateAgentResult(
       /ersetze.*durch/i,
     ]
     if (instructionPatterns.some(p => p.test(content)) && files.length === 0) {
-      issues.push("Antwort enthält nur Anweisungen statt Code")
+      criticalIssues.push("Antwort enthält nur Anweisungen statt Code")
       score -= 50
     }
   }
@@ -124,8 +161,9 @@ function validateAgentResult(
   }
 
   return {
-    isValid: score >= 50,
+    isValid: score >= 50 && criticalIssues.length === 0,
     issues,
+    criticalIssues,
     score: Math.max(0, score),
   }
 }
@@ -1413,7 +1451,7 @@ ${fileContexts.join("\n\n")}
 
           try {
             const startTime = Date.now()
-            const result = await executeAgent(agentType, userRequest, previousOutput)
+            let result = await executeAgent(agentType, userRequest, previousOutput)
             const duration = ((Date.now() - startTime) / 1000).toFixed(1)
 
             addLog({
@@ -1421,6 +1459,77 @@ ${fileContexts.join("\n\n")}
               agent: agentType,
               message: `API-Antwort erhalten (${duration}s)`,
             })
+
+            // NEUE INTELLIGENTE VALIDIERUNG mit Auto-Retry
+            if (agentType === "coder") {
+              // Hole deploymentTarget aus globalConfig (gleiche Methode wie in executeAgent)
+              const deploymentTarget = (globalConfig as { deploymentTarget?: string }).deploymentTarget as DeploymentTarget || null
+              const validation = validateAgentResult(agentType, result.content, result.files, deploymentTarget)
+              
+              addLog({
+                level: "debug",
+                agent: agentType,
+                message: `Validierung: Score ${validation.score}/100, ${validation.criticalIssues.length} kritische Fehler`,
+              })
+              
+              // Auto-Retry bei kritischen Fehlern
+              if (validation.criticalIssues.length > 0 && RETRY_CONFIG.maxRetries > 0) {
+                addLog({
+                  level: "warn",
+                  agent: agentType,
+                  message: `⚠️ Kritische Fehler erkannt: ${validation.criticalIssues.join(", ")}`,
+                })
+                
+                // Erstelle Korrektur-Prompt
+                const correctionPrompt = `
+⚠️ DEIN VORHERIGER CODE HAT KRITISCHE FEHLER!
+
+FEHLER DIE DU BEHEBEN MUSST:
+${validation.criticalIssues.map(e => `❌ ${e}`).join("\n")}
+${validation.issues.length > 0 ? `\nWeitere Probleme:\n${validation.issues.map(e => `⚠️ ${e}`).join("\n")}` : ""}
+
+KORRIGIERE DIESE FEHLER und generiere den Code NOCHMAL:
+- JEDE Komponente in EIGENE Datei unter components/
+- NUR EINE "export default" pro Datei
+- Context/Provider in components/XContext.tsx
+- "use client" bei Client-Komponenten
+
+ORIGINAL-ANFRAGE: ${userRequest}
+`
+                addLog({
+                  level: "info",
+                  agent: agentType,
+                  message: `🔄 Auto-Korrektur gestartet...`,
+                })
+                
+                // Retry mit Korrektur-Prompt
+                const retryResult = await executeAgent(agentType, correctionPrompt, result.content)
+                
+                // Validiere Retry-Ergebnis
+                const retryValidation = validateAgentResult(agentType, retryResult.content, retryResult.files, deploymentTarget)
+                
+                if (retryValidation.score > validation.score) {
+                  addLog({
+                    level: "info",
+                    agent: agentType,
+                    message: `✅ Auto-Korrektur erfolgreich! Score: ${validation.score} → ${retryValidation.score}`,
+                  })
+                  result = retryResult
+                } else {
+                  addLog({
+                    level: "warn",
+                    agent: agentType,
+                    message: `Auto-Korrektur nicht besser, verwende Original`,
+                  })
+                }
+              } else if (validation.issues.length > 0) {
+                addLog({
+                  level: "info",
+                  agent: agentType,
+                  message: `ℹ️ Hinweise: ${validation.issues.slice(0, 3).join(", ")}`,
+                })
+              }
+            }
 
             // Füge generierte Dateien hinzu oder aktualisiere bestehende
             if (result.files.length > 0) {
