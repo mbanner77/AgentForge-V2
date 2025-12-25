@@ -319,6 +319,348 @@ function setCache(key: string, content: string, files: ParsedCodeFile[]): void {
   responseCache.set(key, { content, files, timestamp: Date.now() })
 }
 
+// ============================================================
+// ERROR EXPLANATION SYSTEM
+// Erklärt Build-Fehler verständlich und gibt konkrete Lösungen
+// ============================================================
+
+interface ErrorExplanation {
+  title: string
+  explanation: string
+  solution: string
+  codeExample?: string
+  severity: 'error' | 'warning' | 'info'
+}
+
+function explainBuildError(errorMessage: string): ErrorExplanation {
+  const error = errorMessage.toLowerCase()
+  
+  // Module not found
+  if (error.includes("module not found") || error.includes("can't resolve")) {
+    const moduleMatch = errorMessage.match(/['"](@\/[^'"]+|\.\/[^'"]+)['"]/)?.[1] || 'unbekannt'
+    return {
+      title: '📦 Modul nicht gefunden',
+      explanation: `Die Datei "${moduleMatch}" wird importiert, existiert aber nicht im Projekt.`,
+      solution: 'Erstelle die fehlende Datei oder korrigiere den Import-Pfad.',
+      codeExample: `// Erstelle: ${moduleMatch.replace('@/components/', 'components/')}.tsx\n"use client";\n\nexport function ${moduleMatch.split('/').pop()}() {\n  return <div>...</div>;\n}`,
+      severity: 'error'
+    }
+  }
+  
+  // No default export
+  if (error.includes("does not contain a default export")) {
+    const moduleMatch = errorMessage.match(/['"]([^'"]+)['"]/)?.[1] || ''
+    return {
+      title: '📤 Falscher Export-Typ',
+      explanation: 'Du verwendest "import X from" aber die Datei hat keinen "export default".',
+      solution: 'Ändere den Import zu Named Import: import { X } from "..."',
+      codeExample: `// FALSCH:\nimport Calendar from "@/components/Calendar";\n\n// RICHTIG:\nimport { Calendar } from "@/components/Calendar";`,
+      severity: 'error'
+    }
+  }
+  
+  // Multiple exports
+  if (error.includes("multiple default exports") || error.includes("duplicate export")) {
+    return {
+      title: '📤 Doppelter Export',
+      explanation: 'Eine Datei hat mehrere "export default" Statements.',
+      solution: 'Entferne alle bis auf einen export default, oder nutze Named Exports.',
+      codeExample: `// FALSCH:\nexport default function A() {}\nexport default function B() {}\n\n// RICHTIG:\nexport function A() {}\nexport function B() {}`,
+      severity: 'error'
+    }
+  }
+  
+  // use client missing
+  if (error.includes("usestate") || error.includes("useeffect") || error.includes("createcontext")) {
+    if (error.includes("server component") || error.includes("client component")) {
+      return {
+        title: '🔄 Server/Client Mismatch',
+        explanation: 'Hooks wie useState/useEffect funktionieren nur in Client Components.',
+        solution: 'Füge "use client" als ERSTE Zeile der Datei hinzu.',
+        codeExample: `// ERSTE Zeile der Datei:\n"use client";\n\nimport { useState } from "react";\n\nexport function MyComponent() {\n  const [state, setState] = useState(...);\n}`,
+        severity: 'error'
+      }
+    }
+  }
+  
+  // TypeScript errors
+  if (error.includes("type error") || error.includes("typescript")) {
+    if (error.includes("property") && error.includes("does not exist")) {
+      return {
+        title: '📝 TypeScript Property Fehler',
+        explanation: 'Ein Property existiert nicht auf dem angegebenen Typ.',
+        solution: 'Prüfe ob das Property richtig geschrieben ist oder erweitere den Typ.',
+        severity: 'error'
+      }
+    }
+    if (error.includes("argument of type")) {
+      return {
+        title: '📝 TypeScript Argument Fehler',
+        explanation: 'Ein Funktionsargument hat den falschen Typ.',
+        solution: 'Passe den Typ des Arguments an oder caste es korrekt.',
+        severity: 'error'
+      }
+    }
+  }
+  
+  // JSX errors
+  if (error.includes("jsx") || error.includes("adjacent jsx elements")) {
+    return {
+      title: '🏷️ JSX Struktur Fehler',
+      explanation: 'JSX erfordert ein einzelnes Root-Element.',
+      solution: 'Umschließe mehrere Elemente mit <> ... </> (Fragment) oder einem <div>.',
+      codeExample: `// FALSCH:\nreturn (\n  <div>A</div>\n  <div>B</div>\n);\n\n// RICHTIG:\nreturn (\n  <>\n    <div>A</div>\n    <div>B</div>\n  </>\n);`,
+      severity: 'error'
+    }
+  }
+  
+  // Import errors
+  if (error.includes("cannot find module") || error.includes("cannot resolve")) {
+    return {
+      title: '📦 Import Fehler',
+      explanation: 'Ein npm-Paket oder eine Datei konnte nicht gefunden werden.',
+      solution: 'Prüfe ob das Paket installiert ist (npm install) oder der Pfad korrekt ist.',
+      severity: 'error'
+    }
+  }
+  
+  // Syntax errors
+  if (error.includes("syntax error") || error.includes("unexpected token")) {
+    return {
+      title: '⚠️ Syntax Fehler',
+      explanation: 'Der Code enthält einen Syntaxfehler (z.B. fehlende Klammer, Semikolon).',
+      solution: 'Prüfe die markierte Zeile auf fehlende oder falsche Zeichen.',
+      severity: 'error'
+    }
+  }
+  
+  // Next.js specific
+  if (error.includes("metadata") && error.includes("client")) {
+    return {
+      title: '🔺 Next.js Metadata Fehler',
+      explanation: '"export const metadata" funktioniert nicht in Client Components.',
+      solution: 'Entferne "use client" oder verschiebe metadata in eine Server Component.',
+      severity: 'error'
+    }
+  }
+  
+  if (error.includes("getserversideprops") || error.includes("getstaticprops")) {
+    return {
+      title: '🔺 Veraltete Next.js API',
+      explanation: 'getServerSideProps/getStaticProps sind im App Router nicht verfügbar.',
+      solution: 'Nutze Server Components oder generateStaticParams stattdessen.',
+      severity: 'error'
+    }
+  }
+  
+  // Default
+  return {
+    title: '❓ Build Fehler',
+    explanation: errorMessage.substring(0, 200),
+    solution: 'Prüfe die Fehlermeldung und den betroffenen Code.',
+    severity: 'error'
+  }
+}
+
+// Erklärt Validierungs-Issues verständlich
+function explainValidationIssue(issue: string): ErrorExplanation {
+  const lower = issue.toLowerCase()
+  
+  if (lower.includes('import') && lower.includes('nicht erstellt')) {
+    const fileMatch = issue.match(/"([^"]+)"/)?.[1] || ''
+    return {
+      title: '📦 Fehlende Datei',
+      explanation: `Du importierst "${fileMatch}", aber diese Datei wurde nicht erstellt.`,
+      solution: `Erstelle die Datei ${fileMatch.replace('@/components/', 'components/')}.tsx`,
+      codeExample: `// filepath: ${fileMatch.replace('@/', '')}.tsx\n"use client";\n\nexport function ${fileMatch.split('/').pop()}() {\n  return <div>Komponente</div>;\n}`,
+      severity: 'error'
+    }
+  }
+  
+  if (lower.includes('export default') && lower.includes('kein')) {
+    return {
+      title: '📤 Export Mismatch',
+      explanation: 'Du nutzt "import X from" aber die Datei hat "export function X" (Named Export).',
+      solution: 'Ändere zu: import { X } from "..."',
+      codeExample: `// Ändere von:\nimport Calendar from "@/components/Calendar";\n\n// Zu:\nimport { Calendar } from "@/components/Calendar";`,
+      severity: 'error'
+    }
+  }
+  
+  if (lower.includes('use client')) {
+    return {
+      title: '🔄 use client fehlt',
+      explanation: 'Diese Datei verwendet Client-Features (useState, onClick, etc.) ohne "use client".',
+      solution: 'Füge "use client"; als ERSTE Zeile hinzu.',
+      codeExample: `"use client";\n\nimport { useState } from "react";\n// ... rest of code`,
+      severity: 'error'
+    }
+  }
+  
+  if (lower.includes('memory leak') || lower.includes('clearinterval') || lower.includes('removeeventlistener')) {
+    return {
+      title: '🧠 Memory Leak',
+      explanation: 'Timer oder Event Listener werden nicht aufgeräumt.',
+      solution: 'Füge Cleanup in useEffect return hinzu.',
+      codeExample: `useEffect(() => {\n  const interval = setInterval(...);\n  return () => clearInterval(interval); // Cleanup!\n}, []);`,
+      severity: 'error'
+    }
+  }
+  
+  if (lower.includes('eval') || lower.includes('sql injection') || lower.includes('xss')) {
+    return {
+      title: '🔒 Sicherheitsrisiko',
+      explanation: 'Der Code enthält potenziell unsichere Operationen.',
+      solution: 'Vermeide eval(), innerHTML und dynamische SQL Queries.',
+      severity: 'error'
+    }
+  }
+  
+  return {
+    title: '⚠️ Code-Problem',
+    explanation: issue,
+    solution: 'Prüfe den betroffenen Code.',
+    severity: 'warning'
+  }
+}
+
+// ============================================================
+// TEST GENERATION SYSTEM
+// Generiert Unit Tests für React Komponenten
+// ============================================================
+
+interface GeneratedTest {
+  filename: string
+  content: string
+  framework: 'jest' | 'vitest'
+}
+
+function generateTestsForComponent(
+  componentName: string,
+  componentCode: string,
+  filePath: string
+): GeneratedTest {
+  // Analysiere Komponente
+  const hasState = componentCode.includes('useState')
+  const hasEffect = componentCode.includes('useEffect')
+  const hasProps = componentCode.includes('props') || componentCode.match(/function\s+\w+\s*\(\s*\{/)
+  const hasContext = componentCode.includes('useContext')
+  const hasEvents = componentCode.includes('onClick') || componentCode.includes('onChange') || componentCode.includes('onSubmit')
+  
+  // Extrahiere Props
+  const propsMatch = componentCode.match(/interface\s+(\w+Props)\s*\{([^}]+)\}/)
+  const propsInterface = propsMatch ? propsMatch[0] : ''
+  
+  // Generiere Test
+  const testPath = filePath.replace('.tsx', '.test.tsx').replace('.jsx', '.test.jsx')
+  const importPath = filePath.replace('components/', '@/components/').replace('.tsx', '').replace('.jsx', '')
+  
+  let testContent = `import { render, screen${hasEvents ? ', fireEvent' : ''}${hasState ? ', waitFor' : ''} } from '@testing-library/react';
+import { ${componentName} } from '${importPath}';
+
+describe('${componentName}', () => {
+  // Basic Render Test
+  it('sollte ohne Fehler rendern', () => {
+    render(<${componentName} ${hasProps ? '/* TODO: Props hinzufügen */' : ''}/>);
+  });
+`
+
+  if (hasProps) {
+    testContent += `
+  // Props Test
+  it('sollte Props korrekt anzeigen', () => {
+    // TODO: Passe Props an
+    render(<${componentName} />);
+    // expect(screen.getByText('...')).toBeInTheDocument();
+  });
+`
+  }
+
+  if (hasState) {
+    testContent += `
+  // State Test
+  it('sollte State korrekt aktualisieren', async () => {
+    render(<${componentName} ${hasProps ? '/* Props */' : ''}/>);
+    // TODO: Interaktion die State ändert
+    // await waitFor(() => {
+    //   expect(screen.getByText('...')).toBeInTheDocument();
+    // });
+  });
+`
+  }
+
+  if (hasEvents) {
+    testContent += `
+  // Event Handler Test
+  it('sollte auf Benutzer-Interaktion reagieren', () => {
+    ${hasEvents && componentCode.includes('onClick') ? 'const handleClick = jest.fn();' : ''}
+    render(<${componentName} ${hasProps ? '/* Props */' : ''}/>);
+    
+    // TODO: Finde und klicke Element
+    // const button = screen.getByRole('button');
+    // fireEvent.click(button);
+    // expect(handleClick).toHaveBeenCalled();
+  });
+`
+  }
+
+  if (hasContext) {
+    testContent += `
+  // Context Test
+  it('sollte mit Context Provider funktionieren', () => {
+    // TODO: Wrape mit Context Provider
+    // render(
+    //   <ContextProvider>
+    //     <${componentName} />
+    //   </ContextProvider>
+    // );
+  });
+`
+  }
+
+  // Snapshot Test
+  testContent += `
+  // Snapshot Test
+  it('sollte dem Snapshot entsprechen', () => {
+    const { container } = render(<${componentName} ${hasProps ? '/* Props */' : ''}/>);
+    expect(container).toMatchSnapshot();
+  });
+});
+`
+
+  return {
+    filename: testPath,
+    content: testContent,
+    framework: 'jest'
+  }
+}
+
+// Generiert Tests für alle Komponenten im Projekt
+function generateTestsForProject(files: ParsedCodeFile[]): GeneratedTest[] {
+  const tests: GeneratedTest[] = []
+  
+  for (const file of files) {
+    // Nur .tsx/.jsx Dateien
+    if (!file.path.endsWith('.tsx') && !file.path.endsWith('.jsx')) continue
+    
+    // Überspringe Test-Dateien
+    if (file.path.includes('.test.') || file.path.includes('.spec.')) continue
+    
+    // Überspringe page.tsx und layout.tsx
+    if (file.path.includes('page.tsx') || file.path.includes('layout.tsx')) continue
+    
+    // Finde Komponenten-Namen
+    const componentMatch = file.content.match(/export\s+(?:default\s+)?function\s+(\w+)/)
+    if (!componentMatch) continue
+    
+    const componentName = componentMatch[1]
+    const test = generateTestsForComponent(componentName, file.content, file.path)
+    tests.push(test)
+  }
+  
+  return tests
+}
+
 // Spezifische Fehlermeldungen für verschiedene Fehlertypen
 function getSpecificErrorMessage(error: unknown): { message: string; suggestion: string; recoverable: boolean } {
   const errorStr = String(error)
