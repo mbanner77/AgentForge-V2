@@ -2730,20 +2730,54 @@ ${previousOutput}
       if (agentType === "coder" && validation.criticalIssues.length > 0) {
         console.log(`[Agent Executor] ${validation.criticalIssues.length} kritische Fehler erkannt, starte Auto-Korrektur...`)
         
+        // Extrahiere fehlende Dateien aus den kritischen Fehlern
+        const missingFiles: string[] = []
+        for (const issue of validation.criticalIssues) {
+          const match = issue.match(/importiert\s+"([^"]+)"\s+aber.*NICHT erstellt|Erstelle:\s+(\S+\.tsx?)/)
+          if (match) {
+            const filePath = match[1] || match[2]
+            if (filePath) {
+              const normalizedPath = filePath.replace('@/components/', 'components/').replace('@/', '')
+              if (!missingFiles.includes(normalizedPath)) {
+                missingFiles.push(normalizedPath.endsWith('.tsx') ? normalizedPath : normalizedPath + '.tsx')
+              }
+            }
+          }
+        }
+        
+        // Spezifischer Korrektur-Prompt für fehlende Dateien
+        const missingFilesSection = missingFiles.length > 0 ? `
+## 🔴 FEHLENDE DATEIEN - DU MUSST DIESE ERSTELLEN:
+${missingFiles.map(f => `
+\`\`\`typescript
+// filepath: ${f}
+"use client";
+
+// TODO: Implementiere diese Komponente
+export function ${f.split('/').pop()?.replace('.tsx', '')}() {
+  return <div>...</div>;
+}
+\`\`\`
+`).join('\n')}
+
+WICHTIG: Erstelle JEDE dieser Dateien mit vollständigem, funktionierendem Code!
+` : ''
+        
         const correctionPrompt = `
 ## ⚠️ DEIN CODE HAT KRITISCHE FEHLER DIE DEN BUILD BRECHEN!
 
 ${validation.criticalIssues.map(e => `❌ ${e}`).join('\n')}
+${missingFilesSection}
 ${validation.issues.length > 0 ? `\n⚠️ Weitere Probleme:\n${validation.issues.map(e => `- ${e}`).join('\n')}` : ''}
 
 ## KORRIGIERE JETZT:
-1. Für JEDEN kritischen Fehler: Behebe ihn SOFORT
+1. ERSTELLE ALLE FEHLENDEN DATEIEN (siehe oben)
 2. Gib den VOLLSTÄNDIGEN korrigierten Code aus
-3. JEDE Datei muss mit "use client"; beginnen (Next.js)
+3. JEDE Datei muss mit "use client"; beginnen
 4. Imports MÜSSEN @/components/ verwenden
-5. KEINE export default in components/ Dateien
+5. JEDE importierte Datei MUSS auch erstellt werden!
 
-Gib ALLE Dateien nochmal vollständig aus!`
+Gib ALLE Dateien (auch die neuen) vollständig aus!`
 
         const correctionMessages = [
           ...messages,
@@ -3004,19 +3038,45 @@ Gib ALLE Dateien nochmal vollständig aus!`
                   message: `⚠️ Kritische Fehler erkannt: ${validation.criticalIssues.join(", ")}`,
                 })
                 
+                // Extrahiere fehlende Dateien aus den kritischen Fehlern
+                const missingFilesFromValidation: string[] = []
+                for (const issue of validation.criticalIssues) {
+                  const match = issue.match(/importiert\s+"([^"]+)"\s+aber.*NICHT erstellt|Erstelle:\s+(\S+\.tsx?)/)
+                  if (match) {
+                    const filePath = match[1] || match[2]
+                    if (filePath) {
+                      const normalizedPath = filePath.replace('@/components/', 'components/').replace('@/', '')
+                      if (!missingFilesFromValidation.includes(normalizedPath)) {
+                        missingFilesFromValidation.push(normalizedPath.endsWith('.tsx') ? normalizedPath : normalizedPath + '.tsx')
+                      }
+                    }
+                  }
+                }
+                
+                // Spezifischer Abschnitt für fehlende Dateien
+                const missingFilesInstruction = missingFilesFromValidation.length > 0 ? `
+
+## 🔴 DIESE DATEIEN FEHLEN - ERSTELLE SIE JETZT:
+${missingFilesFromValidation.map(f => `- ${f} (mit "use client"; und export function ${f.split('/').pop()?.replace('.tsx', '')})`).join('\n')}
+
+` : ''
+                
                 // Erstelle Korrektur-Prompt
                 const correctionPrompt = `
 ⚠️ DEIN VORHERIGER CODE HAT KRITISCHE FEHLER!
 
 FEHLER DIE DU BEHEBEN MUSST:
 ${validation.criticalIssues.map(e => `❌ ${e}`).join("\n")}
+${missingFilesInstruction}
 ${validation.issues.length > 0 ? `\nWeitere Probleme:\n${validation.issues.map(e => `⚠️ ${e}`).join("\n")}` : ""}
 
 KORRIGIERE DIESE FEHLER und generiere den Code NOCHMAL:
+- ERSTELLE ALLE FEHLENDEN DATEIEN (wichtig!)
 - JEDE Komponente in EIGENE Datei unter components/
-- NUR EINE "export default" pro Datei
+- NUR EINE "export default" pro Datei (nur in app/page.tsx)
 - Context/Provider in components/XContext.tsx
-- "use client" bei Client-Komponenten
+- "use client" bei ALLEN Client-Komponenten
+- Für JEDEN import MUSS die Datei existieren!
 
 ORIGINAL-ANFRAGE: ${userRequest}
 `
