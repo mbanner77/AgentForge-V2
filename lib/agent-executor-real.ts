@@ -481,18 +481,48 @@ function validateAgentResult(
         }
       }
       
-      // KRITISCH: Import/Export Mismatch prüfen
+      // KRITISCH: Import/Export Mismatch prüfen (GENERISCH für alle Projekte)
       const fileImports = allImports.get(file.path) || []
       for (const imp of fileImports) {
-        if (imp.from.startsWith('@/components/')) {
-          // Normalisiere Pfad (handle /Calendar/Calendar und /Calendar)
-          let targetFile = imp.from.replace('@/components/', 'components/')
-          if (!targetFile.endsWith('.tsx')) targetFile += '.tsx'
+        // Prüfe alle lokalen Imports (nicht node_modules)
+        const isLocalImport = imp.from.startsWith('@/') || 
+                             imp.from.startsWith('./') || 
+                             imp.from.startsWith('../') ||
+                             imp.from.startsWith('components/') ||
+                             imp.from.startsWith('src/')
+        
+        if (isLocalImport) {
+          // Normalisiere Pfad für verschiedene Import-Stile
+          let targetFile = imp.from
+            .replace('@/components/', 'components/')
+            .replace('@/', '')
+            .replace('./', '')
+            .replace('../', '')
           
-          // Finde die Zieldatei (auch mit Unterordner)
-          const targetExportsData = allExports.get(targetFile) || 
-                                   allExports.get(targetFile.replace('.tsx', '/index.tsx')) ||
-                                   Array.from(allExports.entries()).find(([k]) => k.includes(targetFile.replace('.tsx', '')))?.[1]
+          if (!targetFile.endsWith('.tsx') && !targetFile.endsWith('.ts')) {
+            targetFile += '.tsx'
+          }
+          
+          // Finde die Zieldatei (verschiedene Pfad-Varianten)
+          const possiblePaths = [
+            targetFile,
+            targetFile.replace('.tsx', '/index.tsx'),
+            `components/${targetFile}`,
+            `src/${targetFile}`,
+            `src/components/${targetFile}`,
+          ]
+          
+          let targetExportsData = null
+          for (const possiblePath of possiblePaths) {
+            const found = allExports.get(possiblePath) ||
+                         Array.from(allExports.entries()).find(([k]) => 
+                           k.endsWith(possiblePath) || k.includes(possiblePath.replace('.tsx', ''))
+                         )?.[1]
+            if (found) {
+              targetExportsData = found
+              break
+            }
+          }
           
           if (targetExportsData && typeof targetExportsData === 'object' && 'named' in targetExportsData) {
             // KRITISCH: Default Import aber kein Default Export

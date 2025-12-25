@@ -603,26 +603,38 @@ Das Projekt wird auf Vercel deployed. WICHTIGE REGELN:
 - Verwende "use client" am Anfang von Client-Komponenten
 - Imports: @/components/X für Komponenten`,
     coder: `
-## 🔺 DEPLOYMENT-ZIEL: VERCEL (Next.js) - STRIKTE REGELN
+## 🔺 VERCEL (Next.js) - FEHLERFREIE CODE-GENERIERUNG
 
-## ❌ FATALER FEHLER VERMEIDEN: DOPPELTE EXPORTS!
-- NIEMALS zwei \`export default\` in einer Datei!
-- NIEMALS Context, Provider, Hooks in \`app/page.tsx\` definieren!
-- Context/Provider → \`components/CalendarContext.tsx\`
+## 🔴 KRITISCHE REGELN:
 
-## KRITISCH - MEHRERE DATEIEN SIND PFLICHT!
-Du MUSST für jede Komponente eine SEPARATE Datei unter \`components/\` erstellen!
+### 1. IMPORT-REGELN (STRIKT!):
+- IMMER Named Imports: \`import { Calendar } from "@/components/Calendar"\`
+- NIEMALS Default Imports: \`import Calendar from ...\` ❌ (Build-Fehler!)
+- components/ Dateien: \`export function X\` (KEIN export default!)
+- NUR app/page.tsx: \`export default function Page()\`
 
-**PFLICHT-STRUKTUR:**
-1. \`app/page.tsx\` - NUR die Hauptseite (EINE export default!)
-2. \`components/CalendarContext.tsx\` - Context + Provider + Hook
-3. \`components/*.tsx\` - JEDE Komponente in eigener Datei!
+**KRITISCH - DIESE FEHLER VERMEIDEN:**
+❌ \`import Calendar from "@/components/Calendar"\` → Build-Fehler!
+✓ \`import { Calendar } from "@/components/Calendar"\` → Korrekt!
 
-**FORMAT:**
+### 2. JEDE DATEI MUSS HABEN:
+\`\`\`
+"use client";                    // ERSTE Zeile!
+import { ... } from "react";     // React imports
+import { X } from "@/components/X"; // Named imports!
+export function Name() { ... }   // Named export (KEIN default!)
+\`\`\`
+
+### 3. STRUKTUR:
+- \`app/page.tsx\` - EINE export default, importiert alle Komponenten
+- \`components/*.tsx\` - JEDE Komponente eigene Datei, Named Export
+
+**BEISPIEL:**
 \`\`\`typescript
 // filepath: components/Calendar.tsx
 "use client";
-export function Calendar() { ... }
+import { useState } from "react";
+export function Calendar() { return <div>...</div>; }
 \`\`\`
 
 \`\`\`typescript
@@ -630,9 +642,7 @@ export function Calendar() { ... }
 "use client";
 import { Calendar } from "@/components/Calendar";
 export default function Page() { return <Calendar />; }
-\`\`\`
-
-**VERBOTEN:** Context/Provider/Hooks in app/page.tsx!`,
+\`\`\``,
     reviewer: `
 ## 🔺 VERCEL DEPLOYMENT - REVIEW FOKUS
 **KRITISCHE PRÜFUNGEN (Build-Fehler vermeiden):**
@@ -666,66 +676,47 @@ Das Projekt wird auf Netlify deployed. WICHTIGE REGELN:
 - Imports: @/components/X für Komponenten
 - KEINE Vite-spezifischen Dateien`,
     coder: `
-## 🌐 DEPLOYMENT-ZIEL: NETLIFY (Next.js) - STRIKTE REGELN
+## 🌐 NETLIFY (Next.js) - FEHLERFREIE CODE-GENERIERUNG
 
-## ❌ FATALER FEHLER VERMEIDEN: DOPPELTE EXPORTS!
-- NIEMALS zwei \`export default\` in einer Datei!
-- NIEMALS Context, Provider, Hooks in \`app/page.tsx\` definieren!
-- Context/Provider → \`components/CalendarContext.tsx\`
-- Hooks → In der Context-Datei oder \`hooks/\` Ordner
+## 🔴 KRITISCHE REGELN:
 
-## KRITISCH - MEHRERE DATEIEN SIND PFLICHT!
-Du MUSST für jede Komponente eine SEPARATE Datei unter \`components/\` erstellen!
-NIEMALS alle Komponenten in \`app/page.tsx\` packen!
+### 1. IMPORT-REGELN (STRIKT!):
+- IMMER Named Imports: \`import { Calendar } from "@/components/Calendar"\`
+- NIEMALS Default Imports: \`import Calendar from ...\` ❌ (Build-Fehler!)
+- components/ Dateien: \`export function X\` (KEIN export default!)
+- NUR app/page.tsx: \`export default function Page()\`
 
-**PFLICHT-STRUKTUR (IMMER einhalten):**
-1. \`app/page.tsx\` - NUR die Hauptseite (EINE export default!)
-2. \`components/CalendarContext.tsx\` - Context + Provider + useCalendar Hook
-3. \`components/Calendar.tsx\` - Kalender-Komponente
-4. \`components/EventList.tsx\` - Listen, etc.
+**KRITISCH - DIESE FEHLER VERMEIDEN:**
+❌ \`import Calendar from "@/components/Calendar"\` → Build-Fehler!
+✓ \`import { Calendar } from "@/components/Calendar"\` → Korrekt!
 
-**BEISPIEL MIT MEHREREN DATEIEN:**
+### 2. JEDE DATEI MUSS HABEN:
+\`\`\`
+"use client";                    // ERSTE Zeile!
+import { ... } from "react";     // React imports
+import { X } from "@/components/X"; // Named imports!
+export function Name() { ... }   // Named export (KEIN default!)
+\`\`\`
 
+### 3. STRUKTUR:
+- \`app/page.tsx\` - EINE export default, importiert alle Komponenten
+- \`components/*.tsx\` - JEDE Komponente eigene Datei, Named Export
+
+**BEISPIEL:**
 \`\`\`typescript
 // filepath: components/Calendar.tsx
 "use client";
-
 import { useState } from "react";
-
 export function Calendar() {
   const [date, setDate] = useState(new Date());
-  
-  return (
-    <div className="p-4 bg-gray-800 rounded-lg">
-      {/* Calendar UI */}
-    </div>
-  );
-}
-\`\`\`
-
-\`\`\`typescript
-// filepath: components/EventList.tsx
-"use client";
-
-import { useState } from "react";
-
-export function EventList() {
-  return (
-    <div className="p-4">
-      {/* Event List UI */}
-    </div>
-  );
+  return <div className="p-4 bg-gray-800 rounded-lg">...</div>;
 }
 \`\`\`
 
 \`\`\`typescript
 // filepath: app/page.tsx
 "use client";
-
-import { useState } from "react";
 import { Calendar } from "@/components/Calendar";
-import { EventList } from "@/components/EventList";
-
 export default function Page() {
   return (
     <main className="min-h-screen p-8 bg-gray-900">
