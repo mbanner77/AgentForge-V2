@@ -548,6 +548,21 @@ export function Name() { ... }   // EINE Funktion pro Datei
 - ALLE Event-Handler müssen definiert sein
 - JSX muss vollständig und geschlossen sein
 
+### 6. 🎨 TAILWIND UI BEST PRACTICES (WICHTIG!):
+**Layouts:**
+- Kalender/Grids: \`grid grid-cols-7 gap-1\` (NICHT als vertikale Liste!)
+- Cards: \`bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6\`
+- Flex-Container: \`flex justify-between items-center\`
+
+**Interaktive Elemente:**
+- Buttons: \`px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg\`
+- Hover: \`hover:bg-gray-100 dark:hover:bg-gray-700\`
+
+**Responsive:**
+- Mobile-first: \`grid-cols-1 md:grid-cols-2 lg:grid-cols-3\`
+
+**NIEMALS:** Vertikale Listen für Kalender-Tage! IMMER \`grid grid-cols-7\` verwenden!
+
 ## BEISPIEL EINER FEHLERFREIEN APP:
 
 \`\`\`typescript
@@ -603,13 +618,40 @@ import { useState } from "react";
 import { useCalendar } from "@/components/CalendarContext";
 
 export function Calendar() {
-  const { events, addEvent } = useCalendar();
+  const { events } = useCalendar();
   const [currentDate, setCurrentDate] = useState(new Date());
   
+  const year = currentDate.getFullYear();
+  const month = currentDate.getMonth();
+  const firstDay = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+  const blanks = Array.from({ length: (firstDay + 6) % 7 }, () => null);
+  
   return (
-    <div className="p-4 bg-gray-800 rounded-lg">
-      <h2 className="text-xl font-bold text-white mb-4">Kalender</h2>
-      {/* Vollständige Implementierung */}
+    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
+      <div className="flex justify-between items-center mb-6">
+        <button onClick={() => setCurrentDate(new Date(year, month - 1))} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">←</button>
+        <h2 className="text-xl font-bold">{currentDate.toLocaleDateString("de-DE", { month: "long", year: "numeric" })}</h2>
+        <button onClick={() => setCurrentDate(new Date(year, month + 1))} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">→</button>
+      </div>
+      <div className="grid grid-cols-7 gap-1 text-center text-sm font-medium text-gray-500 mb-2">
+        {["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"].map(d => <div key={d}>{d}</div>)}
+      </div>
+      <div className="grid grid-cols-7 gap-1">
+        {blanks.map((_, i) => <div key={"b" + i} />)}
+        {days.map(day => {
+          const dayEvents = events.filter(e => new Date(e.date).getDate() === day && new Date(e.date).getMonth() === month);
+          return (
+            <div key={day} className="aspect-square p-1 border rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer">
+              <div className="font-medium">{day}</div>
+              {dayEvents.slice(0, 2).map(e => (
+                <div key={e.id} className="text-xs bg-blue-500 text-white rounded px-1 truncate">{e.title}</div>
+              ))}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
