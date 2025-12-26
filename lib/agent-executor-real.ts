@@ -1169,6 +1169,44 @@ function autoGenerateMissingFiles(files: ParsedCodeFile[]): ParsedCodeFile[] {
   const hasNextJsApp = normalizedFiles.some(f => normalizePath(f.path).includes('app/page.tsx'))
   
   if (hasNextJsApp) {
+    // tailwind.config.js fehlt? (WICHTIGSTE DATEI!)
+    if (!existingPaths.has('tailwind.config.js') && !existingPaths.has('tailwind.config.ts')) {
+      result.push({
+        path: 'tailwind.config.js',
+        content: `/** @type {import('tailwindcss').Config} */
+module.exports = {
+  content: [
+    './pages/**/*.{js,ts,jsx,tsx,mdx}',
+    './components/**/*.{js,ts,jsx,tsx,mdx}',
+    './app/**/*.{js,ts,jsx,tsx,mdx}',
+  ],
+  theme: {
+    extend: {},
+  },
+  plugins: [],
+}
+`,
+        language: 'javascript'
+      })
+      console.log('[Auto-Generate] PFLICHT: tailwind.config.js erstellt')
+    }
+
+    // postcss.config.js fehlt?
+    if (!existingPaths.has('postcss.config.js')) {
+      result.push({
+        path: 'postcss.config.js',
+        content: `module.exports = {
+  plugins: {
+    tailwindcss: {},
+    autoprefixer: {},
+  },
+}
+`,
+        language: 'javascript'
+      })
+      console.log('[Auto-Generate] PFLICHT: postcss.config.js erstellt')
+    }
+
     // globals.css fehlt?
     if (!existingPaths.has('app/globals.css')) {
       result.push({
@@ -1177,7 +1215,21 @@ function autoGenerateMissingFiles(files: ParsedCodeFile[]): ParsedCodeFile[] {
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
 body {
+  color: var(--foreground);
+  background: var(--background);
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 `,
@@ -1201,7 +1253,7 @@ export const metadata = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="de">
-      <body className="min-h-screen bg-background text-foreground">
+      <body className="min-h-screen bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100">
         {children}
       </body>
     </html>
