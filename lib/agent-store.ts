@@ -548,20 +548,65 @@ export function Name() { ... }   // EINE Funktion pro Datei
 - ALLE Event-Handler müssen definiert sein
 - JSX muss vollständig und geschlossen sein
 
-### 6. 🎨 TAILWIND UI BEST PRACTICES (WICHTIG!):
-**Layouts:**
-- Kalender/Grids: \`grid grid-cols-7 gap-1\` (NICHT als vertikale Liste!)
-- Cards: \`bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6\`
-- Flex-Container: \`flex justify-between items-center\`
+### 6. 🎨 TAILWIND UI PATTERNS (PFLICHT FÜR ALLE APPS!):
 
-**Interaktive Elemente:**
-- Buttons: \`px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg\`
-- Hover: \`hover:bg-gray-100 dark:hover:bg-gray-700\`
+**📐 LAYOUTS - IMMER MIT GRID/FLEX:**
+\`\`\`
+// Dashboard: Sidebar + Content
+<div className="flex min-h-screen">
+  <aside className="w-64 bg-gray-900 p-4">Sidebar</aside>
+  <main className="flex-1 p-6">Content</main>
+</div>
 
-**Responsive:**
+// Card-Grid (Produkte, Items)
+<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+  {items.map(item => <Card key={item.id} />)}
+</div>
+
+// Kalender: IMMER 7 Spalten!
+<div className="grid grid-cols-7 gap-1">
+  {days.map(day => <DayCell key={day} />)}
+</div>
+
+// Liste mit Aktionen
+<div className="divide-y">
+  {items.map(item => (
+    <div key={item.id} className="flex justify-between items-center py-3">
+      <span>{item.name}</span>
+      <button>Action</button>
+    </div>
+  ))}
+</div>
+\`\`\`
+
+**🎴 KOMPONENTEN:**
+\`\`\`
+// Card
+<div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
+
+// Button Primary
+<button className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors">
+
+// Button Secondary
+<button className="px-4 py-2 border border-gray-300 hover:bg-gray-50 rounded-lg">
+
+// Input
+<input className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+
+// Badge
+<span className="px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded-full">
+\`\`\`
+
+**📱 RESPONSIVE:**
 - Mobile-first: \`grid-cols-1 md:grid-cols-2 lg:grid-cols-3\`
+- Hidden on mobile: \`hidden md:block\`
+- Stack on mobile: \`flex-col md:flex-row\`
 
-**NIEMALS:** Vertikale Listen für Kalender-Tage! IMMER \`grid grid-cols-7\` verwenden!
+**🚫 VERBOTEN:**
+- Vertikale Listen für Grid-Daten (Kalender, Tabellen)
+- Fehlende Padding/Margin (min. p-4 oder p-6)
+- Keine Hover-States bei interaktiven Elementen
+- Inline-Styles statt Tailwind-Klassen
 
 ## BEISPIEL EINER FEHLERFREIEN APP:
 
