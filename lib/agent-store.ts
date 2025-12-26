@@ -406,8 +406,11 @@ Wenn eine dieser Fragen mit NEIN beantwortet wird, überarbeite deine Antwort!`,
 }
 
 // Hilfsfunktion um den Prompt basierend auf Umgebung zu bekommen
-export const getEnvironmentPrompt = (agent: "planner" | "coder", environment: "sandpack" | "webcontainer"): string => {
-  return environmentPrompts[environment][agent]
+// HINWEIS: Sandpack wurde entfernt - alle Apps werden als Next.js generiert
+export const getEnvironmentPrompt = (agent: "planner" | "coder", _environment?: "sandpack" | "webcontainer"): string => {
+  // Immer Next.js-fokussierte Prompts verwenden (Render-Prompts)
+  const nextJsPrompts = deploymentTargetPrompts.render
+  return nextJsPrompts[agent] || environmentPrompts.sandpack[agent]
 }
 
 // Deployment-Target spezifische Prompt-Erweiterungen
