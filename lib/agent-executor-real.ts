@@ -3661,6 +3661,10 @@ Gib NUR die fehlenden Dateien aus, im Format:
         }
       }
 
+      // IMMER: Tailwind-Konfiguration und fehlende Dateien hinzufügen
+      finalFiles = autoGenerateMissingFiles(finalFiles)
+      console.log(`[Agent Executor] Nach autoGenerateMissingFiles: ${finalFiles.length} Dateien`)
+
       // CACHE-SET: Speichere erfolgreiche Antwort im Cache
       const result = { content: response.content, files: finalFiles }
       setCache(cacheKey, result.content, result.files)
