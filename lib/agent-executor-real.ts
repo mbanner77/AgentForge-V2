@@ -2836,6 +2836,30 @@ export function parseCodeFromResponse(content: string): ParsedCodeFile[] {
     else if (path.endsWith(".js")) language = "javascript"
     else if (path.endsWith(".tsx") || path.endsWith(".ts")) language = "typescript"
     
+    // VALIDIERUNG: Filtere ungültigen Code/Markdown-Artefakte
+    const isInvalidCode = (content: string, lang: string): boolean => {
+      const trimmed = content.trim()
+      // Markdown-Header am Anfang
+      if (/^#{1,6}\s/.test(trimmed)) return true
+      // Markdown-Listen am Anfang (ohne Code-Kontext)
+      if (/^\d+\.\s+[A-Za-z]/.test(trimmed) && !trimmed.includes('import') && !trimmed.includes('export')) return true
+      // Nur Text ohne Code-Strukturen (für TS/JS/TSX/JSX)
+      if (['typescript', 'javascript'].includes(lang)) {
+        const hasCodeStructure = /^["']use client["'];?|^import\s|^export\s|^const\s|^let\s|^var\s|^function\s|^class\s|^interface\s|^type\s|^\/\*|^\/\//m.test(trimmed)
+        if (!hasCodeStructure && trimmed.length > 10) {
+          // Prüfe ob es aussieht wie Prosa/Markdown
+          const looksLikeProsa = /^[A-ZÄÖÜ][a-zäöüß]+\s+[a-zäöüß]+/.test(trimmed) || /^(DATEIEN|Hier|Dies|Das|Ich|Wir|Die|Der|Eine?)\s/i.test(trimmed)
+          if (looksLikeProsa) return true
+        }
+      }
+      return false
+    }
+    
+    if (isInvalidCode(code, language)) {
+      console.warn(`[parseCodeFromResponse] ÜBERSPRUNGEN (Markdown/Text): ${path}`)
+      continue
+    }
+    
     files.push({
       path,
       content: code,
