@@ -1146,12 +1146,27 @@ function findMissingImports(files: ParsedCodeFile[]): MissingFileInfo[] {
 // Erstellt automatisch Skeleton-Dateien für fehlende Imports
 // ============================================================
 
+// Hilfsfunktion: Pfade normalisieren für konsistente Vergleiche
+function normalizePath(path: string): string {
+  return path
+    .replace(/\\/g, '/')           // Windows -> Unix
+    .replace(/^\/+/, '')           // Führende Slashes entfernen
+    .replace(/\/+/g, '/')          // Doppelte Slashes entfernen
+    .toLowerCase()                  // Case-insensitive (für Vergleiche)
+}
+
 function autoGenerateMissingFiles(files: ParsedCodeFile[]): ParsedCodeFile[] {
-  const result = [...files]
-  const existingPaths = new Set(files.map(f => f.path.toLowerCase()))
+  // Normalisiere alle Pfade zuerst
+  const normalizedFiles = files.map(f => ({
+    ...f,
+    path: f.path.replace(/\\/g, '/').replace(/^\/+/, '')
+  }))
+  
+  const result = [...normalizedFiles]
+  const existingPaths = new Set(normalizedFiles.map(f => normalizePath(f.path)))
   
   // PFLICHT: Prüfe ob CSS-Dateien fehlen (für Next.js Apps)
-  const hasNextJsApp = files.some(f => f.path.includes('app/page.tsx') || f.path.includes('app\\page.tsx'))
+  const hasNextJsApp = normalizedFiles.some(f => normalizePath(f.path).includes('app/page.tsx'))
   
   if (hasNextJsApp) {
     // globals.css fehlt?
@@ -2757,8 +2772,11 @@ export function parseCodeFromResponse(content: string): ParsedCodeFile[] {
       }
     }
     
-    // Normalisiere Pfad
-    path = path.replace(/^\/+/, "") // Entferne führende Slashes
+    // Normalisiere Pfad für Linux/Render Kompatibilität
+    path = path
+      .replace(/\\/g, '/')           // Windows Backslash -> Unix Forward Slash
+      .replace(/^\/+/, '')           // Entferne führende Slashes
+      .replace(/\/+/g, '/')          // Entferne doppelte Slashes
     
     // Bestimme Sprache aus Dateiendung wenn nicht gesetzt
     if (path.endsWith(".css")) language = "css"
