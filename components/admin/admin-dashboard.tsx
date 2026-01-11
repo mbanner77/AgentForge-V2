@@ -6,6 +6,9 @@ import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
@@ -154,6 +157,7 @@ export function AdminDashboard() {
   
   // Customizing State
   const [mcpMode, setMcpMode] = useState<"demo" | "production">("demo")
+  const [btpCredentialsOpen, setBtpCredentialsOpen] = useState(false)
   const [btpDeploying, setBtpDeploying] = useState(false)
   const [btpLogs, setBtpLogs] = useState<string[]>([])
   const [btpStatus, setBtpStatus] = useState<"idle" | "validating" | "building" | "deploying" | "success" | "error">("idle")
@@ -1289,7 +1293,7 @@ export function AdminDashboard() {
                     
                     <Button
                       variant="outline"
-                      onClick={() => router.push("/settings")}
+                      onClick={() => setBtpCredentialsOpen(true)}
                       className="gap-2"
                     >
                       <Settings className="h-4 w-4" />
@@ -1543,6 +1547,92 @@ export function AdminDashboard() {
           </div>
         </div>
       </div>
+
+      {/* BTP Credentials Dialog */}
+      <Dialog open={btpCredentialsOpen} onOpenChange={setBtpCredentialsOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Database className="h-5 w-5" />
+              SAP BTP Credentials
+            </DialogTitle>
+            <DialogDescription>
+              Konfiguriere deine SAP Business Technology Platform Zugangsdaten
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Cloud Foundry API Endpoint</Label>
+              <Select 
+                value={useAgentStore.getState().globalConfig.btpApiEndpoint || ""} 
+                onValueChange={(v) => useAgentStore.getState().updateGlobalConfig({ btpApiEndpoint: v })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Region wählen..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="https://api.cf.eu10.hana.ondemand.com">Europe (Frankfurt) - eu10</SelectItem>
+                  <SelectItem value="https://api.cf.eu20.hana.ondemand.com">Europe (Netherlands) - eu20</SelectItem>
+                  <SelectItem value="https://api.cf.us10.hana.ondemand.com">US East (VA) - us10</SelectItem>
+                  <SelectItem value="https://api.cf.ap10.hana.ondemand.com">Australia (Sydney) - ap10</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Organisation</Label>
+              <Input
+                value={useAgentStore.getState().globalConfig.btpOrg || ""}
+                onChange={(e) => useAgentStore.getState().updateGlobalConfig({ btpOrg: e.target.value })}
+                placeholder="z.B. my-org-trial"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Space</Label>
+              <Input
+                value={useAgentStore.getState().globalConfig.btpSpace || ""}
+                onChange={(e) => useAgentStore.getState().updateGlobalConfig({ btpSpace: e.target.value })}
+                placeholder="z.B. dev"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>BTP Username (Email)</Label>
+              <Input
+                type="email"
+                value={useAgentStore.getState().globalConfig.btpUsername || ""}
+                onChange={(e) => useAgentStore.getState().updateGlobalConfig({ btpUsername: e.target.value })}
+                placeholder="your.email@company.com"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>BTP Password / API Token</Label>
+              <Input
+                type="password"
+                value={useAgentStore.getState().globalConfig.btpPassword || ""}
+                onChange={(e) => useAgentStore.getState().updateGlobalConfig({ btpPassword: e.target.value })}
+                placeholder="••••••••"
+              />
+            </div>
+
+            <div className="rounded-lg bg-blue-500/10 border border-blue-500/30 p-3">
+              <p className="text-sm text-blue-400">
+                <strong>Tipp:</strong> Für Production-Deployments empfehlen wir einen API Token statt Passwort.
+              </p>
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setBtpCredentialsOpen(false)}>
+              Abbrechen
+            </Button>
+            <Button onClick={() => setBtpCredentialsOpen(false)}>
+              Speichern
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
