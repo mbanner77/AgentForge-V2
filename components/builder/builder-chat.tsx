@@ -262,6 +262,22 @@ const quickActions = [
     bgColor: "bg-indigo-500/10 hover:bg-indigo-500/20 border-indigo-500/30",
     needsInput: false,
   },
+  {
+    icon: Zap,
+    label: "Optimize",
+    prompt: "Optimiere die App: Füge useCallback für Event-Handler, useMemo für Berechnungen, und verbessere die Performance durch Vermeidung unnötiger Re-Renders.",
+    color: "text-yellow-500",
+    bgColor: "bg-yellow-500/10 hover:bg-yellow-500/20 border-yellow-500/30",
+    needsInput: false,
+  },
+  {
+    icon: Shield,
+    label: "A11y",
+    prompt: "Verbessere die Accessibility: Füge aria-labels, semantische HTML-Tags, Keyboard-Navigation und Fokus-Management hinzu.",
+    color: "text-teal-500",
+    bgColor: "bg-teal-500/10 hover:bg-teal-500/20 border-teal-500/30",
+    needsInput: false,
+  },
 ]
 
 export function BuilderChat({ messages, onSendMessage, isProcessing, onImplementSuggestion, streamingContent, streamingAgent, hasFiles, lastError }: BuilderChatProps) {
