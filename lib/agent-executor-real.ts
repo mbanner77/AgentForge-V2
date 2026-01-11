@@ -106,6 +106,77 @@ interface ContextualHint {
   action?: string
 }
 
+// Smart Context Awareness - Analysiert bestehenden Code für intelligentere Vorschläge
+interface CodeContext {
+  hasState: boolean
+  hasEffects: boolean
+  hasAPI: boolean
+  hasRouting: boolean
+  hasAuth: boolean
+  hasForms: boolean
+  dataStructures: string[]
+  usedLibraries: string[]
+}
+
+function analyzeCodeContext(files: { path: string; content: string }[]): CodeContext {
+  const allContent = files.map(f => f.content).join('\n')
+  
+  // Erkenne verwendete Datenstrukturen
+  const dataStructures: string[] = []
+  if (allContent.includes('interface') || allContent.includes('type ')) {
+    const matches = allContent.match(/(?:interface|type)\s+(\w+)/g) || []
+    dataStructures.push(...matches.map(m => m.replace(/^(interface|type)\s+/, '')))
+  }
+  
+  // Erkenne verwendete Libraries
+  const usedLibraries: string[] = []
+  if (allContent.includes('from "react"') || allContent.includes("from 'react'")) usedLibraries.push('react')
+  if (allContent.includes('recharts')) usedLibraries.push('recharts')
+  if (allContent.includes('framer-motion')) usedLibraries.push('framer-motion')
+  if (allContent.includes('zustand')) usedLibraries.push('zustand')
+  if (allContent.includes('axios') || allContent.includes('fetch(')) usedLibraries.push('http-client')
+  if (allContent.includes('date-fns') || allContent.includes('dayjs')) usedLibraries.push('date-library')
+  
+  return {
+    hasState: allContent.includes('useState') || allContent.includes('useReducer'),
+    hasEffects: allContent.includes('useEffect'),
+    hasAPI: allContent.includes('fetch(') || allContent.includes('axios'),
+    hasRouting: allContent.includes('useRouter') || allContent.includes('next/navigation'),
+    hasAuth: allContent.includes('auth') || allContent.includes('login') || allContent.includes('session'),
+    hasForms: allContent.includes('<form') || allContent.includes('onSubmit'),
+    dataStructures: [...new Set(dataStructures)].slice(0, 5),
+    usedLibraries: [...new Set(usedLibraries)],
+  }
+}
+
+// Generiert kontextbewusste Vorschläge basierend auf Code-Analyse
+function getContextAwareSuggestions(context: CodeContext, projectType: ProjectType): string[] {
+  const suggestions: string[] = []
+  
+  // Basierend auf vorhandenen Features
+  if (context.hasState && !context.hasEffects) {
+    suggestions.push('"Füge Side-Effects mit useEffect hinzu (z.B. für API-Calls)"')
+  }
+  
+  if (context.hasForms && !context.hasAPI) {
+    suggestions.push('"Verbinde das Formular mit einem Backend/API"')
+  }
+  
+  if (context.hasAPI && !context.hasState) {
+    suggestions.push('"Füge State-Management für API-Daten hinzu"')
+  }
+  
+  if (!context.usedLibraries.includes('framer-motion') && context.hasState) {
+    suggestions.push('"Füge Animationen mit Framer Motion hinzu"')
+  }
+  
+  if (context.dataStructures.length > 0) {
+    suggestions.push(`"Erweitere ${context.dataStructures[0]} um neue Felder"`)
+  }
+  
+  return suggestions.slice(0, 2)
+}
+
 // Projekttyp-Erkennung für angepasste Vorschläge
 type ProjectType = 'todo' | 'ecommerce' | 'dashboard' | 'chat' | 'blog' | 'portfolio' | 'form' | 'unknown'
 
