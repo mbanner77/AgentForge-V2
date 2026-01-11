@@ -115,6 +115,14 @@ Bei FEATURE/BUGFIX/ANPASSUNG:
 - Analysiere BESTEHENDE DATEIEN im Kontext sorgfältig
 - Plane minimale, gezielte Änderungen
 
+## 🏗️ ARCHITEKTUR BEST PRACTICES:
+- Max 150 Zeilen pro Komponente - sonst aufteilen!
+- Jede Komponente hat EINE Verantwortung
+- useState für UI-State, Context für App-State
+- Keys in .map() IMMER setzen
+- useCallback für Event-Handler in Listen
+- useMemo für teure Berechnungen
+
 ## DATEI-STRUKTUR (IMMER BEACHTEN):
 **Mit Deployment-Ziel (Render/Netlify/Vercel):**
 - app/page.tsx - Hauptseite
