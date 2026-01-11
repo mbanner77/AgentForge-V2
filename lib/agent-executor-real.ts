@@ -106,6 +106,248 @@ interface ContextualHint {
   action?: string
 }
 
+// Intelligente Code-Vervollständigung Hints
+interface CompletionHint {
+  trigger: string
+  suggestion: string
+  code: string
+  category: 'hook' | 'component' | 'pattern' | 'utility'
+}
+
+function getCompletionHints(currentCode: string): CompletionHint[] {
+  const hints: CompletionHint[] = []
+  
+  // Wenn useState ohne useEffect - Side Effects vorschlagen
+  if (currentCode.includes('useState') && !currentCode.includes('useEffect')) {
+    hints.push({
+      trigger: 'useEffect',
+      suggestion: 'Side Effect für State-Synchronisation',
+      code: `useEffect(() => {\n  // Wird ausgeführt wenn sich der State ändert\n}, [dependency])`,
+      category: 'hook'
+    })
+  }
+  
+  // Wenn Form vorhanden - Validierung vorschlagen
+  if (currentCode.includes('<form') && !currentCode.includes('validate')) {
+    hints.push({
+      trigger: 'validation',
+      suggestion: 'Formular-Validierung hinzufügen',
+      code: `const validate = (data) => {\n  const errors = {}\n  if (!data.field) errors.field = 'Pflichtfeld'\n  return errors\n}`,
+      category: 'utility'
+    })
+  }
+  
+  // Wenn Liste ohne Pagination
+  if (currentCode.includes('.map(') && !currentCode.includes('page') && !currentCode.includes('slice')) {
+    hints.push({
+      trigger: 'pagination',
+      suggestion: 'Pagination für lange Listen',
+      code: `const [page, setPage] = useState(1)\nconst itemsPerPage = 10\nconst paginatedItems = items.slice((page-1)*itemsPerPage, page*itemsPerPage)`,
+      category: 'pattern'
+    })
+  }
+  
+  // Wenn async ohne Loading State
+  if ((currentCode.includes('fetch(') || currentCode.includes('async')) && !currentCode.includes('loading')) {
+    hints.push({
+      trigger: 'loading',
+      suggestion: 'Loading State für async Operationen',
+      code: `const [isLoading, setIsLoading] = useState(false)\n// In async function:\nsetIsLoading(true)\ntry { await ... } finally { setIsLoading(false) }`,
+      category: 'pattern'
+    })
+  }
+  
+  // Wenn Button ohne Disabled State
+  if (currentCode.includes('<button') && currentCode.includes('onClick') && !currentCode.includes('disabled')) {
+    hints.push({
+      trigger: 'disabled',
+      suggestion: 'Disabled State für Button',
+      code: `<button disabled={isLoading || !isValid} className="disabled:opacity-50">`,
+      category: 'component'
+    })
+  }
+  
+  return hints.slice(0, 3)
+}
+
+// Auto-Dependency Detection
+interface DependencySuggestion {
+  package: string
+  reason: string
+  installCommand: string
+}
+
+function detectRequiredDependencies(files: { path: string; content: string }[]): DependencySuggestion[] {
+  const suggestions: DependencySuggestion[] = []
+  const allContent = files.map(f => f.content).join('\n')
+  
+  // Charts
+  if ((allContent.includes('Chart') || allContent.includes('graph') || allContent.includes('BarChart')) && 
+      !allContent.includes('recharts')) {
+    suggestions.push({
+      package: 'recharts',
+      reason: 'Für Charts und Graphen',
+      installCommand: 'npm install recharts'
+    })
+  }
+  
+  // Animationen
+  if (allContent.includes('animate') || allContent.includes('motion') || allContent.includes('transition')) {
+    if (!allContent.includes('framer-motion')) {
+      suggestions.push({
+        package: 'framer-motion',
+        reason: 'Für flüssige Animationen',
+        installCommand: 'npm install framer-motion'
+      })
+    }
+  }
+  
+  // Date Handling
+  if (allContent.includes('Date') || allContent.includes('calendar') || allContent.includes('format')) {
+    if (!allContent.includes('date-fns') && !allContent.includes('dayjs')) {
+      suggestions.push({
+        package: 'date-fns',
+        reason: 'Für Datums-Formatierung',
+        installCommand: 'npm install date-fns'
+      })
+    }
+  }
+  
+  // Icons
+  if (allContent.includes('Icon') || allContent.includes('icon')) {
+    if (!allContent.includes('lucide-react')) {
+      suggestions.push({
+        package: 'lucide-react',
+        reason: 'Für Icons',
+        installCommand: 'npm install lucide-react'
+      })
+    }
+  }
+  
+  // State Management
+  if ((allContent.match(/useState/g) || []).length > 8 && !allContent.includes('zustand')) {
+    suggestions.push({
+      package: 'zustand',
+      reason: 'Für komplexes State Management',
+      installCommand: 'npm install zustand'
+    })
+  }
+  
+  return suggestions.slice(0, 3)
+}
+
+// Smart Component Templates basierend auf Kontext
+interface ComponentTemplate {
+  name: string
+  description: string
+  code: string
+  dependencies: string[]
+}
+
+function getSmartComponentTemplates(projectType: ProjectType): ComponentTemplate[] {
+  const templates: ComponentTemplate[] = []
+  
+  // Allgemeine Templates
+  templates.push({
+    name: 'SearchInput',
+    description: 'Suchfeld mit Debounce',
+    code: `const SearchInput = ({ onSearch, placeholder = "Suchen..." }) => {
+  const [value, setValue] = useState('')
+  
+  useEffect(() => {
+    const timer = setTimeout(() => onSearch(value), 300)
+    return () => clearTimeout(timer)
+  }, [value, onSearch])
+  
+  return (
+    <input
+      type="text"
+      value={value}
+      onChange={(e) => setValue(e.target.value)}
+      placeholder={placeholder}
+      className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+    />
+  )
+}`,
+    dependencies: ['react']
+  })
+  
+  // Projekttyp-spezifische Templates
+  if (projectType === 'todo') {
+    templates.push({
+      name: 'TodoItem',
+      description: 'Todo-Element mit Checkbox',
+      code: `const TodoItem = ({ todo, onToggle, onDelete }) => (
+  <div className="flex items-center gap-3 p-3 bg-white rounded-lg shadow">
+    <input
+      type="checkbox"
+      checked={todo.completed}
+      onChange={() => onToggle(todo.id)}
+      className="w-5 h-5"
+    />
+    <span className={todo.completed ? 'line-through text-gray-400' : ''}>
+      {todo.text}
+    </span>
+    <button onClick={() => onDelete(todo.id)} className="ml-auto text-red-500">
+      ✕
+    </button>
+  </div>
+)`,
+      dependencies: ['react']
+    })
+  }
+  
+  if (projectType === 'dashboard') {
+    templates.push({
+      name: 'StatCard',
+      description: 'KPI-Karte mit Icon und Trend',
+      code: `const StatCard = ({ title, value, change, icon: Icon }) => (
+  <div className="p-6 bg-white rounded-xl shadow">
+    <div className="flex justify-between items-start">
+      <div>
+        <p className="text-gray-500 text-sm">{title}</p>
+        <p className="text-2xl font-bold mt-1">{value}</p>
+        <p className={change >= 0 ? 'text-green-500' : 'text-red-500'}>
+          {change >= 0 ? '↑' : '↓'} {Math.abs(change)}%
+        </p>
+      </div>
+      {Icon && <Icon className="w-8 h-8 text-blue-500" />}
+    </div>
+  </div>
+)`,
+      dependencies: ['react', 'lucide-react']
+    })
+  }
+  
+  if (projectType === 'ecommerce') {
+    templates.push({
+      name: 'ProductCard',
+      description: 'Produkt-Karte mit Bild und Preis',
+      code: `const ProductCard = ({ product, onAddToCart }) => (
+  <div className="bg-white rounded-xl shadow overflow-hidden">
+    <img src={product.image} alt={product.name} className="w-full h-48 object-cover" />
+    <div className="p-4">
+      <h3 className="font-semibold">{product.name}</h3>
+      <p className="text-gray-500 text-sm mt-1">{product.description}</p>
+      <div className="flex justify-between items-center mt-4">
+        <span className="text-xl font-bold">{product.price}€</span>
+        <button
+          onClick={() => onAddToCart(product)}
+          className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+        >
+          In den Warenkorb
+        </button>
+      </div>
+    </div>
+  </div>
+)`,
+      dependencies: ['react']
+    })
+  }
+  
+  return templates.slice(0, 3)
+}
+
 // Smart Context Awareness - Analysiert bestehenden Code für intelligentere Vorschläge
 interface CodeContext {
   hasState: boolean
