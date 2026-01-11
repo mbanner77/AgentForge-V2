@@ -353,6 +353,31 @@ export function BuilderChat({ messages, onSendMessage, isProcessing, onImplement
     if (lowerText.includes('einstellung') || lowerText.includes('setting') || lowerText.includes('konfig')) {
       suggestions.push('Füge eine Einstellungen-Seite hinzu')
     }
+    // Neue erweiterte Keywords
+    if (lowerText.includes('dashboard') || lowerText.includes('übersicht') || lowerText.includes('analytics')) {
+      suggestions.push('Erstelle ein Dashboard mit KPI-Cards und Charts')
+    }
+    if (lowerText.includes('kalender') || lowerText.includes('calendar') || lowerText.includes('termin')) {
+      suggestions.push('Füge einen interaktiven Kalender mit Events hinzu')
+    }
+    if (lowerText.includes('upload') || lowerText.includes('hochlad') || lowerText.includes('datei')) {
+      suggestions.push('Implementiere Datei-Upload mit Drag-and-Drop')
+    }
+    if (lowerText.includes('karte') || lowerText.includes('map') || lowerText.includes('standort')) {
+      suggestions.push('Füge eine interaktive Karte hinzu')
+    }
+    if (lowerText.includes('sidebar') || lowerText.includes('navigation') || lowerText.includes('menü')) {
+      suggestions.push('Erstelle eine Sidebar-Navigation')
+    }
+    if (lowerText.includes('wizard') || lowerText.includes('schritt') || lowerText.includes('step')) {
+      suggestions.push('Implementiere einen Multi-Step Wizard')
+    }
+    if (lowerText.includes('accordion') || lowerText.includes('aufklapp') || lowerText.includes('faq')) {
+      suggestions.push('Füge ein Accordion/FAQ-Bereich hinzu')
+    }
+    if (lowerText.includes('carousel') || lowerText.includes('slider') || lowerText.includes('galerie')) {
+      suggestions.push('Erstelle einen Image Carousel/Slider')
+    }
     
     return suggestions.slice(0, 3) // Max 3 Vorschläge
   }
