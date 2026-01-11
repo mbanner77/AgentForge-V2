@@ -1263,6 +1263,28 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         language: 'typescript'
       })
       console.log('[Auto-Generate] PFLICHT: app/layout.tsx erstellt')
+    } else {
+      // layout.tsx existiert - prüfe ob globals.css importiert wird!
+      const layoutIndex = result.findIndex(f => normalizePath(f.path) === 'app/layout.tsx')
+      if (layoutIndex !== -1) {
+        const layoutContent = result[layoutIndex].content
+        // Prüfe ob globals.css Import fehlt
+        if (!layoutContent.includes('globals.css') && !layoutContent.includes('global.css')) {
+          // Füge globals.css Import am Anfang hinzu
+          const lines = layoutContent.split('\n')
+          // Finde erste Import-Zeile oder füge am Anfang ein
+          let insertIndex = 0
+          for (let i = 0; i < lines.length; i++) {
+            if (lines[i].trim().startsWith('import ')) {
+              insertIndex = i
+              break
+            }
+          }
+          lines.splice(insertIndex, 0, 'import "./globals.css";')
+          result[layoutIndex].content = lines.join('\n')
+          console.log('[Auto-Generate] FIX: globals.css Import zu layout.tsx hinzugefügt')
+        }
+      }
     }
   }
   
