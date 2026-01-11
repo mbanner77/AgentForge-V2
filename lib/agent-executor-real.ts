@@ -99,6 +99,85 @@ interface CodeStats {
   hasRouter: boolean
 }
 
+// Contextual Hints - Intelligente Tipps basierend auf Code-Analyse
+interface ContextualHint {
+  type: 'improvement' | 'warning' | 'suggestion'
+  message: string
+  action?: string
+}
+
+function generateContextualHints(files: { path: string; content: string }[]): ContextualHint[] {
+  const hints: ContextualHint[] = []
+  
+  // Prüfe auf fehlende Best Practices
+  const hasUseClient = files.some(f => f.content.includes('"use client"') || f.content.includes("'use client'"))
+  const hasErrorBoundary = files.some(f => f.content.includes('ErrorBoundary') || f.content.includes('error.tsx'))
+  const hasLoading = files.some(f => f.path.includes('loading.tsx') || f.content.includes('Skeleton') || f.content.includes('Loading'))
+  const hasLocalStorage = files.some(f => f.content.includes('localStorage'))
+  const hasUseState = files.some(f => f.content.includes('useState'))
+  const hasUseEffect = files.some(f => f.content.includes('useEffect'))
+  const hasForm = files.some(f => f.content.includes('<form') || f.content.includes('onSubmit'))
+  const hasValidation = files.some(f => f.content.includes('required') || f.content.includes('validate') || f.content.includes('zod'))
+  
+  // Verbesserungsvorschläge
+  if (hasUseState && !hasLocalStorage) {
+    hints.push({
+      type: 'suggestion',
+      message: 'Daten werden nicht persistent gespeichert',
+      action: 'Füge localStorage Persistenz hinzu'
+    })
+  }
+  
+  if (!hasLoading && files.length > 3) {
+    hints.push({
+      type: 'suggestion',
+      message: 'Keine Loading-States gefunden',
+      action: 'Füge Skeleton/Loading Komponenten hinzu'
+    })
+  }
+  
+  if (!hasErrorBoundary && files.length > 5) {
+    hints.push({
+      type: 'suggestion',
+      message: 'Keine Error-Behandlung gefunden',
+      action: 'Füge Error Boundary hinzu'
+    })
+  }
+  
+  if (hasForm && !hasValidation) {
+    hints.push({
+      type: 'warning',
+      message: 'Formular ohne Validierung erkannt',
+      action: 'Füge Formular-Validierung hinzu'
+    })
+  }
+  
+  if (hasUseEffect) {
+    const effectCount = files.reduce((sum, f) => sum + (f.content.match(/useEffect/g)?.length || 0), 0)
+    if (effectCount > 5) {
+      hints.push({
+        type: 'improvement',
+        message: `${effectCount} useEffect Hooks gefunden - prüfe ob alle nötig sind`,
+        action: 'Refaktoriere Effects oder nutze React Query'
+      })
+    }
+  }
+  
+  // Prüfe auf große Komponenten
+  for (const file of files) {
+    const lines = file.content.split('\n').length
+    if (lines > 200 && file.path.endsWith('.tsx')) {
+      hints.push({
+        type: 'improvement',
+        message: `${file.path} ist sehr groß (${lines} Zeilen)`,
+        action: 'Extrahiere Komponenten in separate Dateien'
+      })
+    }
+  }
+  
+  return hints.slice(0, 3) // Max 3 Hints
+}
+
 function calculateCodeStats(files: { path: string; content: string }[]): CodeStats {
   let totalLines = 0
   let components = 0
@@ -4310,9 +4389,15 @@ Die App kann mit AgentForge weiter entwickelt werden:
           
           const statsLine = `📊 **${codeStats.totalFiles} Dateien** | ${codeStats.totalLines} Zeilen | ${codeStats.components} Komponenten${codeStats.hooks > 0 ? ` | ${codeStats.hooks} Hooks` : ''}`
           
+          // Contextual Hints generieren
+          const hints = generateContextualHints(finalFiles)
+          const hintsText = hints.length > 0 
+            ? `\n\n💡 **Verbesserungsvorschläge:**\n${hints.map(h => `- ${h.type === 'warning' ? '⚠️' : h.type === 'improvement' ? '🔧' : '💡'} ${h.message}${h.action ? ` → "${h.action}"` : ''}`).join('\n')}`
+            : ''
+          
           const followUpMessage = isFirstGeneration
-            ? `✨ **App erfolgreich erstellt!**\n\n${statsLine}${techStack ? `\n🛠️ **Tech:** ${techStack}` : ''}\n\n**Nächste Schritte:**\n- 🐛 **Bug fixen** - Beschreibe einen Fehler im Chat\n- ➕ **Feature hinzufügen** - "Füge eine Suchfunktion hinzu"\n- 🎨 **Design verbessern** - "Mache das Design moderner"\n- 🚀 **Deployen** - Klicke auf "Deploy" für Live-Deployment`
-            : `✅ **Änderungen angewendet!**\n\n${statsLine}\n\nDu kannst weitere Anpassungen vornehmen oder die Quick Actions nutzen.`
+            ? `✨ **App erfolgreich erstellt!**\n\n${statsLine}${techStack ? `\n🛠️ **Tech:** ${techStack}` : ''}${hintsText}\n\n**Nächste Schritte:**\n- 🐛 **Bug fixen** - Beschreibe einen Fehler im Chat\n- ➕ **Feature hinzufügen** - "Füge eine Suchfunktion hinzu"\n- 🎨 **Design verbessern** - "Mache das Design moderner"\n- 🚀 **Deployen** - Klicke auf "Deploy" für Live-Deployment`
+            : `✅ **Änderungen angewendet!**\n\n${statsLine}${hintsText}\n\nDu kannst weitere Anpassungen vornehmen oder die Quick Actions nutzen.`
           
           addMessage({
             role: "assistant",
