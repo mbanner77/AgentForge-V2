@@ -359,7 +359,7 @@ export function BuilderChat({ messages, onSendMessage, isProcessing, onImplement
 
   const smartSuggestions = input.length > 3 ? getSmartSuggestions(input) : []
 
-  // Auto-Completion Prompts - Häufig verwendete Befehle
+  // Auto-Completion Prompts - Häufig verwendete Befehle (erweitert)
   const autoCompletePrompts = [
     { trigger: '/fix', prompt: 'Bitte behebe den folgenden Fehler: ', description: 'Bug fixen' },
     { trigger: '/add', prompt: 'Füge folgendes Feature hinzu: ', description: 'Feature hinzufügen' },
@@ -371,6 +371,12 @@ export function BuilderChat({ messages, onSendMessage, isProcessing, onImplement
     { trigger: '/responsive', prompt: 'Mache das Layout vollständig responsive für Mobile, Tablet und Desktop.', description: 'Responsive machen' },
     { trigger: '/animate', prompt: 'Füge flüssige Animationen und Übergänge für alle Interaktionen hinzu.', description: 'Animationen' },
     { trigger: '/export', prompt: 'Implementiere eine Export-Funktion für CSV und PDF Download.', description: 'Export hinzufügen' },
+    { trigger: '/auth', prompt: 'Füge ein Authentifizierungssystem hinzu: Login, Logout, und geschützte Bereiche.', description: 'Auth hinzufügen' },
+    { trigger: '/api', prompt: 'Verbinde die App mit einer API: Implementiere fetch/axios Calls mit Loading und Error States.', description: 'API Integration' },
+    { trigger: '/test', prompt: 'Füge Testdaten hinzu: Erstelle realistische Mock-Daten für die Entwicklung.', description: 'Testdaten' },
+    { trigger: '/split', prompt: 'Teile große Komponenten auf: Extrahiere wiederverwendbare Teile in separate Dateien.', description: 'Komponenten splitten' },
+    { trigger: '/perf', prompt: 'Optimiere die Performance: Füge useMemo, useCallback, und React.memo wo nötig hinzu.', description: 'Performance' },
+    { trigger: '/a11y', prompt: 'Verbessere Accessibility: Füge aria-labels, Keyboard-Navigation und semantische HTML hinzu.', description: 'Accessibility' },
   ]
 
   // Prüfe ob Input mit / beginnt für Auto-Completion
