@@ -273,7 +273,7 @@ export function BuilderChat({ messages, onSendMessage, isProcessing, onImplement
   const scrollRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  // Smart Prompt Suggestions basierend auf Eingabe
+  // Smart Prompt Suggestions basierend auf Eingabe - Erweitert
   const getSmartSuggestions = (text: string): string[] => {
     const suggestions: string[] = []
     const lowerText = text.toLowerCase()
@@ -285,29 +285,57 @@ export function BuilderChat({ messages, onSendMessage, isProcessing, onImplement
     if (lowerText.includes('filter') || lowerText.includes('sort')) {
       suggestions.push('Implementiere Filter- und Sortier-Optionen')
     }
-    if (lowerText.includes('login') || lowerText.includes('auth')) {
+    if (lowerText.includes('login') || lowerText.includes('auth') || lowerText.includes('anmeld')) {
       suggestions.push('Füge Benutzer-Authentifizierung mit Login/Logout hinzu')
     }
-    if (lowerText.includes('dark') || lowerText.includes('theme')) {
+    if (lowerText.includes('dark') || lowerText.includes('theme') || lowerText.includes('hell') || lowerText.includes('dunkel')) {
       suggestions.push('Implementiere Dark/Light Mode Toggle')
     }
-    if (lowerText.includes('responsive') || lowerText.includes('mobil')) {
+    if (lowerText.includes('responsive') || lowerText.includes('mobil') || lowerText.includes('handy')) {
       suggestions.push('Mache das Layout vollständig responsive für Mobile')
     }
-    if (lowerText.includes('speicher') || lowerText.includes('save')) {
+    if (lowerText.includes('speicher') || lowerText.includes('save') || lowerText.includes('persist')) {
       suggestions.push('Füge lokale Datenspeicherung (localStorage) hinzu')
     }
-    if (lowerText.includes('animation') || lowerText.includes('animat')) {
+    if (lowerText.includes('animation') || lowerText.includes('animat') || lowerText.includes('übergang')) {
       suggestions.push('Füge flüssige Animationen und Übergänge hinzu')
     }
-    if (lowerText.includes('export') || lowerText.includes('download')) {
+    if (lowerText.includes('export') || lowerText.includes('download') || lowerText.includes('herunterlad')) {
       suggestions.push('Implementiere Export-Funktion (CSV/PDF)')
     }
-    if (lowerText.includes('chart') || lowerText.includes('graph') || lowerText.includes('statistik')) {
+    if (lowerText.includes('chart') || lowerText.includes('graph') || lowerText.includes('statistik') || lowerText.includes('diagramm')) {
       suggestions.push('Füge interaktive Charts mit Recharts hinzu')
     }
-    if (lowerText.includes('drag') || lowerText.includes('drop')) {
+    if (lowerText.includes('drag') || lowerText.includes('drop') || lowerText.includes('zieh')) {
       suggestions.push('Implementiere Drag-and-Drop Funktionalität')
+    }
+    // Neue Keywords
+    if (lowerText.includes('modal') || lowerText.includes('dialog') || lowerText.includes('popup')) {
+      suggestions.push('Füge Modal/Dialog Komponenten hinzu')
+    }
+    if (lowerText.includes('tab') || lowerText.includes('reiter')) {
+      suggestions.push('Implementiere Tab-Navigation für bessere Struktur')
+    }
+    if (lowerText.includes('formular') || lowerText.includes('form') || lowerText.includes('eingabe')) {
+      suggestions.push('Erstelle ein Formular mit Validierung')
+    }
+    if (lowerText.includes('liste') || lowerText.includes('list') || lowerText.includes('tabelle')) {
+      suggestions.push('Füge eine sortierbare Tabelle/Liste hinzu')
+    }
+    if (lowerText.includes('benachricht') || lowerText.includes('toast') || lowerText.includes('notification')) {
+      suggestions.push('Implementiere Toast-Benachrichtigungen')
+    }
+    if (lowerText.includes('laden') || lowerText.includes('loading') || lowerText.includes('spinner')) {
+      suggestions.push('Füge Loading-States und Skeleton-Komponenten hinzu')
+    }
+    if (lowerText.includes('pagini') || lowerText.includes('seite') || lowerText.includes('blätter')) {
+      suggestions.push('Implementiere Pagination für große Datenmengen')
+    }
+    if (lowerText.includes('profil') || lowerText.includes('user') || lowerText.includes('benutzer')) {
+      suggestions.push('Erstelle eine Benutzer-Profil Seite')
+    }
+    if (lowerText.includes('einstellung') || lowerText.includes('setting') || lowerText.includes('konfig')) {
+      suggestions.push('Füge eine Einstellungen-Seite hinzu')
     }
     
     return suggestions.slice(0, 3) // Max 3 Vorschläge
