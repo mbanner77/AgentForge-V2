@@ -311,6 +311,24 @@ export default function App() {
    - Fallback UI für leere States
    - Loading States während Datenabfragen
 
+6. **UX Best Practices:**
+   - Visuelles Feedback bei Aktionen (Hover, Active States)
+   - Bestätigungen für destruktive Aktionen
+   - Toast-Benachrichtigungen für Erfolg/Fehler
+   - Placeholder-Text für leere Listen
+
+7. **Code-Struktur:**
+   - Max 150 Zeilen pro Komponente
+   - Wiederverwendbare Komponenten in components/ui/
+   - Custom Hooks für komplexe Logik auslagern
+   - Konstanten am Dateianfang definieren
+
+8. **Styling:**
+   - Konsistente Farben und Abstände
+   - Hover und Focus States für interaktive Elemente
+   - Responsive Breakpoints beachten
+   - Animationen sparsam und sinnvoll einsetzen
+
 ABSOLUT VERBOTEN: Alle Komponenten in App.tsx definieren!`,
   },
 
