@@ -177,6 +177,128 @@ function getContextAwareSuggestions(context: CodeContext, projectType: ProjectTy
   return suggestions.slice(0, 2)
 }
 
+// Intelligente Komponenten-Vorschläge basierend auf App-Analyse
+interface ComponentSuggestion {
+  name: string
+  description: string
+  reason: string
+  prompt: string
+}
+
+function suggestMissingComponents(files: { path: string; content: string }[], projectType: ProjectType): ComponentSuggestion[] {
+  const suggestions: ComponentSuggestion[] = []
+  const allContent = files.map(f => f.content).join('\n')
+  const existingComponents = files.filter(f => f.path.includes('components/')).map(f => f.path)
+  
+  // Allgemeine fehlende Komponenten
+  if (!allContent.includes('Header') && !existingComponents.some(p => p.includes('Header'))) {
+    suggestions.push({
+      name: 'Header',
+      description: 'Navigation und Branding',
+      reason: 'Jede App braucht eine Header-Komponente',
+      prompt: 'Füge eine Header-Komponente mit Logo und Navigation hinzu'
+    })
+  }
+  
+  if (!allContent.includes('Footer') && files.length > 3) {
+    suggestions.push({
+      name: 'Footer',
+      description: 'Links und Copyright',
+      reason: 'Für professionelle Apps empfohlen',
+      prompt: 'Füge eine Footer-Komponente mit Links und Copyright hinzu'
+    })
+  }
+  
+  if (!allContent.includes('Loading') && !allContent.includes('Skeleton') && allContent.includes('useState')) {
+    suggestions.push({
+      name: 'LoadingSpinner',
+      description: 'Loading-Indikator',
+      reason: 'Für bessere UX bei async Operationen',
+      prompt: 'Füge eine LoadingSpinner-Komponente für Loading-States hinzu'
+    })
+  }
+  
+  if (!allContent.includes('Modal') && !allContent.includes('Dialog') && files.length > 4) {
+    suggestions.push({
+      name: 'Modal',
+      description: 'Dialog/Popup',
+      reason: 'Nützlich für Bestätigungen und Formulare',
+      prompt: 'Füge eine wiederverwendbare Modal-Komponente hinzu'
+    })
+  }
+  
+  // Projekttyp-spezifische Komponenten
+  if (projectType === 'todo' && !allContent.includes('TodoItem')) {
+    suggestions.push({
+      name: 'TodoItem',
+      description: 'Einzelnes Todo-Element',
+      reason: 'Bessere Struktur für Todo-Apps',
+      prompt: 'Extrahiere TodoItem als separate Komponente mit Checkbox und Delete-Button'
+    })
+  }
+  
+  if (projectType === 'ecommerce' && !allContent.includes('ProductCard')) {
+    suggestions.push({
+      name: 'ProductCard',
+      description: 'Produkt-Anzeige',
+      reason: 'Wiederverwendbar für Produktlisten',
+      prompt: 'Füge eine ProductCard-Komponente mit Bild, Titel, Preis und Add-to-Cart hinzu'
+    })
+  }
+  
+  if (projectType === 'dashboard' && !allContent.includes('StatCard')) {
+    suggestions.push({
+      name: 'StatCard',
+      description: 'KPI-Anzeige',
+      reason: 'Für Dashboard-Metriken',
+      prompt: 'Füge eine StatCard-Komponente für KPI-Anzeigen mit Icon und Trend hinzu'
+    })
+  }
+  
+  return suggestions.slice(0, 3)
+}
+
+// Code Complexity Score - Bewertet die Komplexität des Codes
+function calculateComplexityScore(files: { path: string; content: string }[]): { score: number; level: string; details: string[] } {
+  let complexity = 0
+  const details: string[] = []
+  
+  for (const file of files) {
+    const content = file.content
+    
+    // Zähle Komplexitätsfaktoren
+    const conditionals = (content.match(/if\s*\(|switch\s*\(|\?\s*:/g) || []).length
+    const loops = (content.match(/for\s*\(|while\s*\(|\.map\(|\.forEach\(/g) || []).length
+    const functions = (content.match(/function\s+\w+|=>\s*{|=>\s*\(/g) || []).length
+    const hooks = (content.match(/use[A-Z]\w+/g) || []).length
+    
+    complexity += conditionals * 2
+    complexity += loops * 3
+    complexity += functions * 1
+    complexity += hooks * 1
+  }
+  
+  // Normalisiere auf 0-100
+  const normalizedScore = Math.min(100, Math.round(complexity / files.length))
+  
+  let level: string
+  if (normalizedScore < 20) {
+    level = 'Einfach'
+    details.push('✅ Gut wartbarer Code')
+  } else if (normalizedScore < 40) {
+    level = 'Moderat'
+    details.push('✅ Angemessene Komplexität')
+  } else if (normalizedScore < 60) {
+    level = 'Komplex'
+    details.push('⚠️ Erwäge Refactoring')
+  } else {
+    level = 'Sehr komplex'
+    details.push('❌ Dringend vereinfachen')
+  }
+  
+  return { score: normalizedScore, level, details }
+}
+
 // Projekttyp-Erkennung für angepasste Vorschläge
 type ProjectType = 'todo' | 'ecommerce' | 'dashboard' | 'chat' | 'blog' | 'portfolio' | 'form' | 'unknown'
 
