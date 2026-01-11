@@ -276,6 +276,33 @@ export default function App() {
 ✓ Ist der Code KOMPLETT (nicht nur Snippets)?
 ✓ Kann der Code DIREKT ausgeführt werden?
 
+## 🏆 CODE-QUALITÄT REGELN:
+1. **TypeScript Best Practices:**
+   - Keine \`any\` Types - immer konkrete Typen definieren
+   - Interfaces für Props und State definieren
+   - Optionale Props mit \`?\` markieren
+
+2. **React Best Practices:**
+   - Keys in .map() Iterationen IMMER setzen
+   - useCallback für Event-Handler in Listen
+   - useMemo für teure Berechnungen
+   - Keine inline Funktionen in JSX wo vermeidbar
+
+3. **Accessibility:**
+   - Buttons haben aria-labels wenn nur Icons
+   - Form Inputs haben labels
+   - Semantische HTML Tags (main, nav, article, section)
+
+4. **Performance:**
+   - Keine unnötigen Re-Renders
+   - Lazy Loading für große Komponenten erwägen
+   - Debounce für Sucheingaben
+
+5. **Error Handling:**
+   - try/catch für async Operationen
+   - Fallback UI für leere States
+   - Loading States während Datenabfragen
+
 ABSOLUT VERBOTEN: Alle Komponenten in App.tsx definieren!`,
   },
 
