@@ -258,6 +258,183 @@ function suggestMissingComponents(files: { path: string; content: string }[], pr
   return suggestions.slice(0, 3)
 }
 
+// Automatische Code-Dokumentation generieren
+function generateCodeDocumentation(files: { path: string; content: string }[]): string {
+  const docs: string[] = []
+  
+  for (const file of files) {
+    if (!file.path.endsWith('.tsx') && !file.path.endsWith('.ts')) continue
+    
+    const content = file.content
+    
+    // Finde exportierte Komponenten/Funktionen
+    const exports = content.match(/export\s+(default\s+)?(?:function|const|class)\s+(\w+)/g) || []
+    const props = content.match(/interface\s+(\w+Props)/g) || []
+    const hooks = content.match(/function\s+(use\w+)/g) || []
+    
+    if (exports.length > 0 || hooks.length > 0) {
+      docs.push(`### ${file.path}`)
+      
+      exports.forEach(exp => {
+        const name = exp.replace(/export\s+(default\s+)?(?:function|const|class)\s+/, '')
+        docs.push(`- **${name}**: Exportierte Komponente/Funktion`)
+      })
+      
+      hooks.forEach(hook => {
+        const name = hook.replace('function ', '')
+        docs.push(`- **${name}**: Custom Hook`)
+      })
+      
+      props.forEach(prop => {
+        const name = prop.replace('interface ', '')
+        docs.push(`- **${name}**: Props Interface`)
+      })
+    }
+  }
+  
+  return docs.length > 0 ? docs.join('\n') : 'Keine dokumentierbaren Elemente gefunden.'
+}
+
+// Smart Refactoring Vorschläge
+interface SmartRefactoringSuggestion {
+  type: 'extract' | 'simplify' | 'rename' | 'split'
+  file: string
+  description: string
+  priority: 'low' | 'medium' | 'high'
+}
+
+function generateSmartRefactoringSuggestions(files: { path: string; content: string }[]): SmartRefactoringSuggestion[] {
+  const suggestions: SmartRefactoringSuggestion[] = []
+  
+  for (const file of files) {
+    const content = file.content
+    const lines = content.split('\n')
+    
+    // Große Dateien splitten
+    if (lines.length > 200) {
+      suggestions.push({
+        type: 'split',
+        file: file.path,
+        description: `Datei hat ${lines.length} Zeilen - in kleinere Module aufteilen`,
+        priority: 'high'
+      })
+    }
+    
+    // Duplizierter Code (einfache Erkennung)
+    const codeBlocks = content.match(/\{[^{}]{50,}\}/g) || []
+    const uniqueBlocks = new Set(codeBlocks)
+    if (codeBlocks.length > uniqueBlocks.size + 2) {
+      suggestions.push({
+        type: 'extract',
+        file: file.path,
+        description: 'Mögliche Code-Duplikation erkannt - in Funktion extrahieren',
+        priority: 'medium'
+      })
+    }
+    
+    // Zu viele Props
+    const propsMatch = content.match(/\(\s*\{[^}]{200,}\}\s*\)/g)
+    if (propsMatch) {
+      suggestions.push({
+        type: 'simplify',
+        file: file.path,
+        description: 'Viele Props - erwäge Gruppierung oder Context',
+        priority: 'medium'
+      })
+    }
+    
+    // Lange Funktionen
+    const longFunctions = content.match(/(?:function|const)\s+\w+[^{]*\{[^}]{500,}\}/g)
+    if (longFunctions && longFunctions.length > 0) {
+      suggestions.push({
+        type: 'extract',
+        file: file.path,
+        description: 'Lange Funktion erkannt - in kleinere Funktionen aufteilen',
+        priority: 'medium'
+      })
+    }
+  }
+  
+  return suggestions.slice(0, 5)
+}
+
+// Projekt-Health-Check - Umfassende Analyse
+interface HealthCheckResult {
+  overall: 'healthy' | 'warning' | 'critical'
+  score: number
+  checks: { name: string; status: 'pass' | 'warn' | 'fail'; message: string }[]
+}
+
+function performHealthCheck(files: { path: string; content: string }[]): HealthCheckResult {
+  const checks: { name: string; status: 'pass' | 'warn' | 'fail'; message: string }[] = []
+  let score = 100
+  
+  const allContent = files.map(f => f.content).join('\n')
+  
+  // Check 1: TypeScript Usage
+  const hasTypeScript = files.some(f => f.path.endsWith('.ts') || f.path.endsWith('.tsx'))
+  checks.push({
+    name: 'TypeScript',
+    status: hasTypeScript ? 'pass' : 'warn',
+    message: hasTypeScript ? 'TypeScript wird verwendet' : 'Erwäge TypeScript für Typsicherheit'
+  })
+  if (!hasTypeScript) score -= 10
+  
+  // Check 2: Error Handling
+  const hasErrorHandling = allContent.includes('try') && allContent.includes('catch')
+  checks.push({
+    name: 'Error Handling',
+    status: hasErrorHandling ? 'pass' : 'warn',
+    message: hasErrorHandling ? 'Error Handling vorhanden' : 'Füge try/catch für Fehlerbehandlung hinzu'
+  })
+  if (!hasErrorHandling) score -= 10
+  
+  // Check 3: Loading States
+  const hasLoadingStates = allContent.includes('loading') || allContent.includes('isLoading') || allContent.includes('Skeleton')
+  checks.push({
+    name: 'Loading States',
+    status: hasLoadingStates ? 'pass' : 'warn',
+    message: hasLoadingStates ? 'Loading States implementiert' : 'Füge Loading States für bessere UX hinzu'
+  })
+  if (!hasLoadingStates) score -= 5
+  
+  // Check 4: Accessibility
+  const hasA11y = allContent.includes('aria-') || allContent.includes('role=')
+  checks.push({
+    name: 'Accessibility',
+    status: hasA11y ? 'pass' : 'warn',
+    message: hasA11y ? 'Accessibility Attribute vorhanden' : 'Füge aria-labels hinzu'
+  })
+  if (!hasA11y) score -= 10
+  
+  // Check 5: Console Logs
+  const consoleLogs = (allContent.match(/console\.(log|warn|error)/g) || []).length
+  checks.push({
+    name: 'Console Logs',
+    status: consoleLogs < 3 ? 'pass' : consoleLogs < 10 ? 'warn' : 'fail',
+    message: consoleLogs < 3 ? 'Wenig Console Logs' : `${consoleLogs} Console Logs - vor Production entfernen`
+  })
+  if (consoleLogs >= 10) score -= 15
+  else if (consoleLogs >= 3) score -= 5
+  
+  // Check 6: Component Structure
+  const componentFiles = files.filter(f => f.path.includes('components/'))
+  checks.push({
+    name: 'Komponenten-Struktur',
+    status: componentFiles.length > 0 ? 'pass' : 'warn',
+    message: componentFiles.length > 0 ? `${componentFiles.length} Komponenten in /components` : 'Extrahiere Komponenten in /components Ordner'
+  })
+  if (componentFiles.length === 0 && files.length > 2) score -= 10
+  
+  // Determine overall health
+  let overall: 'healthy' | 'warning' | 'critical'
+  if (score >= 80) overall = 'healthy'
+  else if (score >= 50) overall = 'warning'
+  else overall = 'critical'
+  
+  return { overall, score, checks }
+}
+
 // Code Complexity Score - Bewertet die Komplexität des Codes
 function calculateComplexityScore(files: { path: string; content: string }[]): { score: number; level: string; details: string[] } {
   let complexity = 0
