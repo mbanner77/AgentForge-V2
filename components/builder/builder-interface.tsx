@@ -191,10 +191,21 @@ export function BuilderInterface() {
       /clean.*up/i, /struktur/i, /performance/i,
     ]
     
+    const explainPatterns = [
+      /erkläre/i, /explain/i, /was macht/i, /wie funktioniert/i,
+      /beschreibe/i, /zeig mir/i, /verstehe nicht/i,
+    ]
+    
+    const deletePatterns = [
+      /entferne/i, /lösche/i, /remove/i, /delete/i, /weg mit/i,
+    ]
+    
     const isErrorMessage = existingFiles.length > 0 && errorPatterns.some(pattern => pattern.test(content))
     const isFeatureRequest = featurePatterns.some(pattern => pattern.test(content))
     const isDesignRequest = designPatterns.some(pattern => pattern.test(content))
     const isRefactorRequest = refactorPatterns.some(pattern => pattern.test(content))
+    const isExplainRequest = explainPatterns.some(pattern => pattern.test(content))
+    const isDeleteRequest = deletePatterns.some(pattern => pattern.test(content))
     
     // Reset Preview-Fehler wenn User neue Anfrage sendet
     setPreviewError(null)
@@ -207,11 +218,17 @@ export function BuilderInterface() {
       // Zeige kontextuellen Hinweis basierend auf erkanntem Intent
       if (isIteration) {
         if (isFeatureRequest) {
-          toast.info("➕ Feature-Anfrage erkannt")
+          toast.info("➕ Feature-Anfrage erkannt - erweitere bestehende App")
         } else if (isDesignRequest) {
-          toast.info("🎨 Design-Anfrage erkannt")
+          toast.info("🎨 Design-Anfrage erkannt - verbessere Styling")
         } else if (isRefactorRequest) {
-          toast.info("🔧 Refactoring-Anfrage erkannt")
+          toast.info("🔧 Refactoring erkannt - optimiere Code-Struktur")
+        } else if (isExplainRequest) {
+          toast.info("💡 Erklärung angefordert")
+        } else if (isDeleteRequest) {
+          toast.info("🗑️ Entfernung angefordert")
+        } else {
+          toast.info("🔄 Iteration - erweitere bestehende App")
         }
       }
       // Prompt Enhancement für neue Projekte (kurze Prompts < 100 Zeichen)

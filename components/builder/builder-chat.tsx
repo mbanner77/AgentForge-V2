@@ -202,7 +202,7 @@ function formatInlineMarkdown(text: string): React.ReactNode {
   })
 }
 
-// Quick Actions für kontextuelle Aktionen
+// Quick Actions für kontextuelle Aktionen - Erweitert
 const quickActions = [
   {
     icon: Bug,
@@ -215,7 +215,7 @@ const quickActions = [
   },
   {
     icon: Plus,
-    label: "Feature hinzufügen",
+    label: "Feature",
     prompt: "Füge folgendes Feature hinzu: ",
     color: "text-green-500",
     bgColor: "bg-green-500/10 hover:bg-green-500/20 border-green-500/30",
@@ -224,26 +224,42 @@ const quickActions = [
   },
   {
     icon: Wand2,
-    label: "Design verbessern",
-    prompt: "Verbessere das Design: Mache die App moderner und ansprechender mit besseren Farben, Animationen und Layout.",
+    label: "Design",
+    prompt: "Verbessere das Design: Mache die App moderner und ansprechender mit besseren Farben, Animationen, Hover-Effekten und Layout.",
     color: "text-purple-500",
     bgColor: "bg-purple-500/10 hover:bg-purple-500/20 border-purple-500/30",
     needsInput: false,
   },
   {
     icon: RefreshCw,
-    label: "Refactoring",
+    label: "Refactor",
     prompt: "Refaktoriere den Code: Verbessere die Code-Struktur, extrahiere wiederverwendbare Komponenten und optimiere die Performance.",
     color: "text-blue-500",
     bgColor: "bg-blue-500/10 hover:bg-blue-500/20 border-blue-500/30",
     needsInput: false,
   },
   {
-    icon: Zap,
-    label: "Performance",
-    prompt: "Optimiere die Performance: Reduziere Re-Renders, füge useMemo/useCallback hinzu wo nötig, und optimiere die Ladezeiten.",
-    color: "text-yellow-500",
-    bgColor: "bg-yellow-500/10 hover:bg-yellow-500/20 border-yellow-500/30",
+    icon: Search,
+    label: "Suche",
+    prompt: "Füge eine Suchfunktion hinzu: Implementiere eine Echtzeit-Suche mit Filter-Optionen und Highlighting der Treffer.",
+    color: "text-cyan-500",
+    bgColor: "bg-cyan-500/10 hover:bg-cyan-500/20 border-cyan-500/30",
+    needsInput: false,
+  },
+  {
+    icon: Database,
+    label: "Speichern",
+    prompt: "Füge Datenpersistenz hinzu: Speichere alle Daten im localStorage, sodass sie nach einem Reload erhalten bleiben.",
+    color: "text-orange-500",
+    bgColor: "bg-orange-500/10 hover:bg-orange-500/20 border-orange-500/30",
+    needsInput: false,
+  },
+  {
+    icon: Filter,
+    label: "Filter",
+    prompt: "Füge Filter- und Sortier-Optionen hinzu: Implementiere Dropdown-Filter und Sortierung nach verschiedenen Kriterien.",
+    color: "text-indigo-500",
+    bgColor: "bg-indigo-500/10 hover:bg-indigo-500/20 border-indigo-500/30",
     needsInput: false,
   },
 ]
@@ -483,9 +499,12 @@ export function BuilderChat({ messages, onSendMessage, isProcessing, onImplement
         {/* Quick Actions Panel - nur anzeigen wenn Dateien existieren */}
         {hasFiles && !isProcessing && (
           <div className="px-4 pt-3 pb-2 border-b border-border/50">
-            <div className="flex items-center gap-2 mb-2">
-              <Zap className="h-3 w-3 text-primary" />
-              <span className="text-xs font-medium text-muted-foreground">Quick Actions</span>
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <Zap className="h-3 w-3 text-primary" />
+                <span className="text-xs font-medium text-muted-foreground">Quick Actions</span>
+              </div>
+              <span className="text-xs text-muted-foreground">Klicke für schnelle Änderungen</span>
             </div>
             <div className="flex flex-wrap gap-2">
               {quickActions.map((action) => {
