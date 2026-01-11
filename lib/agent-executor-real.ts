@@ -306,6 +306,89 @@ function generateContextualHints(files: { path: string; content: string }[]): Co
   return hints.slice(0, 3) // Max 3 Hints
 }
 
+// Automatische Code-Optimierung Vorschläge
+interface OptimizationSuggestion {
+  type: 'performance' | 'readability' | 'security' | 'accessibility'
+  severity: 'low' | 'medium' | 'high'
+  file: string
+  suggestion: string
+  autoFixPrompt?: string
+}
+
+function generateOptimizationSuggestions(files: { path: string; content: string }[]): OptimizationSuggestion[] {
+  const suggestions: OptimizationSuggestion[] = []
+  
+  for (const file of files) {
+    const content = file.content
+    const lines = content.split('\n')
+    
+    // Performance Optimierungen
+    if (content.includes('useEffect') && !content.includes('useCallback') && content.includes('.map(')) {
+      suggestions.push({
+        type: 'performance',
+        severity: 'medium',
+        file: file.path,
+        suggestion: 'Event-Handler in Listen sollten mit useCallback optimiert werden',
+        autoFixPrompt: 'Optimiere die Performance: Wrap Event-Handler in useCallback'
+      })
+    }
+    
+    if ((content.match(/useState/g) || []).length > 5) {
+      suggestions.push({
+        type: 'readability',
+        severity: 'low',
+        file: file.path,
+        suggestion: 'Viele useState Hooks - erwäge useReducer oder Zustand zusammenzufassen',
+        autoFixPrompt: 'Refaktoriere: Fasse mehrere useState zu useReducer zusammen'
+      })
+    }
+    
+    // Security
+    if (content.includes('dangerouslySetInnerHTML')) {
+      suggestions.push({
+        type: 'security',
+        severity: 'high',
+        file: file.path,
+        suggestion: 'dangerouslySetInnerHTML kann XSS-Angriffe ermöglichen',
+        autoFixPrompt: 'Entferne dangerouslySetInnerHTML und verwende sichere Alternativen'
+      })
+    }
+    
+    // Accessibility
+    if (content.includes('<img') && !content.includes('alt=')) {
+      suggestions.push({
+        type: 'accessibility',
+        severity: 'medium',
+        file: file.path,
+        suggestion: 'Bilder ohne alt-Attribut sind nicht barrierefrei',
+        autoFixPrompt: 'Füge alt-Attribute zu allen Bildern hinzu'
+      })
+    }
+    
+    if (content.includes('<button') && content.includes('onClick') && !content.includes('aria-')) {
+      suggestions.push({
+        type: 'accessibility',
+        severity: 'low',
+        file: file.path,
+        suggestion: 'Buttons sollten aria-labels haben wenn nur Icons',
+      })
+    }
+    
+    // Inline Styles zu Tailwind
+    if ((content.match(/style=\{\{/g) || []).length > 3) {
+      suggestions.push({
+        type: 'readability',
+        severity: 'low',
+        file: file.path,
+        suggestion: 'Viele Inline-Styles - erwäge Tailwind CSS Klassen',
+        autoFixPrompt: 'Konvertiere Inline-Styles zu Tailwind CSS Klassen'
+      })
+    }
+  }
+  
+  return suggestions.slice(0, 5)
+}
+
 // Code Quality Score - Bewertet die Qualität des generierten Codes
 function calculateCodeQualityScore(files: { path: string; content: string }[]): { score: number; details: string[] } {
   let score = 100
