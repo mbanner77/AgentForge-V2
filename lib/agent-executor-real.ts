@@ -88,6 +88,67 @@ function getErrorHint(errorType: ErrorType): string {
   return hints[errorType]
 }
 
+// Code-Statistik Berechnung für Feedback nach Generierung
+interface CodeStats {
+  totalFiles: number
+  totalLines: number
+  components: number
+  hooks: number
+  hasTypeScript: boolean
+  hasTailwind: boolean
+  hasRouter: boolean
+}
+
+function calculateCodeStats(files: { path: string; content: string }[]): CodeStats {
+  let totalLines = 0
+  let components = 0
+  let hooks = 0
+  let hasTypeScript = false
+  let hasTailwind = false
+  let hasRouter = false
+  
+  for (const file of files) {
+    totalLines += file.content.split('\n').length
+    
+    // TypeScript check
+    if (file.path.endsWith('.ts') || file.path.endsWith('.tsx')) {
+      hasTypeScript = true
+    }
+    
+    // Tailwind check
+    if (file.content.includes('className=') || file.path.includes('tailwind')) {
+      hasTailwind = true
+    }
+    
+    // Router check
+    if (file.content.includes('useRouter') || file.content.includes('next/navigation')) {
+      hasRouter = true
+    }
+    
+    // Component count (function components)
+    const componentMatches = file.content.match(/export\s+(default\s+)?function\s+[A-Z]/g)
+    if (componentMatches) {
+      components += componentMatches.length
+    }
+    
+    // Hook count (custom hooks)
+    const hookMatches = file.content.match(/function\s+use[A-Z]/g)
+    if (hookMatches) {
+      hooks += hookMatches.length
+    }
+  }
+  
+  return {
+    totalFiles: files.length,
+    totalLines,
+    components,
+    hooks,
+    hasTypeScript,
+    hasTailwind,
+    hasRouter,
+  }
+}
+
 // Dependency-Analyse: Extrahiert installierte Pakete aus package.json
 function analyzeDependencies(packageJsonContent: string): { dependencies: string[], devDependencies: string[], scripts: Record<string, string> } {
   try {
@@ -4193,6 +4254,9 @@ ORIGINAL-ANFRAGE: ${userRequest}
         if (finalFiles.length > 0) {
           const isFirstGeneration = !isIteration
           
+          // Code-Statistik berechnen
+          const codeStats = calculateCodeStats(finalFiles)
+          
           // Generiere automatisch README.md bei erster Generierung
           if (isFirstGeneration && !finalFiles.some(f => f.path.toLowerCase() === 'readme.md')) {
             const appName = currentProject?.name || 'AgentForge App'
@@ -4237,9 +4301,18 @@ Die App kann mit AgentForge weiter entwickelt werden:
             })
           }
           
+          // Stats für Nachricht formatieren
+          const techStack = [
+            codeStats.hasTypeScript ? 'TypeScript' : null,
+            codeStats.hasTailwind ? 'Tailwind' : null,
+            codeStats.hasRouter ? 'Next.js Router' : null,
+          ].filter(Boolean).join(', ')
+          
+          const statsLine = `📊 **${codeStats.totalFiles} Dateien** | ${codeStats.totalLines} Zeilen | ${codeStats.components} Komponenten${codeStats.hooks > 0 ? ` | ${codeStats.hooks} Hooks` : ''}`
+          
           const followUpMessage = isFirstGeneration
-            ? `✨ **App erfolgreich erstellt!** (${finalFiles.length + 1} Dateien inkl. README)\n\n**Nächste Schritte:**\n- 🐛 **Bug fixen** - Beschreibe einen Fehler im Chat\n- ➕ **Feature hinzufügen** - "Füge eine Suchfunktion hinzu"\n- 🎨 **Design verbessern** - "Mache das Design moderner"\n- 🚀 **Deployen** - Klicke auf "Deploy" für Live-Deployment`
-            : `✅ **Änderungen angewendet!**\n\nDu kannst weitere Anpassungen vornehmen oder die Quick Actions nutzen.`
+            ? `✨ **App erfolgreich erstellt!**\n\n${statsLine}${techStack ? `\n🛠️ **Tech:** ${techStack}` : ''}\n\n**Nächste Schritte:**\n- 🐛 **Bug fixen** - Beschreibe einen Fehler im Chat\n- ➕ **Feature hinzufügen** - "Füge eine Suchfunktion hinzu"\n- 🎨 **Design verbessern** - "Mache das Design moderner"\n- 🚀 **Deployen** - Klicke auf "Deploy" für Live-Deployment`
+            : `✅ **Änderungen angewendet!**\n\n${statsLine}\n\nDu kannst weitere Anpassungen vornehmen oder die Quick Actions nutzen.`
           
           addMessage({
             role: "assistant",
