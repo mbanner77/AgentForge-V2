@@ -358,6 +358,128 @@ function generateSmartRefactoringSuggestions(files: { path: string; content: str
   return suggestions.slice(0, 5)
 }
 
+// Change-Summary für Iterationen - Was wurde geändert?
+interface ChangeSummary {
+  filesAdded: string[]
+  filesModified: string[]
+  featuresAdded: string[]
+  componentsAdded: string[]
+}
+
+function generateChangeSummary(
+  oldFiles: { path: string; content: string }[],
+  newFiles: { path: string; content: string }[]
+): ChangeSummary {
+  const oldPaths = new Set(oldFiles.map(f => f.path))
+  const newPaths = new Set(newFiles.map(f => f.path))
+  
+  const filesAdded = newFiles
+    .filter(f => !oldPaths.has(f.path))
+    .map(f => f.path)
+  
+  const filesModified = newFiles
+    .filter(f => {
+      const oldFile = oldFiles.find(o => o.path === f.path)
+      return oldFile && oldFile.content !== f.content
+    })
+    .map(f => f.path)
+  
+  // Erkenne hinzugefügte Features
+  const featuresAdded: string[] = []
+  const allNewContent = newFiles.map(f => f.content).join('\n')
+  const allOldContent = oldFiles.map(f => f.content).join('\n')
+  
+  if (allNewContent.includes('useState') && !allOldContent.includes('useState')) {
+    featuresAdded.push('State Management')
+  }
+  if (allNewContent.includes('useEffect') && !allOldContent.includes('useEffect')) {
+    featuresAdded.push('Side Effects')
+  }
+  if (allNewContent.includes('localStorage') && !allOldContent.includes('localStorage')) {
+    featuresAdded.push('Daten-Persistenz')
+  }
+  if (allNewContent.includes('filter(') && !allOldContent.includes('filter(')) {
+    featuresAdded.push('Filter-Funktion')
+  }
+  if ((allNewContent.includes('dark') || allNewContent.includes('theme')) && 
+      !allOldContent.includes('dark') && !allOldContent.includes('theme')) {
+    featuresAdded.push('Dark Mode')
+  }
+  
+  // Erkenne neue Komponenten
+  const componentsAdded = filesAdded
+    .filter(p => p.includes('components/'))
+    .map(p => p.split('/').pop()?.replace('.tsx', '') || '')
+    .filter(Boolean)
+  
+  return { filesAdded, filesModified, featuresAdded, componentsAdded }
+}
+
+// Erweiterte Error-Analyse mit Lösungsvorschlägen
+interface ErrorAnalysis {
+  errorType: 'syntax' | 'runtime' | 'type' | 'import' | 'unknown'
+  severity: 'low' | 'medium' | 'high' | 'critical'
+  possibleCauses: string[]
+  suggestedFixes: string[]
+  autoFixPrompt?: string
+}
+
+function analyzeError(errorMessage: string): ErrorAnalysis {
+  const lowerError = errorMessage.toLowerCase()
+  
+  // Import-Fehler
+  if (lowerError.includes('cannot find module') || lowerError.includes('module not found')) {
+    return {
+      errorType: 'import',
+      severity: 'high',
+      possibleCauses: ['Fehlender Import', 'Falscher Pfad', 'Package nicht installiert'],
+      suggestedFixes: ['Import-Pfad prüfen', 'Fehlende Datei erstellen', 'Package installieren'],
+      autoFixPrompt: 'Prüfe und korrigiere alle Imports. Erstelle fehlende Dateien.'
+    }
+  }
+  
+  // Type-Fehler
+  if (lowerError.includes('type') && (lowerError.includes('not assignable') || lowerError.includes('missing'))) {
+    return {
+      errorType: 'type',
+      severity: 'medium',
+      possibleCauses: ['Falscher Typ', 'Fehlende Property', 'Inkompatible Typen'],
+      suggestedFixes: ['Interface anpassen', 'Typ korrigieren', 'Optional markieren'],
+      autoFixPrompt: 'Korrigiere die TypeScript Typen und Interfaces.'
+    }
+  }
+  
+  // Syntax-Fehler
+  if (lowerError.includes('syntax') || lowerError.includes('unexpected token') || lowerError.includes('parsing')) {
+    return {
+      errorType: 'syntax',
+      severity: 'critical',
+      possibleCauses: ['Fehlende Klammer', 'Falsche Syntax', 'Unvollständiger Code'],
+      suggestedFixes: ['Klammern prüfen', 'Syntax korrigieren', 'Code vervollständigen'],
+      autoFixPrompt: 'Korrigiere den Syntax-Fehler. Prüfe alle Klammern und Semikolons.'
+    }
+  }
+  
+  // Runtime-Fehler
+  if (lowerError.includes('undefined') || lowerError.includes('null') || lowerError.includes('is not a function')) {
+    return {
+      errorType: 'runtime',
+      severity: 'high',
+      possibleCauses: ['Variable nicht initialisiert', 'Objekt ist null/undefined', 'Falsche Funktion'],
+      suggestedFixes: ['Optional Chaining verwenden', 'Default-Wert setzen', 'Null-Check hinzufügen'],
+      autoFixPrompt: 'Füge Null-Checks und Optional Chaining hinzu. Initialisiere alle Variablen.'
+    }
+  }
+  
+  return {
+    errorType: 'unknown',
+    severity: 'medium',
+    possibleCauses: ['Unbekannter Fehler'],
+    suggestedFixes: ['Code überprüfen', 'Konsole für Details prüfen'],
+    autoFixPrompt: 'Analysiere und behebe den Fehler.'
+  }
+}
+
 // Projekt-Health-Check - Umfassende Analyse
 interface HealthCheckResult {
   overall: 'healthy' | 'warning' | 'critical'
