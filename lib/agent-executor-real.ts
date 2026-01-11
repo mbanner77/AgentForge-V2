@@ -44,6 +44,50 @@ async function fetchRagContext(
   }
 }
 
+// Intelligente Fehlertyp-Erkennung für bessere Korrektur
+type ErrorType = 'syntax' | 'import' | 'type' | 'runtime' | 'undefined' | 'component' | 'hook' | 'unknown'
+
+function analyzeErrorType(errorMessage: string): ErrorType {
+  const lower = errorMessage.toLowerCase()
+  
+  if (lower.includes('unexpected token') || lower.includes('syntax error') || lower.includes("')' expected")) {
+    return 'syntax'
+  }
+  if (lower.includes('module not found') || lower.includes('cannot find module') || lower.includes('failed to resolve import')) {
+    return 'import'
+  }
+  if (lower.includes('type') && (lower.includes('is not assignable') || lower.includes('property') || lower.includes('missing'))) {
+    return 'type'
+  }
+  if (lower.includes('is not defined') || lower.includes('is undefined') || lower.includes("cannot read property")) {
+    return 'undefined'
+  }
+  if (lower.includes('invalid hook call') || lower.includes('hooks can only be called')) {
+    return 'hook'
+  }
+  if (lower.includes('component') || lower.includes('jsx') || lower.includes('element type')) {
+    return 'component'
+  }
+  if (lower.includes('runtime') || lower.includes('at runtime')) {
+    return 'runtime'
+  }
+  return 'unknown'
+}
+
+function getErrorHint(errorType: ErrorType): string {
+  const hints: Record<ErrorType, string> = {
+    syntax: '💡 SYNTAX-FEHLER: Prüfe Klammern, Semikolons und JSX-Syntax genau.',
+    import: '💡 IMPORT-FEHLER: Prüfe ob die importierte Datei existiert und der Pfad korrekt ist. Erstelle fehlende Dateien!',
+    type: '💡 TYPE-FEHLER: Prüfe TypeScript-Typen und Interface-Definitionen.',
+    undefined: '💡 UNDEFINED-FEHLER: Variable/Funktion ist nicht definiert. Prüfe Imports und Deklarationen.',
+    hook: '💡 HOOK-FEHLER: React Hooks dürfen nur in Funktionskomponenten aufgerufen werden. Prüfe "use client" Direktive.',
+    component: '💡 COMPONENT-FEHLER: Prüfe ob Komponente korrekt exportiert wird und JSX-Syntax stimmt.',
+    runtime: '💡 RUNTIME-FEHLER: Fehler tritt zur Laufzeit auf. Prüfe Datentypen und null-Checks.',
+    unknown: '💡 Analysiere den Fehler genau und behebe die Ursache.',
+  }
+  return hints[errorType]
+}
+
 // Dependency-Analyse: Extrahiert installierte Pakete aus package.json
 function analyzeDependencies(packageJsonContent: string): { dependencies: string[], devDependencies: string[], scripts: Record<string, string> } {
   try {
@@ -4266,18 +4310,24 @@ Die App kann mit AgentForge weiter entwickelt werden:
           ? `\n\n## WICHTIG - VERSUCH ${attempt}/${maxAttempts}:\nDies ist Korrekturversuch ${attempt}. Die vorherigen Versuche haben den Fehler NICHT behoben. Du MUSST einen ANDEREN Ansatz wählen!\n- Analysiere den Fehler GENAUER\n- Prüfe ob du die richtige Datei korrigierst\n- Stelle sicher, dass ALLE notwendigen Änderungen gemacht werden\n- Der Fehler tritt immer noch auf, also war die vorherige Korrektur FALSCH oder UNVOLLSTÄNDIG!`
           : ""
 
-        const fixPrompt = `## 🔴🔴🔴 KRITISCH: NUR CODE AUSGEBEN - KEINE ERKLÄRUNGEN!
+        // Intelligente Fehleranalyse für besseren Kontext
+        const errorType = analyzeErrorType(errorMessage)
+        const errorHint = getErrorHint(errorType)
+        
+        const fixPrompt = `## 🔴 KRITISCH: NUR CODE AUSGEBEN - KEINE ERKLÄRUNGEN!
 
 Du MUSST den Fehler DIREKT beheben. VERBOTEN sind:
 ❌ Erklärungen was der Fehler ist
 ❌ Hinweise was der User tun sollte
-❌ Analysen oder Beschreibungen
 ❌ Text außerhalb von Code-Blöcken
 
 Du MUSST NUR ausgeben:
 ✅ Die korrigierten Dateien mit vollständigem Code
 ✅ Format: \`\`\`typescript\\n// filepath: pfad/datei.tsx\\n[CODE]\`\`\`
 ${attemptInfo}
+
+## FEHLERTYP: ${errorType}
+${errorHint}
 
 ## FEHLERMELDUNG:
 \`\`\`
