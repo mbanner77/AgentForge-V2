@@ -376,11 +376,62 @@ export function BuilderChat({ messages, onSendMessage, isProcessing, onImplement
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    // Enter zum Senden
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault()
       handleSubmit(e)
     }
+    
+    // Keyboard Shortcuts für schnelle Aktionen
+    if (e.ctrlKey || e.metaKey) {
+      // Ctrl/Cmd + K = Fokus auf Input und leeren
+      if (e.key === "k") {
+        e.preventDefault()
+        setInput("")
+        textareaRef.current?.focus()
+      }
+      // Ctrl/Cmd + / = Slash-Command Menü öffnen
+      if (e.key === "/") {
+        e.preventDefault()
+        setInput("/")
+        textareaRef.current?.focus()
+      }
+      // Ctrl/Cmd + D = Design verbessern
+      if (e.key === "d" && hasFiles && !isProcessing) {
+        e.preventDefault()
+        onSendMessage("Verbessere das Design: Mache die App moderner mit besseren Farben, Animationen und Layout.")
+      }
+      // Ctrl/Cmd + S = Speichern (localStorage)
+      if (e.key === "s" && hasFiles && !isProcessing) {
+        e.preventDefault()
+        onSendMessage("Füge localStorage Persistenz hinzu, sodass alle Daten nach Reload erhalten bleiben.")
+      }
+    }
+    
+    // Escape = Auto-Complete schließen
+    if (e.key === "Escape") {
+      setInput("")
+    }
   }
+  
+  // Global Keyboard Shortcuts
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      // Nur wenn nicht in einem Input-Feld
+      if (document.activeElement?.tagName === "TEXTAREA" || document.activeElement?.tagName === "INPUT") {
+        return
+      }
+      
+      // ? = Hilfe/Shortcuts anzeigen (könnte später implementiert werden)
+      if (e.key === "?" && !e.ctrlKey && !e.metaKey) {
+        textareaRef.current?.focus()
+        setInput("/")
+      }
+    }
+    
+    window.addEventListener("keydown", handleGlobalKeyDown)
+    return () => window.removeEventListener("keydown", handleGlobalKeyDown)
+  }, [hasFiles, isProcessing])
 
   const handleCopy = (content: string, id: string) => {
     navigator.clipboard.writeText(content)
