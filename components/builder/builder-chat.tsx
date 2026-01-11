@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
-import { Send, Bot, User, Brain, Code2, Eye, Play, Loader2, Copy, Check, Shield, Sparkles, Lightbulb, ShoppingCart, ListTodo, BarChart3, MessageSquare, Calendar } from "lucide-react"
+import { Send, Bot, User, Brain, Code2, Eye, Play, Loader2, Copy, Check, Shield, Sparkles, Lightbulb, ShoppingCart, ListTodo, BarChart3, MessageSquare, Calendar, Bug, Plus, RefreshCw, Wand2, Zap, ArrowRight } from "lucide-react"
 import type { Message } from "@/lib/types"
 
 interface BuilderChatProps {
@@ -16,6 +16,8 @@ interface BuilderChatProps {
   onImplementSuggestion?: (suggestion: string) => void
   streamingContent?: string // Live-Streaming-Inhalt
   streamingAgent?: string // Welcher Agent gerade streamt
+  hasFiles?: boolean // Ob bereits Dateien generiert wurden
+  lastError?: string | null // Letzter Fehler aus der Preview
 }
 
 const agentIcons: Record<string, typeof Bot> = {
@@ -179,9 +181,57 @@ function formatInlineMarkdown(text: string): React.ReactNode {
   })
 }
 
-export function BuilderChat({ messages, onSendMessage, isProcessing, onImplementSuggestion, streamingContent, streamingAgent }: BuilderChatProps) {
+// Quick Actions für kontextuelle Aktionen
+const quickActions = [
+  {
+    icon: Bug,
+    label: "Bug fixen",
+    prompt: "Bitte behebe den folgenden Fehler: ",
+    color: "text-red-500",
+    bgColor: "bg-red-500/10 hover:bg-red-500/20 border-red-500/30",
+    needsInput: true,
+    placeholder: "Beschreibe den Fehler oder füge die Fehlermeldung ein...",
+  },
+  {
+    icon: Plus,
+    label: "Feature hinzufügen",
+    prompt: "Füge folgendes Feature hinzu: ",
+    color: "text-green-500",
+    bgColor: "bg-green-500/10 hover:bg-green-500/20 border-green-500/30",
+    needsInput: true,
+    placeholder: "Beschreibe das neue Feature...",
+  },
+  {
+    icon: Wand2,
+    label: "Design verbessern",
+    prompt: "Verbessere das Design: Mache die App moderner und ansprechender mit besseren Farben, Animationen und Layout.",
+    color: "text-purple-500",
+    bgColor: "bg-purple-500/10 hover:bg-purple-500/20 border-purple-500/30",
+    needsInput: false,
+  },
+  {
+    icon: RefreshCw,
+    label: "Refactoring",
+    prompt: "Refaktoriere den Code: Verbessere die Code-Struktur, extrahiere wiederverwendbare Komponenten und optimiere die Performance.",
+    color: "text-blue-500",
+    bgColor: "bg-blue-500/10 hover:bg-blue-500/20 border-blue-500/30",
+    needsInput: false,
+  },
+  {
+    icon: Zap,
+    label: "Performance",
+    prompt: "Optimiere die Performance: Reduziere Re-Renders, füge useMemo/useCallback hinzu wo nötig, und optimiere die Ladezeiten.",
+    color: "text-yellow-500",
+    bgColor: "bg-yellow-500/10 hover:bg-yellow-500/20 border-yellow-500/30",
+    needsInput: false,
+  },
+]
+
+export function BuilderChat({ messages, onSendMessage, isProcessing, onImplementSuggestion, streamingContent, streamingAgent, hasFiles, lastError }: BuilderChatProps) {
   const [input, setInput] = useState("")
   const [copiedId, setCopiedId] = useState<string | null>(null)
+  const [showQuickActions, setShowQuickActions] = useState(false)
+  const [selectedAction, setSelectedAction] = useState<typeof quickActions[0] | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -365,25 +415,92 @@ export function BuilderChat({ messages, onSendMessage, isProcessing, onImplement
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="absolute bottom-0 left-0 right-0 border-t border-border bg-background p-4">
-        <div className="flex gap-2">
-          <Textarea
-            ref={textareaRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={messages.length > 1 
-              ? "Beschreibe weitere Verbesserungen... (z.B. 'Füge eine Suchfunktion hinzu')" 
-              : "Beschreibe deine App... (z.B. 'Erstelle einen Todo-Manager mit Dark Mode')"}
-            className="min-h-[80px] resize-none"
-            disabled={isProcessing}
-          />
-          <Button type="submit" size="icon" className="h-[80px] w-[60px]" disabled={isProcessing || !input.trim()}>
-            {isProcessing ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
-          </Button>
-        </div>
-        <p className="mt-2 text-xs text-muted-foreground">Drücke Enter zum Senden, Shift+Enter für neue Zeile</p>
-      </form>
+      <div className="absolute bottom-0 left-0 right-0 border-t border-border bg-background">
+        {/* Quick Actions Panel - nur anzeigen wenn Dateien existieren */}
+        {hasFiles && !isProcessing && (
+          <div className="px-4 pt-3 pb-2 border-b border-border/50">
+            <div className="flex items-center gap-2 mb-2">
+              <Zap className="h-3 w-3 text-primary" />
+              <span className="text-xs font-medium text-muted-foreground">Quick Actions</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {quickActions.map((action) => {
+                const ActionIcon = action.icon
+                return (
+                  <button
+                    key={action.label}
+                    onClick={() => {
+                      if (action.needsInput) {
+                        setSelectedAction(action)
+                        setInput(action.prompt)
+                        textareaRef.current?.focus()
+                      } else {
+                        onSendMessage(action.prompt)
+                      }
+                    }}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border text-xs font-medium transition-all ${action.bgColor}`}
+                  >
+                    <ActionIcon className={`h-3.5 w-3.5 ${action.color}`} />
+                    {action.label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Error Banner - wenn ein Fehler erkannt wurde */}
+        {lastError && hasFiles && !isProcessing && (
+          <div className="px-4 py-2 bg-red-500/10 border-b border-red-500/30 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Bug className="h-4 w-4 text-red-500" />
+              <span className="text-xs text-red-400">Fehler erkannt in der Preview</span>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs border-red-500/30 text-red-400 hover:bg-red-500/20"
+              onClick={() => onSendMessage(`Bitte behebe diesen Fehler: ${lastError}`)}
+            >
+              <Wand2 className="h-3 w-3 mr-1" />
+              Auto-Fix
+            </Button>
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="p-4">
+          <div className="flex gap-2">
+            <Textarea
+              ref={textareaRef}
+              value={input}
+              onChange={(e) => {
+                setInput(e.target.value)
+                if (selectedAction && !e.target.value.startsWith(selectedAction.prompt)) {
+                  setSelectedAction(null)
+                }
+              }}
+              onKeyDown={handleKeyDown}
+              placeholder={selectedAction?.placeholder || (messages.length > 1 
+                ? "Beschreibe weitere Verbesserungen... (z.B. 'Füge eine Suchfunktion hinzu')" 
+                : "Beschreibe deine App... (z.B. 'Erstelle einen Todo-Manager mit Dark Mode')")}
+              className="min-h-[80px] resize-none"
+              disabled={isProcessing}
+            />
+            <Button type="submit" size="icon" className="h-[80px] w-[60px]" disabled={isProcessing || !input.trim()}>
+              {isProcessing ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
+            </Button>
+          </div>
+          <div className="mt-2 flex items-center justify-between">
+            <p className="text-xs text-muted-foreground">Enter zum Senden, Shift+Enter für neue Zeile</p>
+            {hasFiles && (
+              <span className="text-xs text-muted-foreground flex items-center gap-1">
+                <ArrowRight className="h-3 w-3" />
+                Iteration Mode aktiv
+              </span>
+            )}
+          </div>
+        </form>
+      </div>
     </div>
   )
 }

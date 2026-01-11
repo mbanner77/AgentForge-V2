@@ -53,9 +53,13 @@ export function BuilderInterface() {
   const [deployTarget, setDeployTarget] = useState<"vercel" | "render" | "btp" | "github-only">("vercel")
   const [deployLogs, setDeployLogs] = useState<string[]>([])
   const [generatedBlueprint, setGeneratedBlueprint] = useState<string | null>(null)
+  const [previewError, setPreviewError] = useState<string | null>(null)
 
   const { messages, workflowSteps, isProcessing, currentProject, addMessage, createProject, saveProject, getFiles, globalConfig, setWorkflowOrder, workflowOrder, undo, redo, canUndo, canRedo, saveToHistory } =
     useAgentStore()
+  
+  // Prüfe ob Dateien existieren für hasFiles prop
+  const hasGeneratedFiles = getFiles().length > 0
   
   // Default workflow order für Reset
   const defaultWorkflowOrder = ["planner", "coder", "reviewer", "security", "executor"]
@@ -163,28 +167,53 @@ export function BuilderInterface() {
     const existingFiles = getFiles()
     const isIteration = existingFiles.length > 0
     
-    // Prüfe ob die Nachricht eine Fehlermeldung ist
+    // Verbesserte Kontext-Erkennung für Intent
     const errorPatterns = [
-      /error/i,
-      /fehler/i,
-      /cannot read/i,
-      /is not defined/i,
-      /unexpected token/i,
-      /syntax error/i,
-      /type assertion/i,
-      /module not found/i,
-      /can't find variable/i,
-      /'\)' expected/i,
-      /typeerror/i,
-      /referenceerror/i,
+      /error/i, /fehler/i, /cannot read/i, /is not defined/i, /unexpected token/i,
+      /syntax error/i, /type assertion/i, /module not found/i, /can't find variable/i,
+      /'\)' expected/i, /typeerror/i, /referenceerror/i, /failed to compile/i,
+      /build failed/i, /crash/i, /exception/i, /stack trace/i,
+    ]
+    
+    const featurePatterns = [
+      /füge.*hinzu/i, /add.*feature/i, /erstelle.*neu/i, /implementiere/i,
+      /baue.*ein/i, /erweitere.*um/i, /neue.*funktion/i, /ich möchte/i,
+      /kannst du.*hinzufügen/i, /ich brauche/i,
+    ]
+    
+    const designPatterns = [
+      /design/i, /style/i, /aussehen/i, /farbe/i, /layout/i, /schöner/i,
+      /moderner/i, /ui/i, /ux/i, /animation/i, /responsive/i,
+    ]
+    
+    const refactorPatterns = [
+      /refactor/i, /aufräumen/i, /optimier/i, /verbessere.*code/i,
+      /clean.*up/i, /struktur/i, /performance/i,
     ]
     
     const isErrorMessage = existingFiles.length > 0 && errorPatterns.some(pattern => pattern.test(content))
+    const isFeatureRequest = featurePatterns.some(pattern => pattern.test(content))
+    const isDesignRequest = designPatterns.some(pattern => pattern.test(content))
+    const isRefactorRequest = refactorPatterns.some(pattern => pattern.test(content))
+    
+    // Reset Preview-Fehler wenn User neue Anfrage sendet
+    setPreviewError(null)
     
     if (isErrorMessage) {
       // Bei Fehlermeldungen: Rufe fixErrors direkt auf
+      toast.info("🐛 Fehler erkannt - starte automatische Korrektur...")
       await fixErrors(content, 3)
     } else {
+      // Zeige kontextuellen Hinweis basierend auf erkanntem Intent
+      if (isIteration) {
+        if (isFeatureRequest) {
+          toast.info("➕ Feature-Anfrage erkannt")
+        } else if (isDesignRequest) {
+          toast.info("🎨 Design-Anfrage erkannt")
+        } else if (isRefactorRequest) {
+          toast.info("🔧 Refactoring-Anfrage erkannt")
+        }
+      }
       // Prompt Enhancement für neue Projekte (kurze Prompts < 100 Zeichen)
       let finalPrompt = content
       
@@ -1174,6 +1203,8 @@ export default function Page() {
                 // Starte den Coder-Agent mit dem Vorschlag
                 handleSendMessage(`Bitte setze folgenden Verbesserungsvorschlag um: ${suggestion}`)
               }}
+              hasFiles={hasGeneratedFiles}
+              lastError={previewError}
             />
           </div>
 

@@ -4144,6 +4144,21 @@ ORIGINAL-ANFRAGE: ${userRequest}
         // Speichere Zustand in der Historie für Undo/Redo
         saveToHistory()
         
+        // Follow-up Vorschläge nach erfolgreicher Generierung
+        const finalFiles = getFiles()
+        if (finalFiles.length > 0) {
+          const isFirstGeneration = !isIteration
+          const followUpMessage = isFirstGeneration
+            ? `✨ **App erfolgreich erstellt!** (${finalFiles.length} Dateien)\n\n**Nächste Schritte:**\n- 🐛 **Bug fixen** - Beschreibe einen Fehler im Chat\n- ➕ **Feature hinzufügen** - "Füge eine Suchfunktion hinzu"\n- 🎨 **Design verbessern** - "Mache das Design moderner"\n- 🚀 **Deployen** - Klicke auf "Deploy" für Live-Deployment`
+            : `✅ **Änderungen angewendet!**\n\nDu kannst weitere Anpassungen vornehmen oder die Quick Actions nutzen.`
+          
+          addMessage({
+            role: "assistant",
+            content: followUpMessage,
+            agent: "system",
+          })
+        }
+        
         addLog({
           level: "info",
           agent: "system",
