@@ -343,6 +343,25 @@ export function BuilderChat({ messages, onSendMessage, isProcessing, onImplement
 
   const smartSuggestions = input.length > 3 ? getSmartSuggestions(input) : []
 
+  // Auto-Completion Prompts - Häufig verwendete Befehle
+  const autoCompletePrompts = [
+    { trigger: '/fix', prompt: 'Bitte behebe den folgenden Fehler: ', description: 'Bug fixen' },
+    { trigger: '/add', prompt: 'Füge folgendes Feature hinzu: ', description: 'Feature hinzufügen' },
+    { trigger: '/design', prompt: 'Verbessere das Design: Mache die App moderner mit besseren Farben, Animationen und Layout.', description: 'Design verbessern' },
+    { trigger: '/refactor', prompt: 'Refaktoriere den Code: Verbessere die Struktur und extrahiere wiederverwendbare Komponenten.', description: 'Code refaktorieren' },
+    { trigger: '/search', prompt: 'Füge eine Suchfunktion mit Echtzeit-Filterung und Highlighting hinzu.', description: 'Suche hinzufügen' },
+    { trigger: '/dark', prompt: 'Implementiere einen Dark/Light Mode Toggle mit System-Präferenz Erkennung.', description: 'Dark Mode' },
+    { trigger: '/save', prompt: 'Füge localStorage Persistenz hinzu, sodass alle Daten nach Reload erhalten bleiben.', description: 'Daten speichern' },
+    { trigger: '/responsive', prompt: 'Mache das Layout vollständig responsive für Mobile, Tablet und Desktop.', description: 'Responsive machen' },
+    { trigger: '/animate', prompt: 'Füge flüssige Animationen und Übergänge für alle Interaktionen hinzu.', description: 'Animationen' },
+    { trigger: '/export', prompt: 'Implementiere eine Export-Funktion für CSV und PDF Download.', description: 'Export hinzufügen' },
+  ]
+
+  // Prüfe ob Input mit / beginnt für Auto-Completion
+  const matchingAutoComplete = input.startsWith('/') 
+    ? autoCompletePrompts.filter(p => p.trigger.startsWith(input.toLowerCase()))
+    : []
+
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
@@ -601,8 +620,28 @@ export function BuilderChat({ messages, onSendMessage, isProcessing, onImplement
               {isProcessing ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
             </Button>
           </div>
+          {/* Auto-Complete Dropdown */}
+          {matchingAutoComplete.length > 0 && !isProcessing && (
+            <div className="mt-2 border border-border rounded-md bg-background shadow-lg">
+              <div className="px-2 py-1 text-xs text-muted-foreground border-b border-border bg-muted/50">
+                ⏎ zum Auswählen, Esc zum Schließen
+              </div>
+              {matchingAutoComplete.map((item, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => setInput(item.prompt)}
+                  className="w-full px-3 py-2 text-left text-sm hover:bg-muted flex items-center justify-between group"
+                >
+                  <span className="font-mono text-primary">{item.trigger}</span>
+                  <span className="text-xs text-muted-foreground group-hover:text-foreground">{item.description}</span>
+                </button>
+              ))}
+            </div>
+          )}
+
           {/* Smart Suggestions */}
-          {smartSuggestions.length > 0 && !isProcessing && (
+          {smartSuggestions.length > 0 && !isProcessing && matchingAutoComplete.length === 0 && (
             <div className="mt-2 space-y-1">
               <div className="flex items-center gap-1 text-xs text-muted-foreground">
                 <Lightbulb className="h-3 w-3 text-yellow-500" />
