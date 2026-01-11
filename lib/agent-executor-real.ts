@@ -4659,13 +4659,27 @@ Die App kann mit AgentForge weiter entwickelt werden:
           `**${f.path}:**\n\`\`\`${f.language}\n${f.content}\n\`\`\``
         ).join("\n\n")
 
+        // Verschiedene Recovery-Strategien je nach Versuch
+        const recoveryStrategies = [
+          'Analysiere den Fehler genau und behebe die direkte Ursache.',
+          'Prüfe alle Imports und Dependencies. Erstelle fehlende Dateien!',
+          'Vereinfache den Code: Entferne komplexe Features und behebe zuerst den Grundfehler.',
+        ]
+        
         const attemptInfo = attempt > 1 
-          ? `\n\n## WICHTIG - VERSUCH ${attempt}/${maxAttempts}:\nDies ist Korrekturversuch ${attempt}. Die vorherigen Versuche haben den Fehler NICHT behoben. Du MUSST einen ANDEREN Ansatz wählen!\n- Analysiere den Fehler GENAUER\n- Prüfe ob du die richtige Datei korrigierst\n- Stelle sicher, dass ALLE notwendigen Änderungen gemacht werden\n- Der Fehler tritt immer noch auf, also war die vorherige Korrektur FALSCH oder UNVOLLSTÄNDIG!`
+          ? `\n\n## 🔴 VERSUCH ${attempt}/${maxAttempts} - NEUE STRATEGIE:\n**Strategie:** ${recoveryStrategies[attempt - 1] || recoveryStrategies[2]}\n\nDie vorherigen Versuche haben NICHT funktioniert. Du MUSST:\n- Einen KOMPLETT ANDEREN Ansatz wählen\n- Den Fehler von GRUND auf neu analysieren\n- ALLE betroffenen Dateien prüfen und korrigieren`
           : ""
 
         // Intelligente Fehleranalyse für besseren Kontext
         const errorType = analyzeErrorType(errorMessage)
         const errorHint = getErrorHint(errorType)
+        
+        // Zusätzliche Hilfe bei bestimmten Fehlertypen
+        const additionalHelp = errorType === 'import' 
+          ? '\n\n⚠️ IMPORT-FEHLER: Erstelle die fehlende Datei ODER korrigiere den Import-Pfad!'
+          : errorType === 'undefined'
+          ? '\n\n⚠️ UNDEFINED-FEHLER: Prüfe ob Variable/Funktion importiert oder deklariert ist!'
+          : ''
         
         const fixPrompt = `## 🔴 KRITISCH: NUR CODE AUSGEBEN - KEINE ERKLÄRUNGEN!
 
