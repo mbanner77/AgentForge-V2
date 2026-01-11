@@ -106,9 +106,90 @@ interface ContextualHint {
   action?: string
 }
 
+// Projekttyp-Erkennung für angepasste Vorschläge
+type ProjectType = 'todo' | 'ecommerce' | 'dashboard' | 'chat' | 'blog' | 'portfolio' | 'form' | 'unknown'
+
+function detectProjectType(files: { path: string; content: string }[]): ProjectType {
+  const allContent = files.map(f => f.content.toLowerCase()).join(' ')
+  
+  // Erkenne App-Typ basierend auf Keywords
+  if (allContent.includes('todo') || allContent.includes('task') || allContent.includes('aufgabe')) {
+    return 'todo'
+  }
+  if (allContent.includes('cart') || allContent.includes('warenkorb') || allContent.includes('product') || allContent.includes('checkout')) {
+    return 'ecommerce'
+  }
+  if (allContent.includes('dashboard') || allContent.includes('chart') || allContent.includes('analytics') || allContent.includes('statistik')) {
+    return 'dashboard'
+  }
+  if (allContent.includes('message') || allContent.includes('chat') || allContent.includes('nachricht')) {
+    return 'chat'
+  }
+  if (allContent.includes('blog') || allContent.includes('post') || allContent.includes('artikel')) {
+    return 'blog'
+  }
+  if (allContent.includes('portfolio') || allContent.includes('projekt') || allContent.includes('about me')) {
+    return 'portfolio'
+  }
+  if (allContent.includes('form') || allContent.includes('formular') || allContent.includes('submit')) {
+    return 'form'
+  }
+  return 'unknown'
+}
+
+// Projekttyp-spezifische Verbesserungsvorschläge
+function getProjectTypeSpecificSuggestions(projectType: ProjectType): string[] {
+  const suggestions: Record<ProjectType, string[]> = {
+    todo: [
+      '"Füge Prioritäten (hoch/mittel/niedrig) hinzu"',
+      '"Füge Fälligkeitsdaten mit Kalender hinzu"',
+      '"Füge Kategorien/Tags für Aufgaben hinzu"',
+    ],
+    ecommerce: [
+      '"Füge eine Produktsuche mit Filtern hinzu"',
+      '"Implementiere Warenkorb-Persistenz"',
+      '"Füge Produktbewertungen hinzu"',
+    ],
+    dashboard: [
+      '"Füge einen Datumsbereich-Filter hinzu"',
+      '"Exportiere Charts als PNG/PDF"',
+      '"Füge Real-Time Updates hinzu"',
+    ],
+    chat: [
+      '"Füge Emoji-Picker hinzu"',
+      '"Implementiere Nachrichtensuche"',
+      '"Füge Lesebestätigungen hinzu"',
+    ],
+    blog: [
+      '"Füge Kategorien und Tags hinzu"',
+      '"Implementiere Kommentarfunktion"',
+      '"Füge Social Sharing Buttons hinzu"',
+    ],
+    portfolio: [
+      '"Füge Kontaktformular hinzu"',
+      '"Implementiere Projektfilter"',
+      '"Füge Animationen beim Scrollen hinzu"',
+    ],
+    form: [
+      '"Füge mehrstufige Form-Validierung hinzu"',
+      '"Implementiere Auto-Save für Formulare"',
+      '"Füge Fortschrittsanzeige hinzu"',
+    ],
+    unknown: [
+      '"Verbessere das Design"',
+      '"Füge mehr Interaktivität hinzu"',
+      '"Optimiere die Performance"',
+    ],
+  }
+  return suggestions[projectType]
+}
+
 // Intelligente Follow-Up Fragen basierend auf generiertem Code
 function generateFollowUpQuestions(files: { path: string; content: string }[], isFirstGeneration: boolean): string[] {
   const questions: string[] = []
+  
+  // Erkenne Projekttyp für spezifische Vorschläge
+  const projectType = detectProjectType(files)
   
   // Analysiere was die App enthält
   const hasSearch = files.some(f => f.content.includes('search') || f.content.includes('filter'))
@@ -121,29 +202,33 @@ function generateFollowUpQuestions(files: { path: string; content: string }[], i
   const hasPagination = files.some(f => f.content.includes('page') && f.content.includes('setPage'))
   
   if (isFirstGeneration) {
-    // Vorschläge für neue Apps
-    if (!hasSearch && hasList) {
+    // Projekttyp-spezifische Vorschläge zuerst
+    if (projectType !== 'unknown') {
+      const typeSpecific = getProjectTypeSpecificSuggestions(projectType)
+      questions.push(...typeSpecific.slice(0, 2))
+    }
+    
+    // Allgemeine Vorschläge falls noch Platz
+    if (!hasSearch && hasList && questions.length < 3) {
       questions.push('"Füge eine Suchfunktion hinzu"')
     }
-    if (!hasDarkMode) {
+    if (!hasDarkMode && questions.length < 3) {
       questions.push('"Füge einen Dark Mode Toggle hinzu"')
     }
-    if (!hasLocalStorage) {
+    if (!hasLocalStorage && questions.length < 3) {
       questions.push('"Speichere die Daten im localStorage"')
     }
-    if (!hasAnimation) {
-      questions.push('"Füge Animationen und Übergänge hinzu"')
-    }
-    if (hasList && !hasPagination) {
-      questions.push('"Füge Pagination für die Liste hinzu"')
-    }
   } else {
-    // Vorschläge für Iterationen
+    // Projekttyp-spezifische Vorschläge für Iterationen
+    if (projectType !== 'unknown') {
+      const typeSpecific = getProjectTypeSpecificSuggestions(projectType)
+      questions.push(typeSpecific[Math.floor(Math.random() * typeSpecific.length)])
+    }
+    
     if (!hasExport && hasList) {
       questions.push('"Export als CSV hinzufügen"')
     }
     questions.push('"Das Design weiter verbessern"')
-    questions.push('"Performance optimieren"')
   }
   
   return questions.slice(0, 3)
