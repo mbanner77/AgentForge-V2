@@ -15,9 +15,10 @@ import { WebContainerPreview } from "./webcontainer-preview"
 
 interface BuilderOutputProps {
   files: ProjectFile[]
+  onPreviewError?: (error: string | null) => void
 }
 
-export function BuilderOutput({ files }: BuilderOutputProps) {
+export function BuilderOutput({ files, onPreviewError }: BuilderOutputProps) {
   const [copied, setCopied] = useState(false)
   const [selectedFile, setSelectedFile] = useState<ProjectFile | null>(files[0] || null)
   const { logs, deleteFile, pendingSuggestions } = useAgentStore()
@@ -118,7 +119,7 @@ export function BuilderOutput({ files }: BuilderOutputProps) {
 
         {/* Sandpack Preview Tab */}
         <TabsContent value="preview" className="mt-0 flex-1 overflow-hidden">
-          <LivePreview files={files} />
+          <LivePreview files={files} onError={onPreviewError} />
         </TabsContent>
 
         {/* WebContainer Preview Tab */}

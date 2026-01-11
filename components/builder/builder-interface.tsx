@@ -1246,7 +1246,7 @@ export default function Page() {
                   </PanelResizeHandle>
                   <Panel defaultSize={60} minSize={20}>
                     <div className="h-full overflow-hidden">
-                      <BuilderOutput files={files} />
+                      <BuilderOutput files={files} onPreviewError={setPreviewError} />
                     </div>
                   </Panel>
                 </>

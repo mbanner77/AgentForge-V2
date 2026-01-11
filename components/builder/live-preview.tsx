@@ -68,9 +68,10 @@ function SandpackConsoleErrorListener({ onConsoleError }: { onConsoleError: (err
 
 interface LivePreviewProps {
   files: ProjectFile[]
+  onError?: (error: string | null) => void // Callback für Fehler-Meldung an Parent
 }
 
-export function LivePreview({ files: propFiles }: LivePreviewProps) {
+export function LivePreview({ files: propFiles, onError }: LivePreviewProps) {
   // Hole Dateien direkt aus dem Store für aktuelle Daten nach Fehlerkorrektur
   const { globalConfig, isProcessing, generatedFiles } = useAgentStore()
   const { fixErrors } = useAgentExecutor()
@@ -97,6 +98,13 @@ export function LivePreview({ files: propFiles }: LivePreviewProps) {
 
   // Kombinierter Fehler (Sandpack-Fehler hat Priorität, dann Console-Fehler)
   const currentError = sandpackError || consoleError
+
+  // Melde Fehler an Parent-Komponente für Chat-Anzeige
+  useEffect(() => {
+    if (onError) {
+      onError(currentError)
+    }
+  }, [currentError, onError])
 
   // Automatische Fehlerkorrektur bei Sandpack-Fehlern oder Console-Fehlern
   useEffect(() => {
