@@ -178,6 +178,62 @@ function generateContextualHints(files: { path: string; content: string }[]): Co
   return hints.slice(0, 3) // Max 3 Hints
 }
 
+// Code Quality Score - Bewertet die Qualität des generierten Codes
+function calculateCodeQualityScore(files: { path: string; content: string }[]): { score: number; details: string[] } {
+  let score = 100
+  const details: string[] = []
+  
+  // Positive Faktoren
+  const hasTypeScript = files.some(f => f.path.endsWith('.ts') || f.path.endsWith('.tsx'))
+  const hasUseClient = files.some(f => f.content.includes('"use client"'))
+  const hasTailwind = files.some(f => f.content.includes('className='))
+  const hasErrorHandling = files.some(f => f.content.includes('try') && f.content.includes('catch'))
+  const hasComments = files.some(f => f.content.includes('//') || f.content.includes('/*'))
+  const hasProperExports = files.every(f => !f.path.endsWith('.tsx') || f.content.includes('export'))
+  
+  if (hasTypeScript) { score += 5; details.push('✅ TypeScript verwendet') }
+  if (hasUseClient) { score += 3; details.push('✅ Client-Direktiven korrekt') }
+  if (hasTailwind) { score += 3; details.push('✅ Tailwind CSS Styling') }
+  if (hasErrorHandling) { score += 5; details.push('✅ Error Handling vorhanden') }
+  if (hasProperExports) { score += 3; details.push('✅ Exports korrekt') }
+  
+  // Negative Faktoren
+  for (const file of files) {
+    const lines = file.content.split('\n')
+    
+    // Zu lange Dateien
+    if (lines.length > 300) {
+      score -= 10
+      details.push(`⚠️ ${file.path}: Zu groß (${lines.length} Zeilen)`)
+    }
+    
+    // Console.log in Production
+    const consoleLogs = (file.content.match(/console\.(log|warn|error)/g) || []).length
+    if (consoleLogs > 3) {
+      score -= 5
+      details.push(`⚠️ ${file.path}: ${consoleLogs} console Aufrufe`)
+    }
+    
+    // Any Types
+    const anyTypes = (file.content.match(/:\s*any/g) || []).length
+    if (anyTypes > 2) {
+      score -= 5
+      details.push(`⚠️ ${file.path}: ${anyTypes} 'any' Types`)
+    }
+    
+    // Fehlende Keys in Maps
+    if (file.content.includes('.map(') && !file.content.includes('key=')) {
+      score -= 3
+      details.push(`⚠️ ${file.path}: Möglicherweise fehlende Keys in .map()`)
+    }
+  }
+  
+  // Score begrenzen
+  score = Math.max(0, Math.min(100, score))
+  
+  return { score, details: details.slice(0, 5) }
+}
+
 function calculateCodeStats(files: { path: string; content: string }[]): CodeStats {
   let totalLines = 0
   let components = 0
@@ -4333,8 +4389,9 @@ ORIGINAL-ANFRAGE: ${userRequest}
         if (finalFiles.length > 0) {
           const isFirstGeneration = !isIteration
           
-          // Code-Statistik berechnen
+          // Code-Statistik und Quality Score berechnen
           const codeStats = calculateCodeStats(finalFiles)
+          const qualityScore = calculateCodeQualityScore(finalFiles)
           
           // Generiere automatisch README.md bei erster Generierung
           if (isFirstGeneration && !finalFiles.some(f => f.path.toLowerCase() === 'readme.md')) {
@@ -4389,6 +4446,10 @@ Die App kann mit AgentForge weiter entwickelt werden:
           
           const statsLine = `📊 **${codeStats.totalFiles} Dateien** | ${codeStats.totalLines} Zeilen | ${codeStats.components} Komponenten${codeStats.hooks > 0 ? ` | ${codeStats.hooks} Hooks` : ''}`
           
+          // Quality Score Badge
+          const scoreEmoji = qualityScore.score >= 90 ? '🏆' : qualityScore.score >= 70 ? '✅' : qualityScore.score >= 50 ? '⚠️' : '❌'
+          const qualityLine = `\n${scoreEmoji} **Code Quality:** ${qualityScore.score}/100`
+          
           // Contextual Hints generieren
           const hints = generateContextualHints(finalFiles)
           const hintsText = hints.length > 0 
@@ -4396,8 +4457,8 @@ Die App kann mit AgentForge weiter entwickelt werden:
             : ''
           
           const followUpMessage = isFirstGeneration
-            ? `✨ **App erfolgreich erstellt!**\n\n${statsLine}${techStack ? `\n🛠️ **Tech:** ${techStack}` : ''}${hintsText}\n\n**Nächste Schritte:**\n- 🐛 **Bug fixen** - Beschreibe einen Fehler im Chat\n- ➕ **Feature hinzufügen** - "Füge eine Suchfunktion hinzu"\n- 🎨 **Design verbessern** - "Mache das Design moderner"\n- 🚀 **Deployen** - Klicke auf "Deploy" für Live-Deployment`
-            : `✅ **Änderungen angewendet!**\n\n${statsLine}${hintsText}\n\nDu kannst weitere Anpassungen vornehmen oder die Quick Actions nutzen.`
+            ? `✨ **App erfolgreich erstellt!**\n\n${statsLine}${qualityLine}${techStack ? `\n🛠️ **Tech:** ${techStack}` : ''}${hintsText}\n\n**Nächste Schritte:**\n- 🐛 **Bug fixen** - Beschreibe einen Fehler im Chat\n- ➕ **Feature hinzufügen** - "Füge eine Suchfunktion hinzu"\n- 🎨 **Design verbessern** - "Mache das Design moderner"\n- 🚀 **Deployen** - Klicke auf "Deploy" für Live-Deployment`
+            : `✅ **Änderungen angewendet!**\n\n${statsLine}${qualityLine}${hintsText}\n\nDu kannst weitere Anpassungen vornehmen oder die Quick Actions nutzen.`
           
           addMessage({
             role: "assistant",
