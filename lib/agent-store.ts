@@ -264,9 +264,10 @@ export default function App() {
 5. ERLAUBTE IMPORTS: react, lucide-react, framer-motion, zustand, axios, date-fns, recharts, uuid
 
 ## BEI FEHLER/BUGFIX:
-1. Erkenne den Fehler (1 Satz)
-2. BEHEBE den Fehler SELBST
-3. Gib den VOLLSTÄNDIGEN Code ALLER betroffenen Dateien aus
+→ KEINE Erklärungen oder Anleitungen!
+→ DIREKT den korrigierten Code ausgeben!
+→ VOLLSTÄNDIGE Dateien mit dem Fix - sofort einsatzbereit!
+→ Der User will den Fehler BEHOBEN haben, nicht erklärt bekommen!
 
 ## CHECKLISTE VOR JEDER ANTWORT:
 ✓ Hat JEDE Komponente ihre eigene Datei?
@@ -405,9 +406,10 @@ export default function App() {
 4. Bei Iterationen: KOMPLETTE Dateien ausgeben!
 
 ## BEI FEHLER/BUGFIX:
-1. Erkenne den Fehler (1 Satz)
-2. BEHEBE den Fehler SELBST
-3. Gib den VOLLSTÄNDIGEN Code ALLER betroffenen Dateien aus
+→ KEINE Erklärungen oder Anleitungen!
+→ DIREKT den korrigierten Code ausgeben!
+→ VOLLSTÄNDIGE Dateien mit dem Fix - sofort einsatzbereit!
+→ Der User will den Fehler BEHOBEN haben, nicht erklärt bekommen!
 
 ## CHECKLISTE VOR JEDER ANTWORT:
 ✓ Hat JEDE Komponente ihre eigene Datei?
@@ -794,7 +796,8 @@ Sonst: "Module not found: Can't resolve '@/components/X'"`,
 ✅ Jede Komponente in eigener Datei?
 
 **BEI FEHLERN:**
-Gib KONKRETE KORREKTUREN mit vollständigem Code aus!`,
+→ KEINE Erklärungen! DIREKT den korrigierten Code ausgeben!
+→ Vollständige Dateien mit Fix - sofort einsatzbereit!`,
 
     security: `
 ## 🚀 RENDER.COM DEPLOYMENT - SECURITY FOKUS
