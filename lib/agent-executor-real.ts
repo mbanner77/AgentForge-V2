@@ -4148,8 +4148,53 @@ ORIGINAL-ANFRAGE: ${userRequest}
         const finalFiles = getFiles()
         if (finalFiles.length > 0) {
           const isFirstGeneration = !isIteration
+          
+          // Generiere automatisch README.md bei erster Generierung
+          if (isFirstGeneration && !finalFiles.some(f => f.path.toLowerCase() === 'readme.md')) {
+            const appName = currentProject?.name || 'AgentForge App'
+            const fileList = finalFiles.map(f => `- \`${f.path}\``).join('\n')
+            const readmeContent = `# ${appName}
+
+> Generiert mit AgentForge - AI-Powered App Builder
+
+## 🚀 Features
+
+Diese App wurde mit AgentForge erstellt und enthält:
+- Moderne React/Next.js Architektur
+- Tailwind CSS für responsives Design
+- TypeScript für Typsicherheit
+
+## 📁 Projektstruktur
+
+${fileList}
+
+## 🛠️ Installation
+
+\`\`\`bash
+npm install
+npm run dev
+\`\`\`
+
+## 📝 Entwicklung
+
+Die App kann mit AgentForge weiter entwickelt werden:
+- **Feature hinzufügen**: "Füge eine Suchfunktion hinzu"
+- **Design ändern**: "Mache das Design moderner"
+- **Bug fixen**: Beschreibe den Fehler im Chat
+
+---
+*Erstellt mit [AgentForge](https://agentforge.dev)*
+`
+            addFile({
+              path: 'README.md',
+              content: readmeContent,
+              language: 'markdown',
+              status: 'created'
+            })
+          }
+          
           const followUpMessage = isFirstGeneration
-            ? `✨ **App erfolgreich erstellt!** (${finalFiles.length} Dateien)\n\n**Nächste Schritte:**\n- 🐛 **Bug fixen** - Beschreibe einen Fehler im Chat\n- ➕ **Feature hinzufügen** - "Füge eine Suchfunktion hinzu"\n- 🎨 **Design verbessern** - "Mache das Design moderner"\n- 🚀 **Deployen** - Klicke auf "Deploy" für Live-Deployment`
+            ? `✨ **App erfolgreich erstellt!** (${finalFiles.length + 1} Dateien inkl. README)\n\n**Nächste Schritte:**\n- 🐛 **Bug fixen** - Beschreibe einen Fehler im Chat\n- ➕ **Feature hinzufügen** - "Füge eine Suchfunktion hinzu"\n- 🎨 **Design verbessern** - "Mache das Design moderner"\n- 🚀 **Deployen** - Klicke auf "Deploy" für Live-Deployment`
             : `✅ **Änderungen angewendet!**\n\nDu kannst weitere Anpassungen vornehmen oder die Quick Actions nutzen.`
           
           addMessage({

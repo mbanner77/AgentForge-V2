@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
-import { Send, Bot, User, Brain, Code2, Eye, Play, Loader2, Copy, Check, Shield, Sparkles, Lightbulb, ShoppingCart, ListTodo, BarChart3, MessageSquare, Calendar, Bug, Plus, RefreshCw, Wand2, Zap, ArrowRight } from "lucide-react"
+import { Send, Bot, User, Brain, Code2, Eye, Play, Loader2, Copy, Check, Shield, Sparkles, Lightbulb, ShoppingCart, ListTodo, BarChart3, MessageSquare, Calendar, Bug, Plus, RefreshCw, Wand2, Zap, ArrowRight, HelpCircle, FileCode, Rocket, Search, Filter, Database, Users, Settings, Image, Mail } from "lucide-react"
 import type { Message } from "@/lib/types"
 
 interface BuilderChatProps {
@@ -47,7 +47,7 @@ const agentLabels: Record<string, string> = {
   executor: "Executor Agent",
 }
 
-// Quick Start Templates für neue Benutzer
+// Quick Start Templates für neue Benutzer - Erweitert mit mehr Optionen
 const quickStartTemplates = [
   {
     icon: ListTodo,
@@ -90,6 +90,27 @@ const quickStartTemplates = [
     prompt: "Erstelle eine Notizen-App im Notion-Stil mit Markdown-Unterstützung, Ordnerstruktur, Suchfunktion und Auto-Save.",
     color: "text-yellow-500",
     bgColor: "bg-yellow-500/10 hover:bg-yellow-500/20 border-yellow-500/20",
+  },
+  {
+    icon: Users,
+    title: "CRM System",
+    prompt: "Erstelle ein Kontakt-Management-System mit Kundenübersicht, Suchfunktion, Aktivitäts-Timeline, Tags und Export-Funktion.",
+    color: "text-indigo-500",
+    bgColor: "bg-indigo-500/10 hover:bg-indigo-500/20 border-indigo-500/20",
+  },
+  {
+    icon: Image,
+    title: "Galerie",
+    prompt: "Baue eine Bildergalerie mit Grid-Layout, Lightbox-Ansicht, Kategorien, Lazy-Loading und Drag-and-Drop Upload.",
+    color: "text-pink-500",
+    bgColor: "bg-pink-500/10 hover:bg-pink-500/20 border-pink-500/20",
+  },
+  {
+    icon: Rocket,
+    title: "Landing Page",
+    prompt: "Erstelle eine moderne Landing Page mit Hero-Section, Features-Grid, Testimonials, Pricing-Tabelle und Kontakt-Formular.",
+    color: "text-red-500",
+    bgColor: "bg-red-500/10 hover:bg-red-500/20 border-red-500/20",
   },
 ]
 
@@ -232,8 +253,51 @@ export function BuilderChat({ messages, onSendMessage, isProcessing, onImplement
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [showQuickActions, setShowQuickActions] = useState(false)
   const [selectedAction, setSelectedAction] = useState<typeof quickActions[0] | null>(null)
+  const [showSuggestions, setShowSuggestions] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  // Smart Prompt Suggestions basierend auf Eingabe
+  const getSmartSuggestions = (text: string): string[] => {
+    const suggestions: string[] = []
+    const lowerText = text.toLowerCase()
+    
+    // Feature-basierte Vorschläge
+    if (lowerText.includes('such') || lowerText.includes('search')) {
+      suggestions.push('Füge eine Suchfunktion mit Echtzeit-Filterung hinzu')
+    }
+    if (lowerText.includes('filter') || lowerText.includes('sort')) {
+      suggestions.push('Implementiere Filter- und Sortier-Optionen')
+    }
+    if (lowerText.includes('login') || lowerText.includes('auth')) {
+      suggestions.push('Füge Benutzer-Authentifizierung mit Login/Logout hinzu')
+    }
+    if (lowerText.includes('dark') || lowerText.includes('theme')) {
+      suggestions.push('Implementiere Dark/Light Mode Toggle')
+    }
+    if (lowerText.includes('responsive') || lowerText.includes('mobil')) {
+      suggestions.push('Mache das Layout vollständig responsive für Mobile')
+    }
+    if (lowerText.includes('speicher') || lowerText.includes('save')) {
+      suggestions.push('Füge lokale Datenspeicherung (localStorage) hinzu')
+    }
+    if (lowerText.includes('animation') || lowerText.includes('animat')) {
+      suggestions.push('Füge flüssige Animationen und Übergänge hinzu')
+    }
+    if (lowerText.includes('export') || lowerText.includes('download')) {
+      suggestions.push('Implementiere Export-Funktion (CSV/PDF)')
+    }
+    if (lowerText.includes('chart') || lowerText.includes('graph') || lowerText.includes('statistik')) {
+      suggestions.push('Füge interaktive Charts mit Recharts hinzu')
+    }
+    if (lowerText.includes('drag') || lowerText.includes('drop')) {
+      suggestions.push('Implementiere Drag-and-Drop Funktionalität')
+    }
+    
+    return suggestions.slice(0, 3) // Max 3 Vorschläge
+  }
+
+  const smartSuggestions = input.length > 3 ? getSmartSuggestions(input) : []
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -490,14 +554,49 @@ export function BuilderChat({ messages, onSendMessage, isProcessing, onImplement
               {isProcessing ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
             </Button>
           </div>
+          {/* Smart Suggestions */}
+          {smartSuggestions.length > 0 && !isProcessing && (
+            <div className="mt-2 space-y-1">
+              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                <Lightbulb className="h-3 w-3 text-yellow-500" />
+                <span>Vorschläge:</span>
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {smartSuggestions.map((suggestion, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => setInput(suggestion)}
+                    className="text-xs px-2 py-1 rounded-md bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 transition-colors"
+                  >
+                    {suggestion}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="mt-2 flex items-center justify-between">
             <p className="text-xs text-muted-foreground">Enter zum Senden, Shift+Enter für neue Zeile</p>
-            {hasFiles && (
-              <span className="text-xs text-muted-foreground flex items-center gap-1">
-                <ArrowRight className="h-3 w-3" />
-                Iteration Mode aktiv
-              </span>
-            )}
+            <div className="flex items-center gap-2">
+              {hasFiles && (
+                <button
+                  type="button"
+                  onClick={() => onSendMessage('Erkläre mir den aktuellen Code: Was macht die App und wie ist sie strukturiert?')}
+                  className="text-xs text-muted-foreground hover:text-primary flex items-center gap-1 transition-colors"
+                  title="Code erklären lassen"
+                >
+                  <HelpCircle className="h-3 w-3" />
+                  Erklären
+                </button>
+              )}
+              {hasFiles && (
+                <span className="text-xs text-muted-foreground flex items-center gap-1">
+                  <ArrowRight className="h-3 w-3" />
+                  Iteration
+                </span>
+              )}
+            </div>
           </div>
         </form>
       </div>
