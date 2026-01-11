@@ -106,6 +106,49 @@ interface ContextualHint {
   action?: string
 }
 
+// Intelligente Follow-Up Fragen basierend auf generiertem Code
+function generateFollowUpQuestions(files: { path: string; content: string }[], isFirstGeneration: boolean): string[] {
+  const questions: string[] = []
+  
+  // Analysiere was die App enthält
+  const hasSearch = files.some(f => f.content.includes('search') || f.content.includes('filter'))
+  const hasDarkMode = files.some(f => f.content.includes('dark') || f.content.includes('theme'))
+  const hasLocalStorage = files.some(f => f.content.includes('localStorage'))
+  const hasList = files.some(f => f.content.includes('.map(') && f.content.includes('key='))
+  const hasForm = files.some(f => f.content.includes('<form') || f.content.includes('onSubmit'))
+  const hasAnimation = files.some(f => f.content.includes('transition') || f.content.includes('animate'))
+  const hasExport = files.some(f => f.content.includes('download') || f.content.includes('export'))
+  const hasPagination = files.some(f => f.content.includes('page') && f.content.includes('setPage'))
+  
+  if (isFirstGeneration) {
+    // Vorschläge für neue Apps
+    if (!hasSearch && hasList) {
+      questions.push('"Füge eine Suchfunktion hinzu"')
+    }
+    if (!hasDarkMode) {
+      questions.push('"Füge einen Dark Mode Toggle hinzu"')
+    }
+    if (!hasLocalStorage) {
+      questions.push('"Speichere die Daten im localStorage"')
+    }
+    if (!hasAnimation) {
+      questions.push('"Füge Animationen und Übergänge hinzu"')
+    }
+    if (hasList && !hasPagination) {
+      questions.push('"Füge Pagination für die Liste hinzu"')
+    }
+  } else {
+    // Vorschläge für Iterationen
+    if (!hasExport && hasList) {
+      questions.push('"Export als CSV hinzufügen"')
+    }
+    questions.push('"Das Design weiter verbessern"')
+    questions.push('"Performance optimieren"')
+  }
+  
+  return questions.slice(0, 3)
+}
+
 function generateContextualHints(files: { path: string; content: string }[]): ContextualHint[] {
   const hints: ContextualHint[] = []
   
@@ -4456,9 +4499,15 @@ Die App kann mit AgentForge weiter entwickelt werden:
             ? `\n\n💡 **Verbesserungsvorschläge:**\n${hints.map(h => `- ${h.type === 'warning' ? '⚠️' : h.type === 'improvement' ? '🔧' : '💡'} ${h.message}${h.action ? ` → "${h.action}"` : ''}`).join('\n')}`
             : ''
           
+          // Intelligente Follow-Up Fragen basierend auf Code-Analyse
+          const followUpQuestions = generateFollowUpQuestions(finalFiles, isFirstGeneration)
+          const followUpText = followUpQuestions.length > 0 
+            ? `\n\n**💬 Möchtest du vielleicht:**\n${followUpQuestions.map(q => `- ${q}`).join('\n')}`
+            : ''
+          
           const followUpMessage = isFirstGeneration
-            ? `✨ **App erfolgreich erstellt!**\n\n${statsLine}${qualityLine}${techStack ? `\n🛠️ **Tech:** ${techStack}` : ''}${hintsText}\n\n**Nächste Schritte:**\n- 🐛 **Bug fixen** - Beschreibe einen Fehler im Chat\n- ➕ **Feature hinzufügen** - "Füge eine Suchfunktion hinzu"\n- 🎨 **Design verbessern** - "Mache das Design moderner"\n- 🚀 **Deployen** - Klicke auf "Deploy" für Live-Deployment`
-            : `✅ **Änderungen angewendet!**\n\n${statsLine}${qualityLine}${hintsText}\n\nDu kannst weitere Anpassungen vornehmen oder die Quick Actions nutzen.`
+            ? `✨ **App erfolgreich erstellt!**\n\n${statsLine}${qualityLine}${techStack ? `\n🛠️ **Tech:** ${techStack}` : ''}${hintsText}${followUpText}\n\n**Nächste Schritte:**\n- 🐛 **Bug fixen** - Beschreibe einen Fehler im Chat\n- ➕ **Feature hinzufügen** - "Füge eine Suchfunktion hinzu"\n- 🎨 **Design verbessern** - "Mache das Design moderner"\n- 🚀 **Deployen** - Klicke auf "Deploy" für Live-Deployment`
+            : `✅ **Änderungen angewendet!**\n\n${statsLine}${qualityLine}${hintsText}${followUpText}\n\nDu kannst weitere Anpassungen vornehmen oder die Quick Actions nutzen.`
           
           addMessage({
             role: "assistant",
