@@ -4206,7 +4206,17 @@ ORIGINAL-ANFRAGE: ${userRequest}
           ? `\n\n## WICHTIG - VERSUCH ${attempt}/${maxAttempts}:\nDies ist Korrekturversuch ${attempt}. Die vorherigen Versuche haben den Fehler NICHT behoben. Du MUSST einen ANDEREN Ansatz wählen!\n- Analysiere den Fehler GENAUER\n- Prüfe ob du die richtige Datei korrigierst\n- Stelle sicher, dass ALLE notwendigen Änderungen gemacht werden\n- Der Fehler tritt immer noch auf, also war die vorherige Korrektur FALSCH oder UNVOLLSTÄNDIG!`
           : ""
 
-        const fixPrompt = `Du bist ein erfahrener React/TypeScript-Entwickler. Der folgende Code hat einen Fehler, der in StackBlitz aufgetreten ist. Analysiere und korrigiere ihn.
+        const fixPrompt = `## 🔴🔴🔴 KRITISCH: NUR CODE AUSGEBEN - KEINE ERKLÄRUNGEN!
+
+Du MUSST den Fehler DIREKT beheben. VERBOTEN sind:
+❌ Erklärungen was der Fehler ist
+❌ Hinweise was der User tun sollte
+❌ Analysen oder Beschreibungen
+❌ Text außerhalb von Code-Blöcken
+
+Du MUSST NUR ausgeben:
+✅ Die korrigierten Dateien mit vollständigem Code
+✅ Format: \`\`\`typescript\\n// filepath: pfad/datei.tsx\\n[CODE]\`\`\`
 ${attemptInfo}
 
 ## FEHLERMELDUNG:
@@ -4217,35 +4227,8 @@ ${errorMessage}
 ## AKTUELLER CODE:
 ${filesContext}
 
-## ANWEISUNGEN:
-1. **Analysiere den Fehler genau** - Was ist die EXAKTE Ursache? Welche Zeile? Welche Datei?
-2. **Korrigiere den Code VOLLSTÄNDIG** - Behebe das Problem an der Wurzel, nicht nur oberflächlich
-3. **Gib den KOMPLETTEN korrigierten Code aus** - Nicht nur die geänderten Zeilen
-4. **Prüfe auf Folgefehler** - Könnte die Korrektur andere Probleme verursachen?
-
-## AUSGABEFORMAT (WICHTIG!):
-Für JEDE korrigierte Datei, gib den Code so aus:
-
-\`\`\`typescript
-// filepath: src/App.js
-[VOLLSTÄNDIGER KORRIGIERTER CODE HIER]
-\`\`\`
-
-## HÄUFIGE FEHLER UND LÖSUNGEN:
-- "Cannot read property 'map' of undefined" → Prüfe ob Array existiert: \`items?.map()\` oder \`items || []\`
-- "Module not found" → Prüfe Import-Pfade und fehlende Abhängigkeiten
-- "Unexpected token" → Prüfe JSX-Syntax und fehlende Klammern
-- "is not defined" → Prüfe ob Variable/Funktion importiert oder deklariert ist
-- "useState is not defined" → Füge \`import { useState } from "react"\` hinzu
-- TypeScript-Fehler in StackBlitz → Konvertiere zu JavaScript (entferne Typen)
-
-## STACKBLITZ-SPEZIFISCH:
-- StackBlitz verwendet JavaScript, nicht TypeScript
-- Entferne alle TypeScript-Typen (: string, : number, interface, type)
-- Entferne "use client" Direktiven
-- Verwende .js Dateien, nicht .tsx
-
-Korrigiere jetzt den Code:`
+## AUSGABE (NUR CODE!):
+Gib SOFORT die korrigierten Dateien aus - OHNE jeglichen Text davor oder danach:`
 
         try {
           const coderConfig = agentConfigs.coder
