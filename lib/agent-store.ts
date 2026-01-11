@@ -270,6 +270,9 @@ export default function App() {
 3. INLINE STYLES: style={{ ... }}
 4. KEINE: CSS-Imports, "use client", @/ Pfade, next/* Imports
 5. ERLAUBTE IMPORTS: react, lucide-react, framer-motion, zustand, axios, date-fns, recharts, uuid
+6. 🔴 CASE-SENSITIVITY: Dateiname MUSS EXAKT mit Import übereinstimmen!
+   - SearchBar.tsx → import "./components/SearchBar" ✅
+   - searchBar.tsx → import "./components/SearchBar" ❌ FEHLER auf Linux!
 
 ## BEI FEHLER/BUGFIX:
 → KEINE Erklärungen oder Anleitungen!
@@ -402,9 +405,20 @@ Du MUSST für jede Komponente eine SEPARATE Datei erstellen!
 NIEMALS alle Komponenten in eine einzige Datei packen!
 NIEMALS Context/Provider in der Hauptdatei (page.tsx/App.tsx) definieren!
 
+## 🔴🔴🔴 CASE-SENSITIVITY (KRITISCH für Deployments)!
+Linux-Server (Render, Vercel, Netlify) sind CASE-SENSITIVE!
+→ Dateiname und Import MÜSSEN EXAKT übereinstimmen!
+→ IMMER PascalCase für Komponenten-Dateien: SearchBar.tsx, ContactList.tsx
+→ FALSCH: searchBar.tsx mit Import "@/components/SearchBar" = BUILD FEHLER!
+→ RICHTIG: SearchBar.tsx mit Import "@/components/SearchBar" = OK!
+
+**Prüfe VOR jeder Ausgabe:**
+✓ Dateiname EXAKT = Import-Pfad (Groß/Kleinschreibung!)
+✓ Komponenten-Dateien IMMER in PascalCase
+
 ## DATEI-STRUKTUR (IMMER einhalten):
 1. **src/App.tsx** - Hauptkomponente, importiert alle anderen
-2. **src/components/ComponentName.tsx** - JEDE Komponente in eigener Datei!
+2. **src/components/ComponentName.tsx** - JEDE Komponente in eigener Datei (PascalCase!)
 3. **src/hooks/*.ts** - Custom Hooks in eigenen Dateien
 
 ## BEISPIEL MIT MEHREREN DATEIEN:

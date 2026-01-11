@@ -657,9 +657,50 @@ function generateChangeSummary(
   return { filesAdded, filesModified, featuresAdded, componentsAdded }
 }
 
+// Case-Sensitivity Validierung für Deployments
+interface CaseSensitivityIssue {
+  file: string
+  importedAs: string
+  actualName: string
+  fixPrompt: string
+}
+
+function validateCaseSensitivity(files: { path: string; content: string }[]): CaseSensitivityIssue[] {
+  const issues: CaseSensitivityIssue[] = []
+  const fileNames = new Map<string, string>() // lowercase -> actual
+  
+  // Sammle alle Dateinamen
+  for (const file of files) {
+    const fileName = file.path.split('/').pop() || ''
+    fileNames.set(fileName.toLowerCase(), fileName)
+  }
+  
+  // Prüfe alle Imports
+  for (const file of files) {
+    const importMatches = file.content.matchAll(/from\s+["'](@\/components\/|\.\/components\/)([^"']+)["']/g)
+    
+    for (const match of importMatches) {
+      const importedName = match[2]
+      const expectedFile = `${importedName}.tsx`
+      const actualFile = fileNames.get(expectedFile.toLowerCase())
+      
+      if (actualFile && actualFile !== expectedFile) {
+        issues.push({
+          file: file.path,
+          importedAs: importedName,
+          actualName: actualFile.replace('.tsx', ''),
+          fixPrompt: `CASE-SENSITIVITY FEHLER: Import "${importedName}" stimmt nicht mit Dateiname "${actualFile}" überein. Benenne die Datei in "${importedName}.tsx" um ODER ändere den Import zu "${actualFile.replace('.tsx', '')}".`
+        })
+      }
+    }
+  }
+  
+  return issues
+}
+
 // Erweiterte Error-Analyse mit Lösungsvorschlägen
 interface ErrorAnalysis {
-  errorType: 'syntax' | 'runtime' | 'type' | 'import' | 'unknown'
+  errorType: 'syntax' | 'runtime' | 'type' | 'import' | 'case-sensitivity' | 'unknown'
   severity: 'low' | 'medium' | 'high' | 'critical'
   possibleCauses: string[]
   suggestedFixes: string[]
@@ -668,6 +709,17 @@ interface ErrorAnalysis {
 
 function analyzeError(errorMessage: string): ErrorAnalysis {
   const lowerError = errorMessage.toLowerCase()
+  
+  // Case-Sensitivity Fehler (PRIORITÄT - häufig bei Deployments!)
+  if (lowerError.includes('differs from file name') && lowerError.includes('only in casing')) {
+    return {
+      errorType: 'case-sensitivity',
+      severity: 'critical',
+      possibleCauses: ['Dateiname und Import haben unterschiedliche Groß/Kleinschreibung', 'Linux-Server sind case-sensitive'],
+      suggestedFixes: ['Dateiname in PascalCase umbenennen (z.B. SearchBar.tsx)', 'Import-Pfad exakt an Dateiname anpassen'],
+      autoFixPrompt: 'CASE-SENSITIVITY FEHLER! Der Dateiname stimmt nicht mit dem Import überein. Benenne ALLE Komponenten-Dateien in PascalCase um (z.B. SearchBar.tsx, ContactList.tsx) und passe die Imports entsprechend an. Dateiname und Import müssen EXAKT übereinstimmen!'
+    }
+  }
   
   // Import-Fehler
   if (lowerError.includes('cannot find module') || lowerError.includes('module not found')) {
