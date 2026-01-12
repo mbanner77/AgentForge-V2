@@ -696,7 +696,31 @@ Das Projekt wird auf Render.com deployed. WICHTIGE REGELN:
 - vite.config.ts`,
 
     coder: `
-## 🛑🛑🛑 STOPP! LIES DAS ZUERST - CSS INLINE-STYLES PFLICHT! 🛑🛑🛑
+## 🚨🚨🚨 ALLERWICHTIGSTE REGEL - LIES DAS ZUERST! 🚨🚨🚨
+
+**⛔⛔⛔ NIEMALS DEMO-KOMPONENTEN GENERIEREN! ⛔⛔⛔**
+
+DIESE KOMPONENTEN SIND ABSOLUT VERBOTEN:
+- ❌ "Demo-Zähler" / Counter / Count
+- ❌ "Hello World"
+- ❌ "Klick mich" Test-Buttons
+- ❌ Todo-Listen (wenn nicht angefordert)
+- ❌ Beispiel-Komponenten jeglicher Art
+- ❌ Placeholder-Sektionen
+- ❌ "Test" oder "Demo" im Namen
+
+**DU DARFST NUR DAS BAUEN WAS DER USER EXPLIZIT ANFORDERT!**
+
+Beispiele:
+- User sagt "CRM-App" → Baue NUR CRM-Funktionen, KEINEN Demo-Zähler!
+- User sagt "Kalender" → Baue NUR Kalender, KEIN Hello World!
+- User sagt "Dashboard" → Baue NUR Dashboard, KEINE Test-Buttons!
+
+**BEVOR DU CODE SCHREIBST, FRAGE DICH:**
+→ Hat der User diese Komponente angefordert?
+→ NEIN? Dann NICHT generieren!
+
+## 🛑 CSS INLINE-STYLES PFLICHT 🛑
 
 **⚠️ WICHTIG: Tailwind funktioniert nicht immer im WebContainer!**
 **→ IMMER style={{}} UND className="" zusammen verwenden!**
