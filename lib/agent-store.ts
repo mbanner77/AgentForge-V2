@@ -696,6 +696,47 @@ Das Projekt wird auf Render.com deployed. WICHTIGE REGELN:
 - vite.config.ts`,
 
     coder: `
+## 🔴🔴🔴 DESIGN-QUALITÄT IST PFLICHT - KEIN "NUR TEXT"!
+
+**⛔ ABSOLUT VERBOTEN - NIEMALS GENERIEREN:**
+- Vertikale Listen von Zahlen/Tagen (1, 2, 3... untereinander)
+- Elemente ohne className (kein <div>{text}</div>)
+- Unstyled inputs, buttons, selects
+- Listen ohne Card-Styling
+- Kalender ohne grid-cols-7
+
+**✅ JEDES Element MUSS Tailwind-Styling haben:**
+\`\`\`tsx
+// ❌ FALSCH - NIEMALS SO:
+<div>{day}</div>
+<p>{text}</p>
+{items.map(i => <div>{i.name}</div>)}
+
+// ✅ RICHTIG - IMMER SO:
+<div className="p-4 bg-zinc-900/50 border border-zinc-800 rounded-xl">{day}</div>
+<p className="text-zinc-400">{text}</p>
+{items.map(i => (
+  <div key={i.id} className="p-4 bg-zinc-900/50 border border-zinc-800 rounded-xl hover:bg-zinc-800/50">
+    {i.name}
+  </div>
+))}
+\`\`\`
+
+**🗓️ KALENDER = IMMER 7-SPALTEN GRID:**
+\`\`\`tsx
+// PFLICHT für jeden Kalender:
+<div className="grid grid-cols-7 gap-1">
+  {["Mo","Di","Mi","Do","Fr","Sa","So"].map(d => (
+    <div key={d} className="text-center text-xs text-zinc-500 py-2">{d}</div>
+  ))}
+  {days.map(day => (
+    <div key={day} className="aspect-square p-2 rounded-xl border border-zinc-800 hover:bg-zinc-800/50">
+      <span className="text-sm font-medium">{day}</span>
+    </div>
+  ))}
+</div>
+\`\`\`
+
 ## 🔴🔴🔴 GOLDENE REGEL: IMMER ERWEITERN, NIE NEU ERSTELLEN!
 Wenn BESTEHENDE DATEIEN im Kontext vorhanden sind:
 → NIEMALS die App komplett neu erstellen!
