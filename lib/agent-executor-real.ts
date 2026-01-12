@@ -2645,6 +2645,284 @@ function analyzeCodeOptimizations(files: { path: string; content: string }[]): C
   return suggestions.slice(0, 5)
 }
 
+// Intelligente Code-Completion Vorschläge
+interface CompletionSuggestion {
+  trigger: string
+  completion: string
+  description: string
+  category: 'hook' | 'component' | 'utility' | 'pattern'
+}
+
+function getSmartCompletions(currentCode: string, cursorContext: string): CompletionSuggestion[] {
+  const completions: CompletionSuggestion[] = []
+  const lower = cursorContext.toLowerCase()
+  
+  // Hook Completions
+  if (lower.includes('usestate') || lower.includes('state')) {
+    completions.push({
+      trigger: 'useState',
+      completion: `const [value, setValue] = useState<string>('')`,
+      description: 'State mit Typ',
+      category: 'hook'
+    })
+    completions.push({
+      trigger: 'useStateArray',
+      completion: `const [items, setItems] = useState<Item[]>([])`,
+      description: 'Array State',
+      category: 'hook'
+    })
+  }
+  
+  if (lower.includes('useeffect') || lower.includes('effect')) {
+    completions.push({
+      trigger: 'useEffect',
+      completion: `useEffect(() => {\n  // Effect logic\n  return () => {\n    // Cleanup\n  }\n}, [dependency])`,
+      description: 'Effect mit Cleanup',
+      category: 'hook'
+    })
+    completions.push({
+      trigger: 'useEffectFetch',
+      completion: `useEffect(() => {\n  const fetchData = async () => {\n    try {\n      const res = await fetch(url)\n      const data = await res.json()\n      setData(data)\n    } catch (err) {\n      setError(err)\n    }\n  }\n  fetchData()\n}, [])`,
+      description: 'Data Fetching Effect',
+      category: 'hook'
+    })
+  }
+  
+  // Component Patterns
+  if (lower.includes('button') || lower.includes('btn')) {
+    completions.push({
+      trigger: 'Button',
+      completion: `<button\n  onClick={handleClick}\n  disabled={isLoading}\n  className="px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-xl font-semibold hover:scale-[1.02] transition-all"\n>\n  {isLoading ? 'Laden...' : 'Klicken'}\n</button>`,
+      description: 'Premium Button',
+      category: 'component'
+    })
+  }
+  
+  if (lower.includes('input') || lower.includes('field')) {
+    completions.push({
+      trigger: 'Input',
+      completion: `<input\n  type="text"\n  value={value}\n  onChange={(e) => setValue(e.target.value)}\n  placeholder="Eingabe..."\n  className="w-full px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl text-zinc-100 placeholder:text-zinc-500 focus:border-blue-500 outline-none transition-colors"\n/>`,
+      description: 'Premium Input',
+      category: 'component'
+    })
+  }
+  
+  if (lower.includes('card')) {
+    completions.push({
+      trigger: 'Card',
+      completion: `<div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-6 hover:border-zinc-700 transition-all">\n  <h3 className="font-semibold text-lg">{title}</h3>\n  <p className="text-zinc-400 mt-2">{description}</p>\n</div>`,
+      description: 'Premium Card',
+      category: 'component'
+    })
+  }
+  
+  // Utility Patterns
+  if (lower.includes('fetch') || lower.includes('api')) {
+    completions.push({
+      trigger: 'fetchWrapper',
+      completion: `const fetchData = async <T>(url: string): Promise<T> => {\n  const res = await fetch(url)\n  if (!res.ok) throw new Error('Fetch failed')\n  return res.json()\n}`,
+      description: 'Typed Fetch Wrapper',
+      category: 'utility'
+    })
+  }
+  
+  if (lower.includes('debounce')) {
+    completions.push({
+      trigger: 'useDebounce',
+      completion: `function useDebounce<T>(value: T, delay: number): T {\n  const [debouncedValue, setDebouncedValue] = useState(value)\n  useEffect(() => {\n    const timer = setTimeout(() => setDebouncedValue(value), delay)\n    return () => clearTimeout(timer)\n  }, [value, delay])\n  return debouncedValue\n}`,
+      description: 'Debounce Hook',
+      category: 'utility'
+    })
+  }
+  
+  return completions.slice(0, 5)
+}
+
+// Test-Generierung Hints
+interface TestSuggestion {
+  componentName: string
+  testCases: string[]
+  mockData?: string
+}
+
+function generateTestHints(files: { path: string; content: string }[]): TestSuggestion[] {
+  const suggestions: TestSuggestion[] = []
+  
+  for (const file of files) {
+    if (!file.path.includes('components/')) continue
+    
+    const componentMatch = file.content.match(/export\s+function\s+(\w+)/)
+    if (!componentMatch) continue
+    
+    const componentName = componentMatch[1]
+    const testCases: string[] = []
+    
+    // Analysiere Komponente für Test-Vorschläge
+    if (file.content.includes('onClick')) {
+      testCases.push(`it('should handle click event', () => { ... })`)
+    }
+    if (file.content.includes('useState')) {
+      testCases.push(`it('should update state correctly', () => { ... })`)
+    }
+    if (file.content.includes('.map(')) {
+      testCases.push(`it('should render list items', () => { ... })`)
+    }
+    if (file.content.includes('loading') || file.content.includes('isLoading')) {
+      testCases.push(`it('should show loading state', () => { ... })`)
+    }
+    if (file.content.includes('error') || file.content.includes('Error')) {
+      testCases.push(`it('should handle error state', () => { ... })`)
+    }
+    if (file.content.includes('<form') || file.content.includes('onSubmit')) {
+      testCases.push(`it('should submit form correctly', () => { ... })`)
+      testCases.push(`it('should validate form inputs', () => { ... })`)
+    }
+    
+    if (testCases.length > 0) {
+      suggestions.push({ componentName, testCases })
+    }
+  }
+  
+  return suggestions.slice(0, 5)
+}
+
+// Smart Deployment Checks
+interface DeploymentIssue {
+  type: 'error' | 'warning' | 'info'
+  category: 'env' | 'build' | 'config' | 'security'
+  message: string
+  fix: string
+}
+
+function checkDeploymentReadiness(files: { path: string; content: string }[]): DeploymentIssue[] {
+  const issues: DeploymentIssue[] = []
+  const allContent = files.map(f => f.content).join('\n')
+  const filePaths = files.map(f => f.path)
+  
+  // ENV Checks
+  if (allContent.includes('process.env.') && !filePaths.some(p => p.includes('.env'))) {
+    issues.push({
+      type: 'warning',
+      category: 'env',
+      message: 'Umgebungsvariablen verwendet aber keine .env Datei',
+      fix: 'Erstelle .env.example mit den benötigten Variablen'
+    })
+  }
+  
+  // Hardcoded URLs
+  if (allContent.match(/https?:\/\/localhost/)) {
+    issues.push({
+      type: 'error',
+      category: 'config',
+      message: 'Hardcoded localhost URL gefunden',
+      fix: 'Verwende Umgebungsvariablen für URLs'
+    })
+  }
+  
+  // API Keys exposed
+  if (allContent.match(/['"]sk-[a-zA-Z0-9]{20,}['"]/)) {
+    issues.push({
+      type: 'error',
+      category: 'security',
+      message: 'API Key im Code gefunden',
+      fix: 'Verschiebe API Keys in Umgebungsvariablen'
+    })
+  }
+  
+  // Missing build files
+  if (!filePaths.some(p => p.includes('package.json'))) {
+    issues.push({
+      type: 'warning',
+      category: 'build',
+      message: 'Keine package.json gefunden',
+      fix: 'Erstelle package.json mit Dependencies'
+    })
+  }
+  
+  // Console logs
+  const consoleLogs = (allContent.match(/console\.(log|warn|error)/g) || []).length
+  if (consoleLogs > 5) {
+    issues.push({
+      type: 'warning',
+      category: 'build',
+      message: `${consoleLogs} Console-Statements gefunden`,
+      fix: 'Entferne Console-Logs vor Deployment'
+    })
+  }
+  
+  // Missing error handling
+  if (allContent.includes('fetch(') && !allContent.includes('catch')) {
+    issues.push({
+      type: 'warning',
+      category: 'build',
+      message: 'Fetch ohne Error Handling',
+      fix: 'Füge try/catch für API-Aufrufe hinzu'
+    })
+  }
+  
+  // TypeScript any
+  const anyCount = (allContent.match(/:\s*any\b/g) || []).length
+  if (anyCount > 3) {
+    issues.push({
+      type: 'info',
+      category: 'build',
+      message: `${anyCount} 'any' Types gefunden`,
+      fix: 'Ersetze any durch konkrete Typen'
+    })
+  }
+  
+  return issues
+}
+
+// Erweiterte Projektstruktur-Analyse
+interface ProjectStructure {
+  hasComponents: boolean
+  hasHooks: boolean
+  hasUtils: boolean
+  hasTypes: boolean
+  hasStyles: boolean
+  hasTests: boolean
+  missingRecommended: string[]
+  score: number
+}
+
+function analyzeProjectStructure(files: { path: string; content: string }[]): ProjectStructure {
+  const paths = files.map(f => f.path)
+  
+  const hasComponents = paths.some(p => p.includes('/components/'))
+  const hasHooks = paths.some(p => p.includes('/hooks/'))
+  const hasUtils = paths.some(p => p.includes('/utils/') || p.includes('/lib/'))
+  const hasTypes = paths.some(p => p.includes('/types/') || p.includes('.d.ts'))
+  const hasStyles = paths.some(p => p.includes('.css') || p.includes('styles'))
+  const hasTests = paths.some(p => p.includes('.test.') || p.includes('.spec.') || p.includes('__tests__'))
+  
+  const missingRecommended: string[] = []
+  if (!hasComponents && files.length > 2) missingRecommended.push('/components/')
+  if (!hasHooks && files.some(f => (f.content.match(/useState/g) || []).length > 3)) missingRecommended.push('/hooks/')
+  if (!hasUtils && files.some(f => f.content.includes('function') && !f.path.includes('component'))) missingRecommended.push('/utils/')
+  if (!hasTypes && files.some(f => f.content.includes('interface') || f.content.includes('type '))) missingRecommended.push('/types/')
+  
+  // Score berechnen
+  let score = 50 // Basis
+  if (hasComponents) score += 15
+  if (hasHooks) score += 10
+  if (hasUtils) score += 10
+  if (hasTypes) score += 10
+  if (hasTests) score += 5
+  score -= missingRecommended.length * 5
+  
+  return {
+    hasComponents,
+    hasHooks,
+    hasUtils,
+    hasTypes,
+    hasStyles,
+    hasTests,
+    missingRecommended,
+    score: Math.max(0, Math.min(100, score))
+  }
+}
+
 // Projekttyp-Erkennung für angepasste Vorschläge
 type ProjectType = 'todo' | 'ecommerce' | 'dashboard' | 'chat' | 'blog' | 'portfolio' | 'form' | 'unknown'
 
