@@ -893,11 +893,38 @@ export function Name() { ... }   // EINE Funktion pro Datei
 - Hidden on mobile: \`hidden md:block\`
 - Stack on mobile: \`flex-col md:flex-row\`
 
+**🗓️ KALENDER DESIGN (KRITISCH!):**
+\`\`\`tsx
+// IMMER 7-Spalten Grid für Kalender!
+<div className="grid grid-cols-7 gap-1">
+  {/* Wochentage Header */}
+  {["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"].map(day => (
+    <div key={day} className="text-center text-xs font-medium text-zinc-500 py-2">{day}</div>
+  ))}
+  {/* Leere Zellen vor dem 1. des Monats */}
+  {blanks.map((_, i) => <div key={\`blank-\${i}\`} className="aspect-square" />)}
+  {/* Tage des Monats */}
+  {days.map(day => (
+    <div key={day} className="aspect-square p-1 rounded-lg border border-zinc-800 hover:border-zinc-600 hover:bg-zinc-800/50 cursor-pointer transition-all">
+      <span className="text-sm font-medium">{day}</span>
+    </div>
+  ))}
+</div>
+\`\`\`
+
+**📊 TABELLEN & GRIDS:**
+- IMMER \`grid grid-cols-X\` verwenden, NIEMALS vertikale Listen für tabellarische Daten
+- Kalender: \`grid grid-cols-7\`
+- Dashboard Stats: \`grid grid-cols-2 md:grid-cols-4\`
+- Produkt-Grid: \`grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4\`
+
 **🚫 VERBOTEN:**
-- Vertikale Listen für Grid-Daten (Kalender, Tabellen)
-- Fehlende Padding/Margin (min. p-4 oder p-6)
-- Keine Hover-States bei interaktiven Elementen
-- Inline-Styles statt Tailwind-Klassen
+- ❌ Vertikale Listen für Kalender-Tage (NIEMALS nur Zahlen untereinander!)
+- ❌ Fehlende Padding/Margin (min. p-4 oder p-6)
+- ❌ Keine Hover-States bei interaktiven Elementen
+- ❌ Inline-Styles statt Tailwind-Klassen
+- ❌ Kalender ohne 7-Spalten Grid
+- ❌ Tage ohne aspect-square für gleichmäßige Zellen
 
 ## BEISPIEL EINER FEHLERFREIEN APP:
 
@@ -951,6 +978,7 @@ export function CalendarProvider({ children }: { children: ReactNode }) {
 "use client";
 
 import { useState } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useCalendar } from "@/components/CalendarContext";
 
 export function Calendar() {
@@ -959,31 +987,84 @@ export function Calendar() {
   
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
+  const today = new Date();
+  const isToday = (day: number) => today.getDate() === day && today.getMonth() === month && today.getFullYear() === year;
+  
+  // Erster Tag des Monats (0=So, 1=Mo, ...) - konvertiert zu Mo=0
   const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
-  const blanks = Array.from({ length: (firstDay + 6) % 7 }, () => null);
+  const blanks = Array.from({ length: (firstDay + 6) % 7 }, (_, i) => i);
   
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
+    <div className="bg-zinc-900/50 backdrop-blur-sm border border-zinc-800 rounded-2xl p-6">
+      {/* Header mit Navigation */}
       <div className="flex justify-between items-center mb-6">
-        <button onClick={() => setCurrentDate(new Date(year, month - 1))} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">←</button>
-        <h2 className="text-xl font-bold">{currentDate.toLocaleDateString("de-DE", { month: "long", year: "numeric" })}</h2>
-        <button onClick={() => setCurrentDate(new Date(year, month + 1))} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">→</button>
+        <button 
+          onClick={() => setCurrentDate(new Date(year, month - 1))} 
+          className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-xl transition-colors"
+        >
+          <ChevronLeft className="w-5 h-5" />
+        </button>
+        <h2 className="text-xl font-bold bg-gradient-to-r from-white to-zinc-400 bg-clip-text text-transparent">
+          {currentDate.toLocaleDateString("de-DE", { month: "long", year: "numeric" })}
+        </h2>
+        <button 
+          onClick={() => setCurrentDate(new Date(year, month + 1))} 
+          className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-xl transition-colors"
+        >
+          <ChevronRight className="w-5 h-5" />
+        </button>
       </div>
-      <div className="grid grid-cols-7 gap-1 text-center text-sm font-medium text-gray-500 mb-2">
-        {["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"].map(d => <div key={d}>{d}</div>)}
+      
+      {/* Wochentage Header - IMMER 7 Spalten! */}
+      <div className="grid grid-cols-7 gap-1 mb-2">
+        {["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"].map(day => (
+          <div key={day} className="text-center text-xs font-medium text-zinc-500 py-2">
+            {day}
+          </div>
+        ))}
       </div>
+      
+      {/* Kalender Grid - IMMER 7 Spalten! */}
       <div className="grid grid-cols-7 gap-1">
-        {blanks.map((_, i) => <div key={"b" + i} />)}
+        {/* Leere Zellen vor dem 1. */}
+        {blanks.map((i) => (
+          <div key={\`blank-\${i}\`} className="aspect-square" />
+        ))}
+        
+        {/* Tage des Monats */}
         {days.map(day => {
-          const dayEvents = events.filter(e => new Date(e.date).getDate() === day && new Date(e.date).getMonth() === month);
+          const dayEvents = events.filter(e => {
+            const eventDate = new Date(e.date);
+            return eventDate.getDate() === day && eventDate.getMonth() === month;
+          });
+          const hasEvents = dayEvents.length > 0;
+          
           return (
-            <div key={day} className="aspect-square p-1 border rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer">
-              <div className="font-medium">{day}</div>
-              {dayEvents.slice(0, 2).map(e => (
-                <div key={e.id} className="text-xs bg-blue-500 text-white rounded px-1 truncate">{e.title}</div>
-              ))}
+            <div 
+              key={day} 
+              className={\`aspect-square p-1 rounded-xl border transition-all cursor-pointer flex flex-col \${
+                isToday(day) 
+                  ? "border-blue-500 bg-blue-500/10" 
+                  : "border-zinc-800 hover:border-zinc-600 hover:bg-zinc-800/50"
+              }\`}
+            >
+              <span className={\`text-sm font-medium \${isToday(day) ? "text-blue-400" : ""}\`}>
+                {day}
+              </span>
+              {hasEvents && (
+                <div className="flex-1 overflow-hidden space-y-0.5 mt-1">
+                  {dayEvents.slice(0, 2).map(e => (
+                    <div key={e.id} className="text-[10px] bg-blue-500/20 text-blue-300 rounded px-1 truncate">
+                      {e.title}
+                    </div>
+                  ))}
+                  {dayEvents.length > 2 && (
+                    <div className="text-[10px] text-zinc-500">+{dayEvents.length - 2}</div>
+                  )}
+                </div>
+              )}
             </div>
           );
         })}
