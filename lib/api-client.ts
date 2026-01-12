@@ -73,8 +73,8 @@ export async function sendChatRequest(options: ChatOptions): Promise<ChatRespons
           console.error("[API Client] Konnte Fehler nicht parsen:", response.statusText)
         }
         
-        // Retry bei 502, 503, 504 (Gateway-Fehler) oder 429 (Rate Limit)
-        const retryableStatuses = [502, 503, 504, 429]
+        // Retry bei Gateway-Fehlern, Rate Limit oder OpenRouter-spezifischen Fehlern
+        const retryableStatuses = [502, 503, 504, 429, 528, 529, 520, 521, 522, 523, 524]
         if (retryableStatuses.includes(response.status) && attempt < MAX_RETRIES) {
           const delay = RETRY_DELAY_BASE * Math.pow(2, attempt - 1) // Exponential backoff
           console.log(`[API Client] Retry ${attempt}/${MAX_RETRIES} nach ${delay}ms...`)
