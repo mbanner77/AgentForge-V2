@@ -871,6 +871,231 @@ export default function RootLayout({ children }: { children: ReactNode }) {
 
 **OHNE diese 4 Dateien funktioniert Tailwind CSS NICHT!**
 
+## 🎨 PREMIUM UI-KOMPONENTEN (shadcn/ui Style) - IMMER VERWENDEN!
+
+**Erstelle diese UI-Komponenten für professionelles Design:**
+
+\`\`\`typescript
+// filepath: components/ui/button.tsx
+"use client";
+
+import { ReactNode } from "react";
+
+interface ButtonProps {
+  children: ReactNode;
+  onClick?: () => void;
+  variant?: "primary" | "secondary" | "ghost" | "danger";
+  size?: "sm" | "md" | "lg";
+  disabled?: boolean;
+  className?: string;
+  type?: "button" | "submit";
+}
+
+export function Button({ 
+  children, 
+  onClick, 
+  variant = "primary", 
+  size = "md",
+  disabled,
+  className = "",
+  type = "button"
+}: ButtonProps) {
+  const baseStyles = "inline-flex items-center justify-center font-semibold rounded-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed";
+  
+  const variants = {
+    primary: "bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 hover:scale-[1.02] active:scale-[0.98]",
+    secondary: "bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700",
+    ghost: "hover:bg-zinc-800 text-zinc-400 hover:text-zinc-100",
+    danger: "bg-red-600 hover:bg-red-500 text-white shadow-lg shadow-red-500/25"
+  };
+  
+  const sizes = {
+    sm: "px-3 py-1.5 text-sm",
+    md: "px-4 py-2.5 text-sm",
+    lg: "px-6 py-3 text-base"
+  };
+  
+  return (
+    <button 
+      type={type}
+      onClick={onClick} 
+      disabled={disabled}
+      className={\`\${baseStyles} \${variants[variant]} \${sizes[size]} \${className}\`}
+    >
+      {children}
+    </button>
+  );
+}
+\`\`\`
+
+\`\`\`typescript
+// filepath: components/ui/input.tsx
+"use client";
+
+interface InputProps {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  type?: "text" | "email" | "password" | "number" | "date" | "datetime-local";
+  label?: string;
+  error?: string;
+  className?: string;
+}
+
+export function Input({ value, onChange, placeholder, type = "text", label, error, className = "" }: InputProps) {
+  return (
+    <div className="space-y-1.5">
+      {label && <label className="block text-sm font-medium text-zinc-400">{label}</label>}
+      <input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className={\`w-full px-4 py-3 bg-zinc-900 border rounded-xl text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all \${error ? "border-red-500" : "border-zinc-800 focus:border-blue-500"} \${className}\`}
+      />
+      {error && <p className="text-sm text-red-400">{error}</p>}
+    </div>
+  );
+}
+\`\`\`
+
+\`\`\`typescript
+// filepath: components/ui/card.tsx
+"use client";
+
+import { ReactNode } from "react";
+
+interface CardProps {
+  children: ReactNode;
+  className?: string;
+  hover?: boolean;
+  onClick?: () => void;
+}
+
+export function Card({ children, className = "", hover = false, onClick }: CardProps) {
+  return (
+    <div 
+      onClick={onClick}
+      className={\`bg-zinc-900/50 backdrop-blur-sm border border-zinc-800 rounded-2xl p-6 \${hover ? "hover:border-zinc-700 hover:shadow-xl cursor-pointer" : ""} transition-all duration-300 \${className}\`}
+    >
+      {children}
+    </div>
+  );
+}
+
+export function CardHeader({ children, className = "" }: { children: ReactNode; className?: string }) {
+  return <div className={\`mb-4 \${className}\`}>{children}</div>;
+}
+
+export function CardTitle({ children, className = "" }: { children: ReactNode; className?: string }) {
+  return <h3 className={\`text-lg font-semibold text-zinc-100 \${className}\`}>{children}</h3>;
+}
+
+export function CardDescription({ children, className = "" }: { children: ReactNode; className?: string }) {
+  return <p className={\`text-sm text-zinc-400 mt-1 \${className}\`}>{children}</p>;
+}
+
+export function CardContent({ children, className = "" }: { children: ReactNode; className?: string }) {
+  return <div className={className}>{children}</div>;
+}
+
+export function CardFooter({ children, className = "" }: { children: ReactNode; className?: string }) {
+  return <div className={\`mt-4 pt-4 border-t border-zinc-800 \${className}\`}>{children}</div>;
+}
+\`\`\`
+
+\`\`\`typescript
+// filepath: components/ui/badge.tsx
+"use client";
+
+import { ReactNode } from "react";
+
+interface BadgeProps {
+  children: ReactNode;
+  variant?: "default" | "success" | "warning" | "error" | "info";
+}
+
+export function Badge({ children, variant = "default" }: BadgeProps) {
+  const variants = {
+    default: "bg-zinc-800 text-zinc-300 border-zinc-700",
+    success: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+    warning: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+    error: "bg-red-500/10 text-red-400 border-red-500/20",
+    info: "bg-blue-500/10 text-blue-400 border-blue-500/20"
+  };
+  
+  return (
+    <span className={\`inline-flex items-center px-2.5 py-0.5 text-xs font-medium rounded-full border \${variants[variant]}\`}>
+      {children}
+    </span>
+  );
+}
+\`\`\`
+
+\`\`\`typescript
+// filepath: components/ui/modal.tsx
+"use client";
+
+import { ReactNode, useEffect } from "react";
+import { X } from "lucide-react";
+
+interface ModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  title: string;
+  children: ReactNode;
+}
+
+export function Modal({ isOpen, onClose, title, children }: ModalProps) {
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "unset";
+    }
+    return () => { document.body.style.overflow = "unset"; };
+  }, [isOpen]);
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-zinc-900 border border-zinc-800 rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-semibold">{title}</h2>
+          <button onClick={onClose} className="p-1 hover:bg-zinc-800 rounded-lg transition-colors">
+            <X className="w-5 h-5 text-zinc-400" />
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+\`\`\`
+
+**VERWENDUNG DER UI-KOMPONENTEN:**
+\`\`\`tsx
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Modal } from "@/components/ui/modal";
+
+// Beispiel:
+<Card hover onClick={() => {}}>
+  <CardHeader>
+    <CardTitle>Titel</CardTitle>
+    <Badge variant="success">Aktiv</Badge>
+  </CardHeader>
+  <CardContent>
+    <Input label="Name" value={name} onChange={setName} />
+    <Button variant="primary" size="lg">Speichern</Button>
+  </CardContent>
+</Card>
+\`\`\`
+
 ## 🔴🔴🔴 IMPORT-VALIDIERUNG - KRITISCH FÜR ALLE APP-TYPEN:
 
 **VOR DEM ABSENDEN: Prüfe JEDEN Import!**
