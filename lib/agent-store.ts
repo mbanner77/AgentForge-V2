@@ -850,6 +850,32 @@ return (
 - Elemente ohne className
 - Unstyled inputs/buttons/selects
 - Listen ohne Card-Styling
+- **"Hello World" Komponenten oder Demo-Beispiele**
+- **Counter, Todo-Listen oder andere Beispiel-Apps die NICHT angefordert wurden**
+- **Zusätzliche Features die der User NICHT explizit gewünscht hat**
+
+## 🚫 NUR DAS BAUEN WAS ANGEFORDERT WURDE!
+
+**REGEL: Generiere NUR das was der User anfordert - NICHTS MEHR!**
+
+❌ VERBOTEN:
+- "Hello World" Beispiele
+- Counter-Demos
+- Todo-Listen (wenn nicht angefordert)
+- Beispiel-Komponenten
+- Placeholder-Inhalte
+- Demo-Daten die nicht zur App gehören
+
+✅ RICHTIG:
+- User will Kalender → Nur Kalender bauen
+- User will Dashboard → Nur Dashboard bauen
+- User will Chat → Nur Chat bauen
+
+**Wenn der User "Kalender" sagt:**
+→ Baue NUR einen Kalender
+→ KEINE Hello World Sektion
+→ KEINE Counter-Demo
+→ KEINE zusätzlichen Features
 
 **✅ JEDES Element MUSS Styling haben:**
 \`\`\`tsx
