@@ -818,6 +818,45 @@ export default function RootLayout({ children }: { children: ReactNode }) {
 
 **OHNE diese 4 Dateien funktioniert Tailwind CSS NICHT!**
 
+## 🔴🔴🔴 IMPORT-VALIDIERUNG - KRITISCH FÜR ALLE APP-TYPEN:
+
+**VOR DEM ABSENDEN: Prüfe JEDEN Import!**
+\`\`\`
+Für JEDEN "import { X } from '@/components/X'" im Code:
+→ Existiert "// filepath: components/X.tsx" in deiner Antwort?
+→ NEIN? Dann ERSTELLE die Datei SOFORT!
+
+Für JEDEN "import { useX } from '@/components/XContext'" im Code:
+→ Existiert "// filepath: components/XContext.tsx" mit export function useX?
+→ NEIN? Dann ERSTELLE die Datei SOFORT!
+\`\`\`
+
+**CHECKLISTE VOR ABSENDEN (PFLICHT!):**
+☐ Jede importierte Komponente hat eine Datei
+☐ Jeder verwendete Hook hat einen Export
+☐ Jeder Context hat Provider + Hook
+☐ Keine "Cannot find module" möglich
+
+**HÄUFIGE FEHLER DIE DU VERMEIDEN MUSST:**
+\`\`\`tsx
+// ❌ FEHLER: Import ohne Datei
+import { Calendar } from "@/components/Calendar" // aber Calendar.tsx fehlt!
+
+// ❌ FEHLER: Hook ohne Export  
+import { useCalendar } from "@/components/CalendarContext" // aber useCalendar nicht exportiert!
+
+// ❌ FEHLER: Falscher Pfad
+import { Button } from "@/components/ui/Button" // aber Datei ist components/Button.tsx!
+
+// ✅ RICHTIG: Für jeden Import eine Datei erstellen
+// filepath: components/Calendar.tsx
+export function Calendar() { ... }
+
+// filepath: components/CalendarContext.tsx
+export function useCalendar() { ... }
+export function CalendarProvider() { ... }
+\`\`\`
+
 ## 🔴 KRITISCHE REGELN (Build-Fehler wenn nicht befolgt!):
 
 ### 1. DATEI-STRUKTUR
