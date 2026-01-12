@@ -236,7 +236,7 @@ export function BuilderSidebar({ onClose }: BuilderSidebarProps) {
                               <SelectItem value="gpt-3.5-turbo">GPT-3.5 Turbo</SelectItem>
                               <div className="px-2 py-1 text-xs font-semibold text-muted-foreground mt-2">Anthropic</div>
                               <SelectItem value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet</SelectItem>
-                              <SelectItem value="claude-3-opus-20240229">Claude 3 Opus</SelectItem>
+                              <SelectItem value="claude-3-5-sonnet-latest">Claude 3.5 Sonnet (Latest)</SelectItem>
                               <SelectItem value="claude-3-haiku-20240307">Claude 3 Haiku</SelectItem>
                               <div className="px-2 py-1 text-xs font-semibold text-muted-foreground mt-2">OpenRouter</div>
                               <SelectItem value="openrouter/auto">Auto (Best for prompt)</SelectItem>
@@ -366,7 +366,7 @@ export function BuilderSidebar({ onClose }: BuilderSidebarProps) {
                             <SelectItem value="gpt-3.5-turbo">GPT-3.5 Turbo</SelectItem>
                             <div className="px-2 py-1 text-xs font-semibold text-muted-foreground mt-2">Anthropic</div>
                             <SelectItem value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet</SelectItem>
-                            <SelectItem value="claude-3-opus-20240229">Claude 3 Opus</SelectItem>
+                            <SelectItem value="claude-3-5-sonnet-latest">Claude 3.5 Sonnet (Latest)</SelectItem>
                             <SelectItem value="claude-3-haiku-20240307">Claude 3 Haiku</SelectItem>
                             <div className="px-2 py-1 text-xs font-semibold text-muted-foreground mt-2">OpenRouter</div>
                             <SelectItem value="openrouter/auto">Auto (Best for prompt)</SelectItem>
@@ -811,12 +811,12 @@ export function BuilderSidebar({ onClose }: BuilderSidebarProps) {
                     <SelectItem value="gpt-3.5-turbo">GPT-3.5 Turbo</SelectItem>
                     <div className="px-2 py-1 text-xs font-semibold text-muted-foreground mt-2">Anthropic</div>
                     <SelectItem value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet</SelectItem>
-                    <SelectItem value="claude-3-opus-20240229">Claude 3 Opus</SelectItem>
+                    <SelectItem value="claude-3-5-sonnet-latest">Claude 3.5 Sonnet (Latest)</SelectItem>
                     <SelectItem value="claude-3-haiku-20240307">Claude 3 Haiku</SelectItem>
                     <div className="px-2 py-1 text-xs font-semibold text-muted-foreground mt-2">OpenRouter</div>
                     <SelectItem value="openrouter/auto">Auto (Best for prompt)</SelectItem>
                     <SelectItem value="anthropic/claude-3.5-sonnet">Claude 3.5 Sonnet (OR)</SelectItem>
-                    <SelectItem value="anthropic/claude-3-opus">Claude 3 Opus (OR)</SelectItem>
+                    <SelectItem value="anthropic/claude-3.5-sonnet:beta">Claude 3.5 Sonnet Beta (OR)</SelectItem>
                     <SelectItem value="openai/gpt-4o">GPT-4o (OR)</SelectItem>
                     <SelectItem value="openai/gpt-4o-mini">GPT-4o Mini (OR)</SelectItem>
                     <SelectItem value="google/gemini-2.0-flash-001">Gemini 2.0 Flash (OR)</SelectItem>

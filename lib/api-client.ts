@@ -118,7 +118,7 @@ export function getProviderFromModel(model: string): "openai" | "anthropic" | "o
 export const openRouterModels = [
   { id: "openrouter/auto", name: "Auto (Best for prompt)", provider: "openrouter" as const },
   { id: "anthropic/claude-3.5-sonnet", name: "Claude 3.5 Sonnet (OR)", provider: "openrouter" as const },
-  { id: "anthropic/claude-3-opus", name: "Claude 3 Opus (OR)", provider: "openrouter" as const },
+  { id: "anthropic/claude-3.5-sonnet:beta", name: "Claude 3.5 Sonnet Beta (OR)", provider: "openrouter" as const },
   { id: "openai/gpt-4o", name: "GPT-4o (OR)", provider: "openrouter" as const },
   { id: "openai/gpt-4o-mini", name: "GPT-4o Mini (OR)", provider: "openrouter" as const },
   { id: "google/gemini-2.0-flash-001", name: "Gemini 2.0 Flash (OR)", provider: "openrouter" as const },
@@ -149,7 +149,7 @@ export const availableModels = [
   { id: "gpt-4", name: "GPT-4", provider: "openai" as const },
   { id: "gpt-3.5-turbo", name: "GPT-3.5 Turbo", provider: "openai" as const },
   { id: "claude-3-5-sonnet-20241022", name: "Claude 3.5 Sonnet", provider: "anthropic" as const },
-  { id: "claude-3-opus-20240229", name: "Claude 3 Opus", provider: "anthropic" as const },
+  { id: "claude-3-5-sonnet-latest", name: "Claude 3.5 Sonnet (Latest)", provider: "anthropic" as const },
   { id: "claude-3-sonnet-20240229", name: "Claude 3 Sonnet", provider: "anthropic" as const },
   { id: "claude-3-haiku-20240307", name: "Claude 3 Haiku", provider: "anthropic" as const },
 ]
