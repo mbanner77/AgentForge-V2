@@ -2748,6 +2748,174 @@ function validateAndFixImports(files: { path: string; content: string }[]): Impo
 }
 
 // ============================================
+// DEPENDENCY-VALIDATOR: Prüft ob alle importierten Packages in package.json sind
+// ============================================
+
+interface DependencyValidation {
+  isValid: boolean
+  missingDependencies: string[]
+  suggestions: { package: string; version: string }[]
+}
+
+// Bekannte Package-Versionen für Auto-Fix
+const knownPackageVersions: Record<string, string> = {
+  'react': '^18.2.0',
+  'react-dom': '^18.2.0',
+  'next': '^14.0.0',
+  'typescript': '^5.0.0',
+  'tailwindcss': '^3.4.0',
+  'recharts': '^2.10.0',
+  'react-chartjs-2': '^5.2.0',
+  'chart.js': '^4.4.0',
+  'framer-motion': '^10.16.0',
+  'lucide-react': '^0.294.0',
+  '@radix-ui/react-dialog': '^1.0.5',
+  '@radix-ui/react-dropdown-menu': '^2.0.6',
+  '@radix-ui/react-select': '^2.0.0',
+  '@radix-ui/react-tabs': '^1.0.4',
+  '@radix-ui/react-toast': '^1.1.5',
+  'zustand': '^4.4.0',
+  'axios': '^1.6.0',
+  'date-fns': '^2.30.0',
+  'react-hook-form': '^7.48.0',
+  'zod': '^3.22.0',
+  '@tanstack/react-query': '^5.8.0',
+  'clsx': '^2.0.0',
+  'class-variance-authority': '^0.7.0',
+  'tailwind-merge': '^2.0.0',
+  '@hello-pangea/dnd': '^16.5.0',
+  'react-beautiful-dnd': '^13.1.1',
+  'uuid': '^9.0.0',
+  'lodash': '^4.17.21',
+  'dayjs': '^1.11.10',
+  'moment': '^2.29.4',
+}
+
+function validateDependencies(
+  files: { path: string; content: string }[],
+  packageJson?: string
+): DependencyValidation {
+  const missingDependencies: string[] = []
+  const suggestions: { package: string; version: string }[] = []
+  
+  // Parse package.json wenn vorhanden
+  let installedDeps: Set<string> = new Set()
+  if (packageJson) {
+    try {
+      const pkg = JSON.parse(packageJson)
+      const allDeps = {
+        ...pkg.dependencies,
+        ...pkg.devDependencies,
+        ...pkg.peerDependencies
+      }
+      installedDeps = new Set(Object.keys(allDeps))
+    } catch {
+      console.warn('[DependencyValidator] Konnte package.json nicht parsen')
+    }
+  }
+  
+  // Standard-Dependencies die immer vorhanden sein sollten
+  const builtInModules = new Set([
+    'react', 'react-dom', 'next', 'fs', 'path', 'os', 'crypto', 'http', 'https',
+    'stream', 'util', 'events', 'buffer', 'querystring', 'url', 'assert'
+  ])
+  
+  // Extrahiere alle Imports aus den Dateien
+  const importedPackages = new Set<string>()
+  
+  for (const file of files) {
+    // Finde alle import Statements
+    const importMatches = file.content.matchAll(
+      /import\s+(?:(?:\{[^}]*\}|\*\s+as\s+\w+|\w+)\s*,?\s*)*\s*from\s+['"]([^'"]+)['"]/g
+    )
+    
+    for (const match of importMatches) {
+      const importPath = match[1]
+      
+      // Ignoriere relative Imports und @/ Alias
+      if (importPath.startsWith('.') || importPath.startsWith('@/')) {
+        continue
+      }
+      
+      // Extrahiere Package-Namen (z.B. @radix-ui/react-dialog -> @radix-ui/react-dialog)
+      let packageName = importPath
+      if (importPath.startsWith('@')) {
+        // Scoped package: @scope/package oder @scope/package/subpath
+        const parts = importPath.split('/')
+        packageName = parts.slice(0, 2).join('/')
+      } else {
+        // Regular package: package oder package/subpath
+        packageName = importPath.split('/')[0]
+      }
+      
+      importedPackages.add(packageName)
+    }
+    
+    // Finde auch require() Statements
+    const requireMatches = file.content.matchAll(/require\s*\(\s*['"]([^'"]+)['"]\s*\)/g)
+    for (const match of requireMatches) {
+      const requirePath = match[1]
+      if (!requirePath.startsWith('.') && !requirePath.startsWith('@/')) {
+        const packageName = requirePath.startsWith('@') 
+          ? requirePath.split('/').slice(0, 2).join('/')
+          : requirePath.split('/')[0]
+        importedPackages.add(packageName)
+      }
+    }
+  }
+  
+  // Prüfe welche Packages fehlen
+  for (const pkg of importedPackages) {
+    // Überspringe Built-in Module
+    if (builtInModules.has(pkg)) continue
+    
+    // Prüfe ob installiert
+    if (!installedDeps.has(pkg)) {
+      missingDependencies.push(pkg)
+      
+      // Füge Version-Suggestion hinzu
+      const version = knownPackageVersions[pkg] || 'latest'
+      suggestions.push({ package: pkg, version })
+    }
+  }
+  
+  return {
+    isValid: missingDependencies.length === 0,
+    missingDependencies,
+    suggestions
+  }
+}
+
+// Auto-Fix: Aktualisiere package.json mit fehlenden Dependencies
+function fixPackageJson(
+  packageJsonContent: string,
+  missingDeps: { package: string; version: string }[]
+): string {
+  try {
+    const pkg = JSON.parse(packageJsonContent)
+    
+    if (!pkg.dependencies) {
+      pkg.dependencies = {}
+    }
+    
+    for (const dep of missingDeps) {
+      if (!pkg.dependencies[dep.package] && !pkg.devDependencies?.[dep.package]) {
+        pkg.dependencies[dep.package] = dep.version
+      }
+    }
+    
+    // Sortiere dependencies alphabetisch
+    pkg.dependencies = Object.fromEntries(
+      Object.entries(pkg.dependencies).sort(([a], [b]) => a.localeCompare(b))
+    )
+    
+    return JSON.stringify(pkg, null, 2)
+  } catch {
+    return packageJsonContent
+  }
+}
+
+// ============================================
 // COMPLETENESS-CHECK: Prüft ob alle Komponenten vollständig sind
 // ============================================
 
@@ -2865,8 +3033,10 @@ interface MultiPassResult {
   validationResults: {
     imports: ImportValidation
     completeness: CompletenessCheck
+    dependencies: DependencyValidation
   }
   wasAutoFixed: boolean
+  dependencyFixApplied: boolean
 }
 
 function runMultiPassValidation(
@@ -2876,6 +3046,10 @@ function runMultiPassValidation(
   let passes = 0
   const maxPasses = 3
   let wasAutoFixed = false
+  let dependencyFixApplied = false
+  
+  // Finde package.json
+  const packageJsonFile = currentFiles.find(f => f.path === 'package.json' || f.path.endsWith('/package.json'))
   
   while (passes < maxPasses) {
     passes++
@@ -2883,7 +3057,6 @@ function runMultiPassValidation(
     // Pass 1: Import Validation
     const importValidation = validateAndFixImports(currentFiles)
     if (!importValidation.isValid && importValidation.fixedFiles.length > 0) {
-      // Merge fixed files
       for (const fixed of importValidation.fixedFiles) {
         const idx = currentFiles.findIndex(f => f.path === fixed.path)
         if (idx !== -1) {
@@ -2896,16 +3069,33 @@ function runMultiPassValidation(
     // Pass 2: Completeness Check
     const completenessCheck = checkCodeCompleteness(currentFiles)
     
+    // Pass 3: Dependency Validation (NEU!)
+    const depValidation = validateDependencies(currentFiles, packageJsonFile?.content)
+    if (!depValidation.isValid && packageJsonFile && depValidation.suggestions.length > 0) {
+      console.log(`[MultiPass] Fehlende Dependencies: ${depValidation.missingDependencies.join(', ')}`)
+      
+      // Auto-Fix: Aktualisiere package.json
+      const fixedPackageJson = fixPackageJson(packageJsonFile.content, depValidation.suggestions)
+      const pkgIdx = currentFiles.findIndex(f => f.path === packageJsonFile.path)
+      if (pkgIdx !== -1) {
+        currentFiles[pkgIdx] = { ...currentFiles[pkgIdx], content: fixedPackageJson }
+        dependencyFixApplied = true
+        console.log(`[MultiPass] package.json aktualisiert mit: ${depValidation.suggestions.map(s => s.package).join(', ')}`)
+      }
+    }
+    
     // Wenn alles OK, breche ab
-    if (importValidation.isValid && completenessCheck.isComplete) {
+    if (importValidation.isValid && completenessCheck.isComplete && depValidation.isValid) {
       return {
         files: currentFiles,
         passes,
         validationResults: {
           imports: importValidation,
-          completeness: completenessCheck
+          completeness: completenessCheck,
+          dependencies: depValidation
         },
-        wasAutoFixed
+        wasAutoFixed,
+        dependencyFixApplied
       }
     }
   }
@@ -2913,15 +3103,18 @@ function runMultiPassValidation(
   // Finale Ergebnisse nach max passes
   const finalImportValidation = validateAndFixImports(currentFiles)
   const finalCompletenessCheck = checkCodeCompleteness(currentFiles)
+  const finalDepValidation = validateDependencies(currentFiles, packageJsonFile?.content)
   
   return {
     files: currentFiles,
     passes,
     validationResults: {
       imports: finalImportValidation,
-      completeness: finalCompletenessCheck
+      completeness: finalCompletenessCheck,
+      dependencies: finalDepValidation
     },
-    wasAutoFixed
+    wasAutoFixed,
+    dependencyFixApplied
   }
 }
 
