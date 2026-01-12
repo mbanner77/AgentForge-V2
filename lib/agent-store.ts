@@ -696,15 +696,19 @@ Das Projekt wird auf Render.com deployed. WICHTIGE REGELN:
 - vite.config.ts`,
 
     coder: `
-## 🛑🛑🛑 STOPP! LIES DAS ZUERST - DESIGN-PFLICHT! 🛑🛑🛑
+## 🛑🛑🛑 STOPP! LIES DAS ZUERST - CSS INLINE-STYLES PFLICHT! 🛑🛑🛑
+
+**⚠️ WICHTIG: Tailwind funktioniert nicht immer im WebContainer!**
+**→ IMMER style={{}} UND className="" zusammen verwenden!**
+**→ Inline-Styles sind der Fallback wenn Tailwind nicht lädt!**
 
 **WENN DU EINEN KALENDER ERSTELLST:**
 → STOPP! Kopiere das Template unten 1:1!
 → NIEMALS eine einfache Liste von Zahlen (1, 2, 3...)!
-→ IMMER grid grid-cols-7 verwenden!
+→ IMMER display: "grid", gridTemplateColumns: "repeat(7, 1fr)" verwenden!
 
 \`\`\`tsx
-// 🗓️ PFLICHT-TEMPLATE FÜR JEDEN KALENDER - KOPIERE 1:1:
+// 🗓️ PFLICHT-TEMPLATE FÜR JEDEN KALENDER - MIT INLINE-STYLES!
 const year = currentDate.getFullYear();
 const month = currentDate.getMonth();
 const firstDay = new Date(year, month, 1).getDay();
@@ -713,35 +717,107 @@ const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
 const blanks = Array.from({ length: (firstDay + 6) % 7 }, (_, i) => i);
 
 return (
-  <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-6">
+  <div style={{ backgroundColor: "#18181b", border: "1px solid #27272a", borderRadius: "16px", padding: "24px" }}>
     {/* Navigation */}
-    <div className="flex justify-between items-center mb-6">
-      <button onClick={() => setCurrentDate(new Date(year, month - 1))} 
-        className="p-2 hover:bg-zinc-800 rounded-xl">←</button>
-      <h2 className="text-xl font-bold">{currentDate.toLocaleDateString("de-DE", { month: "long", year: "numeric" })}</h2>
-      <button onClick={() => setCurrentDate(new Date(year, month + 1))}
-        className="p-2 hover:bg-zinc-800 rounded-xl">→</button>
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px" }}>
+      <button 
+        onClick={() => setCurrentDate(new Date(year, month - 1))} 
+        style={{ padding: "8px 16px", backgroundColor: "#27272a", border: "none", borderRadius: "8px", color: "white", cursor: "pointer" }}
+      >←</button>
+      <h2 style={{ fontSize: "20px", fontWeight: "bold", color: "white", margin: 0 }}>
+        {currentDate.toLocaleDateString("de-DE", { month: "long", year: "numeric" })}
+      </h2>
+      <button 
+        onClick={() => setCurrentDate(new Date(year, month + 1))}
+        style={{ padding: "8px 16px", backgroundColor: "#27272a", border: "none", borderRadius: "8px", color: "white", cursor: "pointer" }}
+      >→</button>
     </div>
     
-    {/* KRITISCH: grid grid-cols-7 für Wochentage! */}
-    <div className="grid grid-cols-7 gap-1 mb-2">
+    {/* KRITISCH: 7-Spalten Grid für Wochentage! */}
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "4px", marginBottom: "8px" }}>
       {["Mo","Di","Mi","Do","Fr","Sa","So"].map(d => (
-        <div key={d} className="text-center text-xs text-zinc-500 py-2">{d}</div>
+        <div key={d} style={{ textAlign: "center", fontSize: "12px", color: "#71717a", padding: "8px 0" }}>{d}</div>
       ))}
     </div>
     
-    {/* KRITISCH: grid grid-cols-7 für Tage! */}
-    <div className="grid grid-cols-7 gap-1">
-      {blanks.map(i => <div key={\`b\${i}\`} className="aspect-square" />)}
+    {/* KRITISCH: 7-Spalten Grid für Tage! */}
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "4px" }}>
+      {blanks.map(i => <div key={\`b\${i}\`} style={{ aspectRatio: "1/1" }} />)}
       {days.map(day => (
-        <div key={day} className="aspect-square p-2 rounded-xl border border-zinc-800 hover:bg-zinc-800/50 cursor-pointer flex flex-col">
-          <span className="text-sm font-medium">{day}</span>
+        <div 
+          key={day} 
+          style={{ 
+            aspectRatio: "1/1", 
+            padding: "8px", 
+            borderRadius: "12px", 
+            border: "1px solid #27272a", 
+            backgroundColor: "#18181b",
+            cursor: "pointer",
+            display: "flex",
+            flexDirection: "column"
+          }}
+        >
+          <span style={{ fontSize: "14px", fontWeight: "500", color: "white" }}>{day}</span>
         </div>
       ))}
     </div>
   </div>
 );
 \`\`\`
+
+## 🎨 INLINE-STYLES PFLICHT FÜR ALLE KOMPONENTEN!
+
+**JEDES Element braucht style={{}} als Fallback:**
+\`\`\`tsx
+// ❌ FALSCH - Nur Tailwind (funktioniert oft nicht!):
+<div className="grid grid-cols-7 gap-4 p-6 bg-zinc-900">
+
+// ✅ RICHTIG - Inline-Styles + Tailwind als Backup:
+<div 
+  style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "16px", padding: "24px", backgroundColor: "#18181b" }}
+  className="grid grid-cols-7 gap-4 p-6 bg-zinc-900"
+>
+
+// ✅ RICHTIG - Card mit Inline-Styles:
+<div style={{ backgroundColor: "#18181b", border: "1px solid #27272a", borderRadius: "16px", padding: "24px" }}>
+
+// ✅ RICHTIG - Button mit Inline-Styles:
+<button style={{ 
+  padding: "12px 24px", 
+  backgroundColor: "#3b82f6", 
+  color: "white", 
+  border: "none", 
+  borderRadius: "12px", 
+  fontWeight: "600",
+  cursor: "pointer" 
+}}>
+  Klick mich
+</button>
+
+// ✅ RICHTIG - Input mit Inline-Styles:
+<input style={{ 
+  width: "100%", 
+  padding: "12px 16px", 
+  backgroundColor: "#27272a", 
+  border: "1px solid #3f3f46", 
+  borderRadius: "12px", 
+  color: "white",
+  outline: "none"
+}} />
+
+// ✅ RICHTIG - Flexbox Layout:
+<div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "16px" }}>
+
+// ✅ RICHTIG - Grid Layout:
+<div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "16px" }}>
+\`\`\`
+
+## 🎨 DARK-MODE FARBEN (HEX-WERTE):
+- Background: #09090b (darkest), #18181b (dark), #27272a (medium)
+- Border: #27272a, #3f3f46
+- Text: #ffffff (white), #a1a1aa (muted), #71717a (dimmed)
+- Primary: #3b82f6 (blue), #2563eb (blue hover)
+- Success: #22c55e, Warning: #f59e0b, Error: #ef4444
 
 **❌ SO SIEHT FALSCHER KALENDER-CODE AUS (NIEMALS!):**
 \`\`\`tsx
