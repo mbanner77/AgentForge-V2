@@ -1026,6 +1026,135 @@ function generateSmartFollowUpQuestions(
   return questions.slice(0, 3)
 }
 
+// Erweiterte Iteration-Logik mit Kontext
+interface IterationContext {
+  iterationCount: number
+  previousErrors: string[]
+  previousRequests: string[]
+  unchangedFiles: string[]
+  improvedAreas: string[]
+}
+
+function analyzeIterationContext(
+  currentFiles: { path: string; content: string }[],
+  previousFiles: { path: string; content: string }[],
+  errorHistory: string[]
+): IterationContext {
+  // Finde unveränderte Dateien
+  const unchangedFiles: string[] = []
+  for (const current of currentFiles) {
+    const prev = previousFiles.find(p => p.path === current.path)
+    if (prev && prev.content === current.content) {
+      unchangedFiles.push(current.path)
+    }
+  }
+  
+  // Analysiere verbesserte Bereiche
+  const improvedAreas: string[] = []
+  const currentContent = currentFiles.map(f => f.content).join('\n')
+  const prevContent = previousFiles.map(f => f.content).join('\n')
+  
+  if (!prevContent.includes('loading') && currentContent.includes('loading')) {
+    improvedAreas.push('Loading States')
+  }
+  if (!prevContent.includes('try') && currentContent.includes('try')) {
+    improvedAreas.push('Error Handling')
+  }
+  if (!prevContent.includes('aria-') && currentContent.includes('aria-')) {
+    improvedAreas.push('Accessibility')
+  }
+  
+  return {
+    iterationCount: errorHistory.length,
+    previousErrors: errorHistory.slice(-3),
+    previousRequests: [],
+    unchangedFiles,
+    improvedAreas
+  }
+}
+
+// Generiere intelligenten Iteration-Prompt
+function generateIterationPrompt(context: IterationContext, currentError?: string): string {
+  let prompt = ''
+  
+  // Wenn derselbe Fehler mehrfach auftritt
+  if (currentError && context.previousErrors.includes(currentError)) {
+    prompt += `
+⚠️ ACHTUNG: Dieser Fehler trat bereits auf und wurde nicht korrekt behoben!
+Vorherige Versuche waren nicht erfolgreich. Bitte:
+1. Analysiere das Problem GRÜNDLICH
+2. Prüfe ALLE Dateien auf Konsistenz
+3. Stelle sicher dass ALLE Imports existieren
+4. Gib ALLE Dateien vollständig aus
+
+`
+  }
+  
+  // Wenn zu viele Iterationen
+  if (context.iterationCount > 3) {
+    prompt += `
+🔄 Dies ist bereits Iteration ${context.iterationCount + 1}.
+Konzentriere dich auf:
+- NUR den aktuellen Fehler beheben
+- Keine neuen Features hinzufügen
+- Vollständige, lauffähige Dateien
+
+`
+  }
+  
+  // Wenn Dateien unverändert blieben (Problem nicht gefunden)
+  if (context.unchangedFiles.length > 0 && context.iterationCount > 1) {
+    prompt += `
+📁 Diese Dateien blieben unverändert obwohl der Fehler besteht:
+${context.unchangedFiles.map(f => `- ${f}`).join('\n')}
+Prüfe ob der Fehler in einer dieser Dateien liegt!
+
+`
+  }
+  
+  return prompt
+}
+
+// Erkennt wiederkehrende Fehler-Muster
+interface ErrorPattern {
+  pattern: string
+  occurrences: number
+  suggestedAction: string
+}
+
+function detectErrorPatterns(errorHistory: string[]): ErrorPattern[] {
+  const patterns: ErrorPattern[] = []
+  const errorCounts = new Map<string, number>()
+  
+  for (const error of errorHistory) {
+    // Normalisiere Fehler für Vergleich
+    const normalized = error
+      .replace(/['"][^'"]+['"]/g, '"X"')
+      .replace(/\d+/g, 'N')
+      .substring(0, 100)
+    
+    errorCounts.set(normalized, (errorCounts.get(normalized) || 0) + 1)
+  }
+  
+  for (const [pattern, count] of errorCounts) {
+    if (count >= 2) {
+      let suggestedAction = 'Analysiere das wiederkehrende Problem'
+      
+      if (pattern.includes('import') || pattern.includes('resolve')) {
+        suggestedAction = 'Prüfe ALLE Imports und erstelle fehlende Dateien'
+      } else if (pattern.includes('type') || pattern.includes('Type')) {
+        suggestedAction = 'Korrigiere TypeScript Typen und Interfaces'
+      } else if (pattern.includes('undefined') || pattern.includes('null')) {
+        suggestedAction = 'Füge Null-Checks und Default-Werte hinzu'
+      }
+      
+      patterns.push({ pattern, occurrences: count, suggestedAction })
+    }
+  }
+  
+  return patterns
+}
+
 // Smart Error Prevention - Häufige Fehler vorab erkennen
 interface PotentialIssue {
   type: 'error' | 'warning' | 'info'
