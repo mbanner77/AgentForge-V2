@@ -1234,6 +1234,336 @@ function detectPotentialIssues(files: { path: string; content: string }[]): Pote
   return issues.slice(0, 5)
 }
 
+// Code-Qualitäts-Feedback in Echtzeit
+interface QualityFeedback {
+  category: 'structure' | 'performance' | 'security' | 'maintainability' | 'ux'
+  score: number
+  feedback: string
+  improvement?: string
+}
+
+function generateQualityFeedback(files: { path: string; content: string }[]): QualityFeedback[] {
+  const feedback: QualityFeedback[] = []
+  const allContent = files.map(f => f.content).join('\n')
+  
+  // Struktur-Bewertung
+  const componentCount = files.filter(f => f.path.includes('components/')).length
+  const avgLinesPerFile = files.reduce((sum, f) => sum + f.content.split('\n').length, 0) / files.length
+  
+  feedback.push({
+    category: 'structure',
+    score: componentCount > 0 && avgLinesPerFile < 200 ? 90 : componentCount > 0 ? 70 : 50,
+    feedback: componentCount > 0 
+      ? `${componentCount} Komponenten, Ø ${Math.round(avgLinesPerFile)} Zeilen/Datei`
+      : 'Keine Komponenten-Struktur erkannt',
+    improvement: avgLinesPerFile > 200 ? 'Große Dateien in kleinere Module aufteilen' : undefined
+  })
+  
+  // Performance-Bewertung
+  const hasUseMemo = allContent.includes('useMemo')
+  const hasUseCallback = allContent.includes('useCallback')
+  const hasLazyLoading = allContent.includes('lazy(') || allContent.includes('Suspense')
+  const perfScore = (hasUseMemo ? 30 : 0) + (hasUseCallback ? 30 : 0) + (hasLazyLoading ? 40 : 0)
+  
+  feedback.push({
+    category: 'performance',
+    score: Math.max(50, perfScore),
+    feedback: perfScore > 60 ? 'Performance-Optimierungen vorhanden' : 'Basis-Performance',
+    improvement: !hasUseMemo ? 'useMemo für teure Berechnungen nutzen' : undefined
+  })
+  
+  // Security-Bewertung
+  const hasDangerousHtml = allContent.includes('dangerouslySetInnerHTML')
+  const hasHardcodedSecrets = /['"]sk-[a-zA-Z0-9]+['"]|['"]api[_-]?key['"].*[:=].*['"][^'"]+['"]/i.test(allContent)
+  const securityScore = 100 - (hasDangerousHtml ? 30 : 0) - (hasHardcodedSecrets ? 50 : 0)
+  
+  feedback.push({
+    category: 'security',
+    score: securityScore,
+    feedback: securityScore === 100 ? 'Keine offensichtlichen Sicherheitsprobleme' : 'Sicherheitsrisiken erkannt',
+    improvement: hasDangerousHtml ? 'dangerouslySetInnerHTML vermeiden' : 
+                 hasHardcodedSecrets ? 'Secrets in Umgebungsvariablen auslagern' : undefined
+  })
+  
+  // Maintainability-Bewertung
+  const hasTypes = allContent.includes('interface') || allContent.includes('type ')
+  const hasComments = (allContent.match(/\/\/|\/\*|\*\//g) || []).length > 5
+  const hasConsistentNaming = !allContent.match(/const [a-z]+[A-Z].*=.*useState/g) // camelCase für State
+  const maintScore = (hasTypes ? 40 : 0) + (hasComments ? 30 : 0) + (hasConsistentNaming ? 30 : 0)
+  
+  feedback.push({
+    category: 'maintainability',
+    score: Math.max(40, maintScore),
+    feedback: hasTypes ? 'TypeScript Typen vorhanden' : 'Typisierung fehlt',
+    improvement: !hasTypes ? 'Interfaces für Props und State definieren' : undefined
+  })
+  
+  // UX-Bewertung
+  const hasLoadingStates = allContent.includes('loading') || allContent.includes('Skeleton')
+  const hasErrorStates = allContent.includes('error') && allContent.includes('Error')
+  const hasEmptyStates = allContent.includes('empty') || allContent.includes('keine') || allContent.includes('No ')
+  const uxScore = (hasLoadingStates ? 35 : 0) + (hasErrorStates ? 35 : 0) + (hasEmptyStates ? 30 : 0)
+  
+  feedback.push({
+    category: 'ux',
+    score: Math.max(30, uxScore),
+    feedback: uxScore > 70 ? 'Gute UX-States implementiert' : 'UX-States verbesserungswürdig',
+    improvement: !hasLoadingStates ? 'Loading States für async Operationen' : 
+                 !hasErrorStates ? 'Error States für Fehlerbehandlung' : undefined
+  })
+  
+  return feedback
+}
+
+// Automatische Architektur-Empfehlungen
+interface ArchitectureRecommendation {
+  type: 'pattern' | 'structure' | 'separation' | 'optimization'
+  title: string
+  description: string
+  priority: 'low' | 'medium' | 'high'
+  codeExample?: string
+}
+
+function generateArchitectureRecommendations(files: { path: string; content: string }[]): ArchitectureRecommendation[] {
+  const recommendations: ArchitectureRecommendation[] = []
+  const allContent = files.map(f => f.content).join('\n')
+  
+  // Check für fehlende Custom Hooks
+  const stateCount = (allContent.match(/useState/g) || []).length
+  const hookFiles = files.filter(f => f.path.includes('/hooks/'))
+  
+  if (stateCount > 5 && hookFiles.length === 0) {
+    recommendations.push({
+      type: 'separation',
+      title: 'Custom Hooks extrahieren',
+      description: `${stateCount} useState gefunden aber keine Custom Hooks. Extrahiere wiederverwendbare Logik.`,
+      priority: 'medium',
+      codeExample: `// hooks/useFormState.ts
+export function useFormState<T>(initial: T) {
+  const [data, setData] = useState(initial)
+  const [errors, setErrors] = useState({})
+  return { data, setData, errors, setErrors }
+}`
+    })
+  }
+  
+  // Check für Context Usage
+  const propsCount = (allContent.match(/props\./g) || []).length
+  const hasContext = allContent.includes('createContext') || allContent.includes('useContext')
+  
+  if (propsCount > 20 && !hasContext) {
+    recommendations.push({
+      type: 'pattern',
+      title: 'React Context einführen',
+      description: 'Viele Props werden durchgereicht. Context kann Prop Drilling reduzieren.',
+      priority: 'medium'
+    })
+  }
+  
+  // Check für Service Layer
+  const fetchCount = (allContent.match(/fetch\(|axios\./g) || []).length
+  const hasServiceLayer = files.some(f => f.path.includes('/services/') || f.path.includes('/api/'))
+  
+  if (fetchCount > 3 && !hasServiceLayer) {
+    recommendations.push({
+      type: 'structure',
+      title: 'Service Layer einführen',
+      description: 'API-Aufrufe in separaten Service-Dateien organisieren.',
+      priority: 'high',
+      codeExample: `// services/api.ts
+export const api = {
+  async getItems() { return fetch('/api/items').then(r => r.json()) },
+  async createItem(data) { return fetch('/api/items', { method: 'POST', body: JSON.stringify(data) }) }
+}`
+    })
+  }
+  
+  // Check für Error Boundary
+  const hasErrorBoundary = allContent.includes('ErrorBoundary') || allContent.includes('error.tsx')
+  if (!hasErrorBoundary && files.length > 5) {
+    recommendations.push({
+      type: 'pattern',
+      title: 'Error Boundary hinzufügen',
+      description: 'Fehler in Komponenten abfangen für bessere Stabilität.',
+      priority: 'medium'
+    })
+  }
+  
+  return recommendations.slice(0, 4)
+}
+
+// Smart Refactoring Detector
+interface RefactoringOpportunity {
+  type: 'extract-component' | 'extract-hook' | 'simplify' | 'dry' | 'modernize'
+  file: string
+  description: string
+  benefit: string
+  effort: 'low' | 'medium' | 'high'
+}
+
+function detectRefactoringOpportunities(files: { path: string; content: string }[]): RefactoringOpportunity[] {
+  const opportunities: RefactoringOpportunity[] = []
+  
+  for (const file of files) {
+    const lines = file.content.split('\n')
+    
+    // Lange Dateien → Extract Components
+    if (lines.length > 250) {
+      opportunities.push({
+        type: 'extract-component',
+        file: file.path,
+        description: `Datei hat ${lines.length} Zeilen`,
+        benefit: 'Bessere Lesbarkeit und Wiederverwendbarkeit',
+        effort: 'medium'
+      })
+    }
+    
+    // Mehrere useState → Extract Hook
+    const useStateMatches = file.content.match(/useState/g)
+    if (useStateMatches && useStateMatches.length > 4) {
+      opportunities.push({
+        type: 'extract-hook',
+        file: file.path,
+        description: `${useStateMatches.length} useState Aufrufe`,
+        benefit: 'Logik kapseln und wiederverwenden',
+        effort: 'low'
+      })
+    }
+    
+    // Verschachtelte Ternaries → Simplify
+    if (file.content.match(/\?.*\?.*\?/)) {
+      opportunities.push({
+        type: 'simplify',
+        file: file.path,
+        description: 'Verschachtelte Ternary-Operatoren',
+        benefit: 'Bessere Lesbarkeit',
+        effort: 'low'
+      })
+    }
+    
+    // Class Components → Modernize
+    if (file.content.includes('extends Component') || file.content.includes('extends React.Component')) {
+      opportunities.push({
+        type: 'modernize',
+        file: file.path,
+        description: 'Class Component gefunden',
+        benefit: 'Zu Function Component mit Hooks migrieren',
+        effort: 'medium'
+      })
+    }
+  }
+  
+  // DRY - Duplizierter Code über Dateien
+  const codeBlocks = new Map<string, string[]>()
+  for (const file of files) {
+    const blocks = file.content.match(/\{[^{}]{100,300}\}/g) || []
+    for (const block of blocks) {
+      const normalized = block.replace(/\s+/g, ' ')
+      if (!codeBlocks.has(normalized)) {
+        codeBlocks.set(normalized, [])
+      }
+      codeBlocks.get(normalized)!.push(file.path)
+    }
+  }
+  
+  for (const [_, paths] of codeBlocks) {
+    if (paths.length > 1) {
+      opportunities.push({
+        type: 'dry',
+        file: paths[0],
+        description: `Ähnlicher Code in ${paths.length} Dateien`,
+        benefit: 'Code-Duplikation eliminieren',
+        effort: 'medium'
+      })
+      break // Nur eine DRY-Warnung
+    }
+  }
+  
+  return opportunities.slice(0, 5)
+}
+
+// Performance-Analyse
+interface PerformanceIssue {
+  type: 'render' | 'memory' | 'bundle' | 'network'
+  severity: 'low' | 'medium' | 'high'
+  description: string
+  solution: string
+  file?: string
+}
+
+function analyzePerformance(files: { path: string; content: string }[]): PerformanceIssue[] {
+  const issues: PerformanceIssue[] = []
+  
+  for (const file of files) {
+    // Inline Objects in JSX (cause re-renders)
+    if (file.content.match(/style=\{\{/g)?.length || 0 > 5) {
+      issues.push({
+        type: 'render',
+        severity: 'medium',
+        description: 'Viele inline style Objects',
+        solution: 'Style Objects außerhalb der Komponente definieren',
+        file: file.path
+      })
+    }
+    
+    // Inline Functions in JSX
+    const inlineFunctions = file.content.match(/onClick=\{\(\)\s*=>/g)
+    if (inlineFunctions && inlineFunctions.length > 3) {
+      issues.push({
+        type: 'render',
+        severity: 'medium',
+        description: `${inlineFunctions.length} inline onClick Handler`,
+        solution: 'useCallback für Event Handler nutzen',
+        file: file.path
+      })
+    }
+    
+    // Large Arrays in State
+    if (file.content.match(/useState\(\[[\s\S]{500,}\]\)/)) {
+      issues.push({
+        type: 'memory',
+        severity: 'medium',
+        description: 'Großes Array im State initialisiert',
+        solution: 'Große Daten lazy laden oder paginieren',
+        file: file.path
+      })
+    }
+    
+    // Missing Keys in map
+    if (file.content.includes('.map(') && !file.content.includes('key=')) {
+      issues.push({
+        type: 'render',
+        severity: 'high',
+        description: 'map() ohne key prop',
+        solution: 'Eindeutige key für jedes Element setzen',
+        file: file.path
+      })
+    }
+  }
+  
+  // Bundle Size - große Imports
+  const allContent = files.map(f => f.content).join('\n')
+  if (allContent.includes("import moment") || allContent.includes("from 'moment'")) {
+    issues.push({
+      type: 'bundle',
+      severity: 'medium',
+      description: 'moment.js importiert (groß)',
+      solution: 'date-fns oder dayjs als leichtere Alternative'
+    })
+  }
+  
+  if (allContent.includes("import _ from 'lodash'") || allContent.includes('import * as _ from')) {
+    issues.push({
+      type: 'bundle',
+      severity: 'medium',
+      description: 'Gesamtes lodash importiert',
+      solution: 'Nur benötigte Funktionen importieren: import { debounce } from "lodash"'
+    })
+  }
+  
+  return issues.slice(0, 5)
+}
+
 // Projekt-Health-Check - Umfassende Analyse
 interface HealthCheckResult {
   overall: 'healthy' | 'warning' | 'critical'
