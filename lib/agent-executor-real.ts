@@ -8439,7 +8439,7 @@ Gib SOFORT die korrigierten Dateien aus - OHNE jeglichen Text davor oder danach:
 
             addMessage({
               role: "assistant",
-              content: `✅ **Korrektur angewendet** (Versuch ${attempt})\n\nKorrigierte Dateien:\n${fixedFiles.map(f => `- ${f.path}`).join("\n")}\n\n${response.content}`,
+              content: `✅ **Korrektur angewendet** (Versuch ${attempt})\n\n**${fixedFiles.length} Dateien korrigiert:**\n${fixedFiles.map(f => `- \`${f.path}\``).join("\n")}\n\n*Code wurde aktualisiert - siehe Editor/Preview*`,
               agent: "coder",
             })
 
