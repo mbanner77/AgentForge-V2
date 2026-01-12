@@ -2025,6 +2025,317 @@ function calculateComplexityScore(files: { path: string; content: string }[]): {
   return { score: normalizedScore, level, details }
 }
 
+// Intelligente Komponenten-Generierung mit Best Practices
+interface ComponentBlueprint {
+  name: string
+  props: { name: string; type: string; required: boolean }[]
+  hooks: string[]
+  structure: string
+  styling: string
+}
+
+function generateComponentBlueprint(componentType: string, projectType: string): ComponentBlueprint {
+  const blueprints: Record<string, ComponentBlueprint> = {
+    'list': {
+      name: 'ItemList',
+      props: [
+        { name: 'items', type: 'Item[]', required: true },
+        { name: 'onItemClick', type: '(item: Item) => void', required: false },
+        { name: 'emptyMessage', type: 'string', required: false }
+      ],
+      hooks: ['useState for selection', 'useMemo for filtering'],
+      structure: `
+<div className="space-y-2">
+  {items.length === 0 ? (
+    <EmptyState message={emptyMessage} />
+  ) : (
+    items.map(item => (
+      <div key={item.id} onClick={() => onItemClick?.(item)}
+           className="p-4 rounded-xl bg-zinc-900/50 hover:bg-zinc-800/50 cursor-pointer transition-colors">
+        {/* Item content */}
+      </div>
+    ))
+  )}
+</div>`,
+      styling: 'bg-zinc-900/50 hover:bg-zinc-800/50 rounded-xl transition-colors'
+    },
+    'form': {
+      name: 'DataForm',
+      props: [
+        { name: 'onSubmit', type: '(data: FormData) => void', required: true },
+        { name: 'initialData', type: 'Partial<FormData>', required: false },
+        { name: 'isLoading', type: 'boolean', required: false }
+      ],
+      hooks: ['useState for formData', 'useState for errors', 'useCallback for handlers'],
+      structure: `
+<form onSubmit={handleSubmit} className="space-y-4">
+  <div>
+    <label className="block text-sm text-zinc-400 mb-1">Name</label>
+    <input value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})}
+           className="w-full px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl" />
+    {errors.name && <p className="text-red-400 text-sm mt-1">{errors.name}</p>}
+  </div>
+  <button type="submit" disabled={isLoading}
+          className="w-full py-3 bg-gradient-to-r from-blue-600 to-blue-500 rounded-xl font-semibold">
+    {isLoading ? 'Wird gespeichert...' : 'Speichern'}
+  </button>
+</form>`,
+      styling: 'space-y-4'
+    },
+    'card': {
+      name: 'InfoCard',
+      props: [
+        { name: 'title', type: 'string', required: true },
+        { name: 'description', type: 'string', required: false },
+        { name: 'icon', type: 'ReactNode', required: false },
+        { name: 'actions', type: 'ReactNode', required: false }
+      ],
+      hooks: [],
+      structure: `
+<div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-6 hover:border-zinc-700 transition-all">
+  <div className="flex items-start gap-4">
+    {icon && <div className="text-blue-500">{icon}</div>}
+    <div className="flex-1">
+      <h3 className="font-semibold text-lg">{title}</h3>
+      {description && <p className="text-zinc-400 mt-1">{description}</p>}
+    </div>
+  </div>
+  {actions && <div className="mt-4 pt-4 border-t border-zinc-800">{actions}</div>}
+</div>`,
+      styling: 'bg-zinc-900/50 border-zinc-800 rounded-2xl hover:border-zinc-700'
+    },
+    'modal': {
+      name: 'Modal',
+      props: [
+        { name: 'isOpen', type: 'boolean', required: true },
+        { name: 'onClose', type: '() => void', required: true },
+        { name: 'title', type: 'string', required: true },
+        { name: 'children', type: 'ReactNode', required: true }
+      ],
+      hooks: ['useEffect for escape key', 'useCallback for onClose'],
+      structure: `
+{isOpen && (
+  <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+    <div className="relative bg-zinc-900 border border-zinc-800 rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl">
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-xl font-semibold">{title}</h2>
+        <button onClick={onClose} className="p-1 hover:bg-zinc-800 rounded-lg">✕</button>
+      </div>
+      {children}
+    </div>
+  </div>
+)}`,
+      styling: 'bg-zinc-900 border-zinc-800 rounded-2xl shadow-2xl'
+    },
+    'dashboard-stat': {
+      name: 'StatCard',
+      props: [
+        { name: 'label', type: 'string', required: true },
+        { name: 'value', type: 'string | number', required: true },
+        { name: 'change', type: 'number', required: false },
+        { name: 'icon', type: 'ReactNode', required: false }
+      ],
+      hooks: [],
+      structure: `
+<div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-6">
+  <div className="flex justify-between items-start">
+    <div>
+      <p className="text-zinc-400 text-sm">{label}</p>
+      <p className="text-3xl font-bold mt-1">{value}</p>
+      {change !== undefined && (
+        <p className={change >= 0 ? 'text-emerald-400' : 'text-red-400'}>
+          {change >= 0 ? '↑' : '↓'} {Math.abs(change)}%
+        </p>
+      )}
+    </div>
+    {icon && <div className="p-3 bg-blue-500/10 rounded-xl text-blue-400">{icon}</div>}
+  </div>
+</div>`,
+      styling: 'bg-zinc-900/50 border-zinc-800 rounded-2xl'
+    }
+  }
+  
+  return blueprints[componentType] || blueprints['card']
+}
+
+// Auto-Fix für häufige React-Fehler
+interface AutoFix {
+  errorPattern: RegExp
+  fix: string
+  explanation: string
+  codeTransform?: (code: string) => string
+}
+
+const reactAutoFixes: AutoFix[] = [
+  {
+    errorPattern: /Objects are not valid as a React child/i,
+    fix: 'Objekt zu String konvertieren',
+    explanation: 'React kann keine Objekte direkt rendern. Verwende JSON.stringify() oder extrahiere spezifische Properties.',
+    codeTransform: (code) => code.replace(/\{(\w+)\}/g, '{JSON.stringify($1)}')
+  },
+  {
+    errorPattern: /Each child in a list should have a unique "key" prop/i,
+    fix: 'Key prop hinzufügen',
+    explanation: 'Jedes Element in einer Liste braucht eine eindeutige key prop.',
+    codeTransform: (code) => code.replace(/\.map\((\w+)\s*=>/g, '.map(($1, index) =>')
+  },
+  {
+    errorPattern: /Cannot read propert.*of undefined/i,
+    fix: 'Optional Chaining verwenden',
+    explanation: 'Die Variable ist undefined. Verwende ?. für sicheren Zugriff.',
+    codeTransform: (code) => code.replace(/(\w+)\.(\w+)/g, '$1?.$2')
+  },
+  {
+    errorPattern: /Hooks can only be called inside.*function component/i,
+    fix: 'Hook in Komponente verschieben',
+    explanation: 'Hooks müssen am Anfang einer Funktionskomponente aufgerufen werden.'
+  },
+  {
+    errorPattern: /Too many re-renders/i,
+    fix: 'State-Update aus Render entfernen',
+    explanation: 'setState wird direkt im Render aufgerufen. Verschiebe es in useEffect oder Event-Handler.'
+  },
+  {
+    errorPattern: /Maximum update depth exceeded/i,
+    fix: 'useEffect Dependencies prüfen',
+    explanation: 'Endlosschleife durch fehlende oder falsche Dependencies im useEffect.'
+  },
+  {
+    errorPattern: /Cannot update a component.*while rendering/i,
+    fix: 'Update in useEffect verschieben',
+    explanation: 'Parent-State wird während Child-Render aktualisiert. Verwende useEffect.'
+  }
+]
+
+function getAutoFixForError(errorMessage: string): AutoFix | null {
+  for (const fix of reactAutoFixes) {
+    if (fix.errorPattern.test(errorMessage)) {
+      return fix
+    }
+  }
+  return null
+}
+
+// Smart Import Management
+interface ImportSuggestion {
+  module: string
+  imports: string[]
+  reason: string
+}
+
+function analyzeRequiredImports(code: string): ImportSuggestion[] {
+  const suggestions: ImportSuggestion[] = []
+  
+  // React Hooks
+  const hooks = ['useState', 'useEffect', 'useCallback', 'useMemo', 'useRef', 'useContext', 'useReducer']
+  const usedHooks = hooks.filter(hook => code.includes(hook) && !code.includes(`import.*${hook}`))
+  if (usedHooks.length > 0) {
+    suggestions.push({
+      module: 'react',
+      imports: usedHooks,
+      reason: 'React Hooks werden verwendet'
+    })
+  }
+  
+  // Lucide Icons
+  const iconPattern = /<([A-Z][a-z]+(?:[A-Z][a-z]+)*)\s/g
+  const potentialIcons = [...code.matchAll(iconPattern)].map(m => m[1])
+  const commonIcons = ['Search', 'Plus', 'Trash', 'Edit', 'Check', 'X', 'Menu', 'Settings', 'User', 'Home']
+  const usedIcons = potentialIcons.filter(icon => commonIcons.includes(icon))
+  if (usedIcons.length > 0 && !code.includes('lucide-react')) {
+    suggestions.push({
+      module: 'lucide-react',
+      imports: usedIcons,
+      reason: 'Lucide Icons werden verwendet'
+    })
+  }
+  
+  // Framer Motion
+  if ((code.includes('animate') || code.includes('motion.')) && !code.includes('framer-motion')) {
+    suggestions.push({
+      module: 'framer-motion',
+      imports: ['motion', 'AnimatePresence'],
+      reason: 'Animationen werden verwendet'
+    })
+  }
+  
+  // Date-fns
+  if ((code.includes('format(') || code.includes('parseISO') || code.includes('addDays')) && !code.includes('date-fns')) {
+    suggestions.push({
+      module: 'date-fns',
+      imports: ['format', 'parseISO'],
+      reason: 'Datums-Formatierung wird verwendet'
+    })
+  }
+  
+  return suggestions
+}
+
+// Generiere vollständige Import-Statements
+function generateImportStatements(suggestions: ImportSuggestion[]): string {
+  return suggestions.map(s => 
+    `import { ${s.imports.join(', ')} } from "${s.module}";`
+  ).join('\n')
+}
+
+// Erweiterte Code-Dokumentation
+interface DocumentationBlock {
+  type: 'component' | 'function' | 'hook' | 'type'
+  name: string
+  description: string
+  params?: { name: string; type: string; description: string }[]
+  returns?: string
+  example?: string
+}
+
+function generateDocumentation(code: string, componentName: string): DocumentationBlock {
+  // Analysiere Code für automatische Dokumentation
+  const propsMatch = code.match(/interface\s+\w*Props\s*\{([^}]+)\}/)
+  const params: DocumentationBlock['params'] = []
+  
+  if (propsMatch) {
+    const propsContent = propsMatch[1]
+    const propLines = propsContent.split('\n').filter(l => l.includes(':'))
+    for (const line of propLines) {
+      const match = line.match(/(\w+)\??:\s*([^;]+)/)
+      if (match) {
+        params.push({
+          name: match[1],
+          type: match[2].trim(),
+          description: `${match[1]} prop`
+        })
+      }
+    }
+  }
+  
+  return {
+    type: 'component',
+    name: componentName,
+    description: `${componentName} Komponente`,
+    params,
+    example: `<${componentName} ${params.map(p => `${p.name}={...}`).join(' ')} />`
+  }
+}
+
+function formatDocumentation(doc: DocumentationBlock): string {
+  let result = `/**\n * ${doc.description}\n`
+  if (doc.params && doc.params.length > 0) {
+    result += ` *\n`
+    for (const param of doc.params) {
+      result += ` * @param ${param.name} - ${param.description} (${param.type})\n`
+    }
+  }
+  if (doc.returns) {
+    result += ` * @returns ${doc.returns}\n`
+  }
+  if (doc.example) {
+    result += ` *\n * @example\n * ${doc.example}\n`
+  }
+  result += ` */`
+  return result
+}
+
 // Projekttyp-Erkennung für angepasste Vorschläge
 type ProjectType = 'todo' | 'ecommerce' | 'dashboard' | 'chat' | 'blog' | 'portfolio' | 'form' | 'unknown'
 
