@@ -677,6 +677,46 @@ export function BuilderChat({ messages, onSendMessage, isProcessing, onImplement
           </div>
         )}
 
+        {/* ✨ MAKE IT BETTER - Prominenter 1-Click Verbesserungsbutton */}
+        {hasFiles && !isProcessing && !lastError && (
+          <div className="px-4 py-3 bg-gradient-to-r from-purple-500/10 via-blue-500/10 to-cyan-500/10 border-b border-purple-500/20">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-purple-400" />
+                <span className="text-sm font-medium text-purple-300">Code verbessern?</span>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 text-xs border-purple-500/30 text-purple-300 hover:bg-purple-500/20 gap-1.5"
+                  onClick={() => onSendMessage("Verbessere den Code: Optimiere Performance, füge bessere Typisierung hinzu, verbessere die Code-Struktur und extrahiere wiederverwendbare Komponenten.")}
+                >
+                  <Zap className="h-3.5 w-3.5" />
+                  Optimieren
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 text-xs border-blue-500/30 text-blue-300 hover:bg-blue-500/20 gap-1.5"
+                  onClick={() => onSendMessage("Verbessere das Design: Mache die UI moderner mit besseren Farben, Schatten, Animationen, Hover-Effekten und Micro-Interactions. Füge glassmorphism und moderne Gradients hinzu.")}
+                >
+                  <Wand2 className="h-3.5 w-3.5" />
+                  Design
+                </Button>
+                <Button
+                  size="sm"
+                  className="h-8 text-xs bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white gap-1.5"
+                  onClick={() => onSendMessage("Mache die App besser! Verbessere sowohl Code-Qualität als auch Design: Optimiere Performance, füge Animationen hinzu, verbessere UX mit Loading-States und Feedback, mache das Layout responsiver und füge mehr interaktive Elemente hinzu.")}
+                >
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Make it Better!
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Error Banner - wenn ein Fehler erkannt wurde */}
         {lastError && hasFiles && !isProcessing && (
           <div className="px-4 py-2 bg-red-500/10 border-b border-red-500/30 flex items-center justify-between">
