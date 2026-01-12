@@ -2510,7 +2510,7 @@ export function ListItem({ title, description }) {
   }
   
   // Form + Input Pattern
-  if (allContent.includes('<form') && allContent.match(/<input/g)?.length > 2 && !files.some(f => f.path.includes('Input'))) {
+  if (allContent.includes('<form') && (allContent.match(/<input/g)?.length ?? 0) > 2 && !files.some(f => f.path.includes('Input'))) {
     suggestions.push({
       name: 'Form-Input Pattern',
       reason: 'Formular mit vielen Inputs ohne wiederverwendbare Input-Komponente',
@@ -2529,7 +2529,7 @@ export function FormInput({ label, error, ...props }) {
   }
   
   // Card Pattern
-  if (allContent.match(/className="[^"]*rounded[^"]*p-[46][^"]*"/g)?.length > 3) {
+  if ((allContent.match(/className="[^"]*rounded[^"]*p-[46][^"]*"/g)?.length ?? 0) > 3) {
     suggestions.push({
       name: 'Card Pattern',
       reason: 'Ähnliche Card-Styles wiederholen sich',
@@ -2632,7 +2632,7 @@ function analyzeCodeOptimizations(files: { path: string; content: string }[]): C
   }
   
   // Performance: Re-renders durch Object/Array Literals
-  if (allContent.match(/style=\{\{/g)?.length > 10) {
+  if ((allContent.match(/style=\{\{/g)?.length ?? 0) > 10) {
     suggestions.push({
       type: 'performance',
       title: 'Inline Style Objects',
@@ -2950,6 +2950,39 @@ const badDesignPatterns: {
   fix: string
   context?: string[]
 }[] = [
+  // ============================================
+  // KRITISCH: VERBOTENE DEMO-KOMPONENTEN
+  // ============================================
+  {
+    pattern: /Demo[-\s]?[Zz]ähler|Demo[-\s]?Counter|DemoCounter/i,
+    type: 'critical',
+    problem: 'VERBOTEN: Demo-Zähler generiert - wurde nicht angefordert!',
+    fix: 'ENTFERNE diese Komponente komplett - nur angeforderte Features generieren!'
+  },
+  {
+    pattern: /Hello\s*World/i,
+    type: 'critical',
+    problem: 'VERBOTEN: Hello World generiert - wurde nicht angefordert!',
+    fix: 'ENTFERNE diese Komponente komplett - nur angeforderte Features generieren!'
+  },
+  {
+    pattern: /function\s+(Counter|DemoCounter|TestCounter|ClickCounter)\s*\(/i,
+    type: 'critical',
+    problem: 'VERBOTEN: Counter-Demo-Komponente generiert!',
+    fix: 'ENTFERNE diese Komponente - nur angeforderte Features generieren!'
+  },
+  {
+    pattern: /useState<number>\(\s*0\s*\)[\s\S]*setCount[\s\S]*count\s*\+\s*1/,
+    type: 'warning',
+    problem: 'Verdächtiger Counter-Pattern erkannt - möglicherweise Demo-Code',
+    fix: 'Prüfe ob dieser Counter angefordert wurde, sonst entfernen'
+  },
+  {
+    pattern: /<button[^>]*>\s*(Klick\s*mich|Click\s*me|Test|Demo)\s*<\/button>/i,
+    type: 'warning',
+    problem: 'Test/Demo Button erkannt - möglicherweise nicht angefordert',
+    fix: 'Prüfe ob dieser Button zur App gehört, sonst entfernen'
+  },
   // ============================================
   // KRITISCH: "NUR TEXT" OHNE STYLING
   // ============================================

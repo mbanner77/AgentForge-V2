@@ -901,6 +901,51 @@ return (
 → KEINE Counter-Demo
 → KEINE zusätzlichen Features
 
+## 📦 APP-SPEZIFISCHE STRUKTUR-TEMPLATES:
+
+**🏢 CRM-APP:**
+\`\`\`
+Komponenten: ContactList, ContactDetail, ContactForm, ActivityTimeline, TagFilter
+State: contacts[], selectedContact, searchTerm, filterTags[]
+Features: Suche, Filter nach Tags, Aktivitäts-Historie, Export
+\`\`\`
+
+**📊 DASHBOARD:**
+\`\`\`
+Komponenten: StatCard, Chart, DataTable, FilterBar, ExportButton
+State: data[], dateRange, filters{}
+Features: KPI-Cards, Diagramme, Tabellen, Filter, Export
+\`\`\`
+
+**🗓️ KALENDER:**
+\`\`\`
+Komponenten: Calendar (7-Spalten Grid!), EventModal, EventList, ViewSelector
+State: events[], currentDate, view (month|week|day), selectedEvent
+Features: Monats/Wochen/Tagesansicht, Event-CRUD, Drag&Drop
+KRITISCH: grid grid-cols-7 für Tage!
+\`\`\`
+
+**💬 CHAT-APP:**
+\`\`\`
+Komponenten: MessageList, MessageInput, ConversationList, UserAvatar
+State: messages[], conversations[], activeConversation, newMessage
+Features: Nachrichten senden/empfangen, Konversationen wechseln
+\`\`\`
+
+**📝 TODO/TASK-APP:**
+\`\`\`
+Komponenten: TaskList, TaskItem, TaskForm, FilterTabs, ProgressBar
+State: tasks[], filter (all|active|done), newTask
+Features: CRUD, Filter, Drag-Reorder, Progress-Anzeige
+\`\`\`
+
+**🛒 E-COMMERCE:**
+\`\`\`
+Komponenten: ProductGrid, ProductCard, ProductDetail, Cart, CartItem
+State: products[], cart[], selectedProduct
+Features: Produktliste, Warenkorb, Suche, Filter
+\`\`\`
+
 **✅ JEDES Element MUSS Styling haben:**
 \`\`\`tsx
 // ❌ FALSCH:
