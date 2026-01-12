@@ -315,33 +315,50 @@ export async function screenshotToCode(options: ScreenshotToCodeOptions): Promis
   const isNextJs = targetEnvironment === "nextjs"
   
   const systemPrompt = `Du bist ein Experte für UI/UX Design und React-Entwicklung.
-Deine Aufgabe: Analysiere das Screenshot/Mockup und erstelle exakt passenden React-Code.
+Deine Aufgabe: Analysiere das Screenshot/Mockup und erstelle PIXEL-PERFEKTEN React-Code.
+
+## 🎯 ANALYSE-SCHRITTE:
+1. **Layout erkennen**: Grid, Flexbox, Spalten, Zeilen
+2. **Komponenten identifizieren**: Header, Cards, Listen, Buttons, Forms
+3. **Farben extrahieren**: Hintergrund, Text, Akzente, Borders
+4. **Abstände messen**: Padding, Margin, Gap
+5. **Typografie**: Schriftgrößen, Gewichte, Zeilenhöhen
 
 ## REGELN:
 ${isNextJs ? `
 - Verwende Next.js App Router: app/page.tsx + components/*.tsx
 - JEDE Komponente beginnt mit "use client";
 - Imports: @/components/ComponentName
-- Styling: Tailwind CSS
+- Styling: INLINE-STYLES (style={{}}) UND Tailwind als Backup
 ` : `
 - Verwende React: App.tsx + components/*.tsx
 - Imports: ./components/ComponentName
-- Styling: Inline-Styles
+- Styling: Inline-Styles (style={{}})
 `}
 
-## WICHTIG:
-- Erstelle ALLE sichtbaren Komponenten als separate Dateien
-- Achte auf: Layout, Farben, Abstände, Schriftgrößen
-- Füge passende Icons hinzu (lucide-react)
-- Mache das UI responsiv
-- Verwende moderne UI-Patterns
+## 🎨 DESIGN-GENAUIGKEIT:
+- **Farben**: Verwende exakte HEX-Werte aus dem Screenshot
+- **Abstände**: Schätze px-Werte basierend auf dem Layout
+- **Schatten**: Repliziere Box-Shadows wenn sichtbar
+- **Rundungen**: border-radius entsprechend dem Design
+- **Hover-States**: Füge passende Hover-Effekte hinzu
+
+## 📐 LAYOUT-PATTERNS:
+- **Grid**: display: "grid", gridTemplateColumns: "repeat(X, 1fr)"
+- **Flexbox**: display: "flex", justifyContent, alignItems, gap
+- **Responsive**: Verwende relative Einheiten wo sinnvoll
+
+## 🚫 VERBOTEN:
+- Placeholder-Text wie "Lorem ipsum" (verwende sinnvolle Beispieldaten)
+- Fehlende Komponenten (erstelle ALLES was sichtbar ist)
+- Unstyled Elemente
 
 ## OUTPUT FORMAT:
 Gib für JEDE Datei einen Code-Block aus:
 \`\`\`typescript
 // filepath: components/ComponentName.tsx
 "use client";
-// ... Code
+// ... vollständiger Code mit Inline-Styles
 \`\`\`
 `
 

@@ -7,6 +7,7 @@ import type { AgentType, Message, WorkflowStep, ProjectFile, AgentSuggestion } f
 import { marketplaceAgents } from "./marketplace-agents"
 import { getMcpServerById } from "./mcp-servers"
 import { getBestPracticesForRequest, getCriticalBestPractices } from "./best-practices-knowledge"
+import { componentLibrary, getRecommendedComponents, generateComponentFiles } from "./component-library"
 
 // RAG-Kontext für Agenten abrufen (mit Agent-spezifischer Filterung)
 async function fetchRagContext(
@@ -3433,6 +3434,31 @@ const componentDesignTemplates: Record<string, string> = {
 
 function getDesignTemplateForComponent(componentType: string): string | undefined {
   return componentDesignTemplates[componentType.toLowerCase()]
+}
+
+// App-Typ Erkennung für Komponenten-Bibliothek
+function detectAppType(userRequest: string, files: { path: string; content: string }[]): string | null {
+  const allContent = (userRequest + ' ' + files.map(f => f.content).join(' ')).toLowerCase()
+  
+  if (allContent.includes('crm') || allContent.includes('kontakt') || allContent.includes('contact') || allContent.includes('kunde')) {
+    return 'crm'
+  }
+  if (allContent.includes('calendar') || allContent.includes('kalender') || allContent.includes('termin') || allContent.includes('event')) {
+    return 'calendar'
+  }
+  if (allContent.includes('dashboard') || allContent.includes('analytics') || allContent.includes('statistik') || allContent.includes('chart')) {
+    return 'dashboard'
+  }
+  if (allContent.includes('chat') || allContent.includes('message') || allContent.includes('nachricht')) {
+    return 'chat'
+  }
+  if (allContent.includes('todo') || allContent.includes('task') || allContent.includes('aufgabe')) {
+    return 'todo'
+  }
+  if (allContent.includes('shop') || allContent.includes('ecommerce') || allContent.includes('warenkorb') || allContent.includes('product')) {
+    return 'ecommerce'
+  }
+  return null
 }
 
 // Projekttyp-Erkennung für angepasste Vorschläge
@@ -7092,6 +7118,22 @@ ${previousOutput}
         
         if (analysisContext.length > 0) {
           toolsContext += analysisContext.join("\n")
+        }
+        
+        // KOMPONENTEN-BIBLIOTHEK: Empfehle passende UI-Komponenten
+        const detectedAppType = detectAppType(userRequest, existingFiles)
+        if (detectedAppType) {
+          const recommendedComponents = getRecommendedComponents(detectedAppType)
+          const componentSummary = componentLibrary
+            .filter(c => recommendedComponents.includes(c.name))
+            .map(c => `- **${c.name}** (${c.category}): ${c.description}`)
+            .join('\n')
+          
+          toolsContext += `\n\n## 🎨 EMPFOHLENE UI-KOMPONENTEN für ${detectedAppType.toUpperCase()}:
+${componentSummary}
+
+**Tipp:** Du kannst diese Komponenten erstellen indem du die Standard-Patterns verwendest.
+Alle Komponenten sollten Inline-Styles für WebContainer-Kompatibilität haben.`
         }
       }
       
