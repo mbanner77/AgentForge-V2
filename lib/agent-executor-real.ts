@@ -2923,6 +2923,321 @@ function analyzeProjectStructure(files: { path: string; content: string }[]): Pr
   }
 }
 
+// ============================================
+// DESIGN-VALIDIERUNG - Erkennt und verhindert schlechte UI-Patterns
+// ============================================
+
+interface DesignViolation {
+  type: 'critical' | 'warning' | 'suggestion'
+  pattern: string
+  problem: string
+  fix: string
+  autoFixCode?: string
+}
+
+interface DesignValidationResult {
+  isValid: boolean
+  score: number
+  violations: DesignViolation[]
+  autoFixPrompt?: string
+}
+
+// Schlechte Design-Patterns die erkannt werden müssen
+const badDesignPatterns: { 
+  pattern: RegExp
+  type: DesignViolation['type']
+  problem: string
+  fix: string
+  context?: string[]
+}[] = [
+  // KALENDER - Vertikale Listen statt Grid
+  {
+    pattern: /\.map\([^)]*\)\s*\.map\([^)]*day[^)]*\)/i,
+    type: 'critical',
+    problem: 'Kalender-Tage werden möglicherweise vertikal statt in 7-Spalten Grid gerendert',
+    fix: 'Verwende grid grid-cols-7 für Kalender-Tage',
+    context: ['calendar', 'kalender', 'day', 'tag']
+  },
+  {
+    pattern: /calendar|kalender/i,
+    type: 'critical',
+    problem: 'Kalender ohne 7-Spalten Grid erkannt',
+    fix: 'MUSS grid grid-cols-7 verwenden für korrekte Wochenansicht',
+    context: ['calendar', 'kalender']
+  },
+  // Fehlende Grid-Struktur für tabellarische Daten
+  {
+    pattern: /flex-col[^}]*\.map/,
+    type: 'warning',
+    problem: 'Vertikale Flex-Liste für Daten die möglicherweise ein Grid brauchen',
+    fix: 'Prüfe ob grid grid-cols-X besser geeignet ist'
+  },
+  // Keine Styling-Klassen
+  {
+    pattern: /<div>\s*\{[^}]+\.map/,
+    type: 'critical',
+    problem: 'Container ohne Styling-Klassen',
+    fix: 'Füge className mit Tailwind-Klassen hinzu'
+  },
+  // Nur Zahlen ohne Styling
+  {
+    pattern: />\s*\{day\}\s*</,
+    type: 'warning',
+    problem: 'Tages-Zahl ohne Styling',
+    fix: 'Wrape in span mit text-sm font-medium'
+  },
+  // Fehlende Hover-States
+  {
+    pattern: /onClick[^}]*className="[^"]*"(?![^"]*hover)/,
+    type: 'warning',
+    problem: 'Klickbares Element ohne Hover-State',
+    fix: 'Füge hover:bg-zinc-800/50 oder ähnliches hinzu'
+  },
+  // Fehlende Padding
+  {
+    pattern: /className="[^"]*(?:rounded|border)[^"]*"(?![^"]*p-)/,
+    type: 'warning',
+    problem: 'Element mit Border/Rounded aber ohne Padding',
+    fix: 'Füge p-4 oder p-6 hinzu'
+  },
+  // Zu kleine Touch-Targets
+  {
+    pattern: /<button[^>]*className="[^"]*p-1[^"]*"/,
+    type: 'warning',
+    problem: 'Button mit zu kleinem Touch-Target (p-1)',
+    fix: 'Verwende mindestens p-2 für bessere Klickbarkeit'
+  },
+  // Fehlende aspect-square für Grid-Zellen
+  {
+    pattern: /grid-cols-7[^}]*\.map[^}]*className="[^"]*"(?![^"]*aspect)/,
+    type: 'critical',
+    problem: 'Kalender-Grid ohne aspect-square für gleichmäßige Zellen',
+    fix: 'Füge aspect-square für gleichmäßige Zellengröße hinzu'
+  },
+  // Schlechte Farben (zu hell auf dunkel oder umgekehrt)
+  {
+    pattern: /bg-white[^}]*text-white|bg-black[^}]*text-black/,
+    type: 'critical',
+    problem: 'Text nicht lesbar (gleiche Farbe wie Hintergrund)',
+    fix: 'Verwende kontrastierende Farben'
+  },
+  // Keine Container-Breite
+  {
+    pattern: /<main[^>]*className="[^"]*"(?![^"]*max-w|container)/,
+    type: 'suggestion',
+    problem: 'Main ohne max-width Begrenzung',
+    fix: 'Füge max-w-6xl mx-auto hinzu'
+  }
+]
+
+function validateDesign(files: { path: string; content: string }[]): DesignValidationResult {
+  const violations: DesignViolation[] = []
+  let score = 100
+  
+  for (const file of files) {
+    if (!file.path.match(/\.(tsx|jsx)$/)) continue
+    
+    const content = file.content
+    const isCalendarFile = content.toLowerCase().includes('calendar') || content.toLowerCase().includes('kalender')
+    
+    // Spezielle Kalender-Validierung
+    if (isCalendarFile) {
+      // KRITISCH: Kalender MUSS grid-cols-7 haben
+      if (!content.includes('grid-cols-7')) {
+        violations.push({
+          type: 'critical',
+          pattern: 'missing-grid-cols-7',
+          problem: 'Kalender ohne 7-Spalten Grid! Tage werden vertikal statt horizontal angezeigt.',
+          fix: 'MUSS grid grid-cols-7 verwenden: <div className="grid grid-cols-7 gap-1">'
+        })
+        score -= 30
+      }
+      
+      // Kalender sollte aspect-square haben
+      if (!content.includes('aspect-square')) {
+        violations.push({
+          type: 'warning',
+          pattern: 'missing-aspect-square',
+          problem: 'Kalender-Zellen ohne gleichmäßige Größe',
+          fix: 'Füge aspect-square zu den Tag-Zellen hinzu'
+        })
+        score -= 10
+      }
+      
+      // Wochentage-Header prüfen
+      if (!content.match(/\["?Mo"?.*"?So"?\]|grid-cols-7[^}]*\["Mo"/)) {
+        violations.push({
+          type: 'warning',
+          pattern: 'missing-weekday-header',
+          problem: 'Kalender ohne Wochentage-Header (Mo-So)',
+          fix: 'Füge Wochentage-Header hinzu: ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]'
+        })
+        score -= 5
+      }
+    }
+    
+    // Allgemeine Pattern-Prüfung
+    for (const pattern of badDesignPatterns) {
+      // Skip context-spezifische Patterns wenn Context nicht passt
+      if (pattern.context && !pattern.context.some(ctx => content.toLowerCase().includes(ctx))) {
+        continue
+      }
+      
+      if (pattern.pattern.test(content)) {
+        // Bereits hinzugefügte Violations nicht doppeln
+        if (!violations.some(v => v.problem === pattern.problem)) {
+          violations.push({
+            type: pattern.type,
+            pattern: pattern.pattern.toString(),
+            problem: pattern.problem,
+            fix: pattern.fix
+          })
+          score -= pattern.type === 'critical' ? 20 : pattern.type === 'warning' ? 10 : 5
+        }
+      }
+    }
+    
+    // Positive Checks (erhöhen Score)
+    if (content.includes('hover:')) score += 2
+    if (content.includes('transition')) score += 2
+    if (content.includes('rounded-')) score += 2
+    if (content.includes('shadow-')) score += 1
+    if (content.includes('backdrop-blur')) score += 2
+  }
+  
+  // Generiere Auto-Fix Prompt wenn kritische Violations
+  let autoFixPrompt: string | undefined
+  const criticalViolations = violations.filter(v => v.type === 'critical')
+  if (criticalViolations.length > 0) {
+    autoFixPrompt = `
+⚠️ DESIGN-PROBLEME ERKANNT - BITTE KORRIGIEREN:
+
+${criticalViolations.map(v => `❌ ${v.problem}
+   → FIX: ${v.fix}`).join('\n\n')}
+
+WICHTIG: Diese Probleme MÜSSEN behoben werden bevor der Code ausgegeben wird!
+`
+  }
+  
+  return {
+    isValid: violations.filter(v => v.type === 'critical').length === 0,
+    score: Math.max(0, Math.min(100, score)),
+    violations,
+    autoFixPrompt
+  }
+}
+
+// Komponenten-spezifische Design-Templates
+const componentDesignTemplates: Record<string, string> = {
+  calendar: `
+// KALENDER TEMPLATE - IMMER 7-SPALTEN GRID!
+<div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-6">
+  {/* Header */}
+  <div className="flex justify-between items-center mb-6">
+    <button className="p-2 hover:bg-zinc-800 rounded-xl">←</button>
+    <h2 className="text-xl font-bold">{month} {year}</h2>
+    <button className="p-2 hover:bg-zinc-800 rounded-xl">→</button>
+  </div>
+  {/* Wochentage */}
+  <div className="grid grid-cols-7 gap-1 mb-2">
+    {["Mo","Di","Mi","Do","Fr","Sa","So"].map(d => (
+      <div key={d} className="text-center text-xs text-zinc-500 py-2">{d}</div>
+    ))}
+  </div>
+  {/* Tage - KRITISCH: grid-cols-7! */}
+  <div className="grid grid-cols-7 gap-1">
+    {blanks.map((_, i) => <div key={i} className="aspect-square" />)}
+    {days.map(day => (
+      <div key={day} className="aspect-square p-1 rounded-xl border border-zinc-800 hover:bg-zinc-800/50 cursor-pointer">
+        <span className="text-sm font-medium">{day}</span>
+      </div>
+    ))}
+  </div>
+</div>`,
+
+  list: `
+// LISTE TEMPLATE
+<div className="space-y-2">
+  {items.map(item => (
+    <div key={item.id} className="flex items-center gap-4 p-4 bg-zinc-900/50 border border-zinc-800 rounded-xl hover:bg-zinc-800/50 transition-colors cursor-pointer">
+      <div className="flex-1">
+        <h3 className="font-medium">{item.title}</h3>
+        <p className="text-sm text-zinc-400">{item.description}</p>
+      </div>
+    </div>
+  ))}
+</div>`,
+
+  card: `
+// CARD TEMPLATE
+<div className="bg-zinc-900/50 backdrop-blur-sm border border-zinc-800 rounded-2xl p-6 hover:border-zinc-700 transition-all">
+  <h3 className="text-lg font-semibold mb-2">{title}</h3>
+  <p className="text-zinc-400">{description}</p>
+</div>`,
+
+  form: `
+// FORM TEMPLATE
+<form onSubmit={handleSubmit} className="space-y-4">
+  <div>
+    <label className="block text-sm text-zinc-400 mb-1">{label}</label>
+    <input 
+      className="w-full px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl focus:border-blue-500 outline-none transition-colors"
+    />
+  </div>
+  <button className="w-full py-3 bg-gradient-to-r from-blue-600 to-blue-500 rounded-xl font-semibold hover:scale-[1.02] transition-all">
+    Speichern
+  </button>
+</form>`,
+
+  modal: `
+// MODAL TEMPLATE
+{isOpen && (
+  <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+    <div className="relative bg-zinc-900 border border-zinc-800 rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl">
+      <h2 className="text-xl font-semibold mb-4">{title}</h2>
+      {children}
+    </div>
+  </div>
+)}`,
+
+  dashboard: `
+// DASHBOARD STATS TEMPLATE - IMMER GRID!
+<div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+  {stats.map(stat => (
+    <div key={stat.label} className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-6">
+      <p className="text-sm text-zinc-400">{stat.label}</p>
+      <p className="text-3xl font-bold mt-1">{stat.value}</p>
+    </div>
+  ))}
+</div>`,
+
+  table: `
+// TABLE TEMPLATE
+<div className="overflow-x-auto">
+  <table className="w-full">
+    <thead>
+      <tr className="border-b border-zinc-800">
+        {columns.map(col => (
+          <th key={col} className="text-left py-3 px-4 text-sm text-zinc-400">{col}</th>
+        ))}
+      </tr>
+    </thead>
+    <tbody>
+      {rows.map(row => (
+        <tr key={row.id} className="border-b border-zinc-800/50 hover:bg-zinc-800/30">
+          {/* cells */}
+        </tr>
+      ))}
+    </tbody>
+  </table>
+</div>`
+}
+
+function getDesignTemplateForComponent(componentType: string): string | undefined {
+  return componentDesignTemplates[componentType.toLowerCase()]
+}
+
 // Projekttyp-Erkennung für angepasste Vorschläge
 type ProjectType = 'todo' | 'ecommerce' | 'dashboard' | 'chat' | 'blog' | 'portfolio' | 'form' | 'unknown'
 
