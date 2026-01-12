@@ -2950,85 +2950,238 @@ const badDesignPatterns: {
   fix: string
   context?: string[]
 }[] = [
-  // KALENDER - Vertikale Listen statt Grid
+  // ============================================
+  // KRITISCH: "NUR TEXT" OHNE STYLING
+  // ============================================
   {
-    pattern: /\.map\([^)]*\)\s*\.map\([^)]*day[^)]*\)/i,
+    pattern: /<div>\s*\{[^}]+\}\s*<\/div>/,
     type: 'critical',
-    problem: 'Kalender-Tage werden möglicherweise vertikal statt in 7-Spalten Grid gerendert',
-    fix: 'Verwende grid grid-cols-7 für Kalender-Tage',
-    context: ['calendar', 'kalender', 'day', 'tag']
+    problem: 'Nur Text in div ohne jegliches Styling - sieht rudimentär aus',
+    fix: 'Füge className="p-4 bg-zinc-900/50 border border-zinc-800 rounded-xl" hinzu'
   },
+  {
+    pattern: /<p>\s*\{[^}]+\}\s*<\/p>/,
+    type: 'warning',
+    problem: 'Text ohne Styling-Klassen',
+    fix: 'Füge className="text-zinc-400" oder "text-lg font-medium" hinzu'
+  },
+  {
+    pattern: /<span>\s*\{[^}]+\}\s*<\/span>/,
+    type: 'warning',
+    problem: 'Span ohne Styling',
+    fix: 'Füge className mit Farbe und Font hinzu'
+  },
+  {
+    pattern: /<h[1-6]>\s*\{[^}]+\}\s*<\/h[1-6]>/,
+    type: 'warning',
+    problem: 'Heading ohne Styling',
+    fix: 'Füge className="text-2xl font-bold" oder Gradient hinzu'
+  },
+  // ============================================
+  // KRITISCH: LISTEN OHNE VISUELLE STRUKTUR  
+  // ============================================
+  {
+    pattern: /\.map\([^)]+\)\s*=>\s*\(\s*<div>\s*\{/,
+    type: 'critical',
+    problem: 'Liste rendert nur Text ohne visuelle Struktur (Cards, Borders, etc.)',
+    fix: 'Wrape Items in styled Cards: className="p-4 bg-zinc-900/50 border border-zinc-800 rounded-xl"'
+  },
+  {
+    pattern: /\.map\([^)]+\)\s*=>\s*<li>\s*\{/,
+    type: 'critical',
+    problem: 'Einfache Textliste ohne Styling',
+    fix: 'Verwende styled div statt li: className="flex items-center gap-3 p-3 rounded-lg hover:bg-zinc-800/50"'
+  },
+  {
+    pattern: /\.map\([^)]+\)\s*=>\s*\{[^}]+\}/,
+    type: 'warning',
+    problem: 'Map gibt möglicherweise nur Text ohne Wrapper zurück',
+    fix: 'Wrape Rückgabe in styled Container'
+  },
+  // ============================================
+  // KRITISCH: FEHLENDE CONTAINER-STRUKTUR
+  // ============================================
+  {
+    pattern: /<div>\s*<div>\s*<div>/,
+    type: 'warning',
+    problem: 'Verschachtelte divs ohne Styling - keine visuelle Hierarchie',
+    fix: 'Füge className zu jedem div für klare visuelle Struktur hinzu'
+  },
+  {
+    pattern: /return\s*\(\s*<>\s*[^<]*</,
+    type: 'warning',
+    problem: 'Fragment als Root ohne Container-Styling',
+    fix: 'Verwende div mit min-h-screen bg-zinc-950 p-6'
+  },
+  // ============================================
+  // KALENDER SPEZIFISCH
+  // ============================================
   {
     pattern: /calendar|kalender/i,
     type: 'critical',
-    problem: 'Kalender ohne 7-Spalten Grid erkannt',
-    fix: 'MUSS grid grid-cols-7 verwenden für korrekte Wochenansicht',
+    problem: 'Kalender erkannt - MUSS 7-Spalten Grid haben',
+    fix: 'Verwende grid grid-cols-7 für Wochenansicht',
     context: ['calendar', 'kalender']
   },
-  // Fehlende Grid-Struktur für tabellarische Daten
+  // ============================================
+  // FORMULARE OHNE STYLING
+  // ============================================
   {
-    pattern: /flex-col[^}]*\.map/,
-    type: 'warning',
-    problem: 'Vertikale Flex-Liste für Daten die möglicherweise ein Grid brauchen',
-    fix: 'Prüfe ob grid grid-cols-X besser geeignet ist'
-  },
-  // Keine Styling-Klassen
-  {
-    pattern: /<div>\s*\{[^}]+\.map/,
+    pattern: /<input[^>]*\/?>(?![^>]*className)/,
     type: 'critical',
-    problem: 'Container ohne Styling-Klassen',
-    fix: 'Füge className mit Tailwind-Klassen hinzu'
+    problem: 'Input ohne Styling - sieht wie Standard-HTML aus',
+    fix: 'Füge className="w-full px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl" hinzu'
   },
-  // Nur Zahlen ohne Styling
   {
-    pattern: />\s*\{day\}\s*</,
-    type: 'warning',
-    problem: 'Tages-Zahl ohne Styling',
-    fix: 'Wrape in span mit text-sm font-medium'
+    pattern: /<button[^>]*>(?![^>]*className)/,
+    type: 'critical',
+    problem: 'Button ohne Styling',
+    fix: 'Füge className="px-6 py-3 bg-blue-600 rounded-xl font-semibold" hinzu'
   },
-  // Fehlende Hover-States
+  {
+    pattern: /<select[^>]*>(?![^>]*className)/,
+    type: 'critical',
+    problem: 'Select ohne Styling',
+    fix: 'Füge className="px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl" hinzu'
+  },
+  {
+    pattern: /<textarea[^>]*>(?![^>]*className)/,
+    type: 'critical',
+    problem: 'Textarea ohne Styling',
+    fix: 'Füge className="w-full px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl" hinzu'
+  },
+  // ============================================
+  // TABELLEN OHNE STYLING
+  // ============================================
+  {
+    pattern: /<table[^>]*>(?![^>]*className)/,
+    type: 'critical',
+    problem: 'Tabelle ohne Styling',
+    fix: 'Füge className="w-full" und style tbody/tr/td hinzu'
+  },
+  {
+    pattern: /<tr[^>]*>(?![^>]*className)/,
+    type: 'warning',
+    problem: 'Table Row ohne Styling',
+    fix: 'Füge className="border-b border-zinc-800 hover:bg-zinc-800/30" hinzu'
+  },
+  // ============================================
+  // INTERAKTIVE ELEMENTE
+  // ============================================
   {
     pattern: /onClick[^}]*className="[^"]*"(?![^"]*hover)/,
     type: 'warning',
     problem: 'Klickbares Element ohne Hover-State',
-    fix: 'Füge hover:bg-zinc-800/50 oder ähnliches hinzu'
+    fix: 'Füge hover:bg-zinc-800/50 und transition-colors hinzu'
   },
-  // Fehlende Padding
+  {
+    pattern: /onClick[^}]*(?!className)/,
+    type: 'critical',
+    problem: 'Klickbares Element komplett ohne Styling',
+    fix: 'Füge className mit Hover-State und Cursor hinzu'
+  },
+  // ============================================
+  // LAYOUT-PROBLEME
+  // ============================================
   {
     pattern: /className="[^"]*(?:rounded|border)[^"]*"(?![^"]*p-)/,
     type: 'warning',
     problem: 'Element mit Border/Rounded aber ohne Padding',
     fix: 'Füge p-4 oder p-6 hinzu'
   },
-  // Zu kleine Touch-Targets
   {
     pattern: /<button[^>]*className="[^"]*p-1[^"]*"/,
     type: 'warning',
-    problem: 'Button mit zu kleinem Touch-Target (p-1)',
-    fix: 'Verwende mindestens p-2 für bessere Klickbarkeit'
+    problem: 'Button mit zu kleinem Touch-Target',
+    fix: 'Verwende mindestens p-2'
   },
-  // Fehlende aspect-square für Grid-Zellen
-  {
-    pattern: /grid-cols-7[^}]*\.map[^}]*className="[^"]*"(?![^"]*aspect)/,
-    type: 'critical',
-    problem: 'Kalender-Grid ohne aspect-square für gleichmäßige Zellen',
-    fix: 'Füge aspect-square für gleichmäßige Zellengröße hinzu'
-  },
-  // Schlechte Farben (zu hell auf dunkel oder umgekehrt)
   {
     pattern: /bg-white[^}]*text-white|bg-black[^}]*text-black/,
     type: 'critical',
     problem: 'Text nicht lesbar (gleiche Farbe wie Hintergrund)',
     fix: 'Verwende kontrastierende Farben'
   },
-  // Keine Container-Breite
+  // ============================================
+  // FEHLENDE VISUELLE ELEMENTE
+  // ============================================
   {
-    pattern: /<main[^>]*className="[^"]*"(?![^"]*max-w|container)/,
+    pattern: /<main[^>]*className="[^"]*"(?![^"]*bg-)/,
+    type: 'warning',
+    problem: 'Main ohne Hintergrundfarbe',
+    fix: 'Füge bg-zinc-950 oder bg-zinc-900 hinzu'
+  },
+  {
+    pattern: /<main[^>]*className="[^"]*"(?![^"]*min-h)/,
     type: 'suggestion',
-    problem: 'Main ohne max-width Begrenzung',
-    fix: 'Füge max-w-6xl mx-auto hinzu'
+    problem: 'Main ohne min-height',
+    fix: 'Füge min-h-screen hinzu'
   }
 ]
+
+// Erweiterte Design-Analyse für "nur Text" Probleme
+function analyzeTextOnlyDesign(content: string): DesignViolation[] {
+  const violations: DesignViolation[] = []
+  
+  // Zähle styled vs unstyled Elemente
+  const totalDivs = (content.match(/<div/g) || []).length
+  const styledDivs = (content.match(/<div[^>]*className/g) || []).length
+  const unstyledRatio = totalDivs > 0 ? (totalDivs - styledDivs) / totalDivs : 0
+  
+  if (unstyledRatio > 0.3 && totalDivs > 5) {
+    violations.push({
+      type: 'critical',
+      pattern: 'unstyled-ratio',
+      problem: `${Math.round(unstyledRatio * 100)}% der divs haben kein Styling - App sieht rudimentär aus`,
+      fix: 'Füge Tailwind-Klassen zu allen Containern hinzu'
+    })
+  }
+  
+  // Prüfe auf fehlende visuelle Hierarchie
+  const hasCards = content.includes('rounded-') && content.includes('border')
+  const hasBackgrounds = content.includes('bg-zinc') || content.includes('bg-gray') || content.includes('bg-slate')
+  const hasSpacing = content.includes('space-y') || content.includes('gap-')
+  const hasShadows = content.includes('shadow-')
+  
+  if (!hasCards && content.includes('.map(')) {
+    violations.push({
+      type: 'critical',
+      pattern: 'no-cards',
+      problem: 'Liste ohne Card-Styling - Items haben keine visuelle Trennung',
+      fix: 'Wrape Items in: className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4"'
+    })
+  }
+  
+  if (!hasBackgrounds && totalDivs > 3) {
+    violations.push({
+      type: 'warning',
+      pattern: 'no-backgrounds',
+      problem: 'Keine Hintergrundfarben - fehlende visuelle Tiefe',
+      fix: 'Füge bg-zinc-900/50 oder bg-zinc-800/50 zu Containern hinzu'
+    })
+  }
+  
+  if (!hasSpacing && content.includes('.map(')) {
+    violations.push({
+      type: 'warning',
+      pattern: 'no-spacing',
+      problem: 'Fehlende Abstände zwischen Elementen',
+      fix: 'Füge space-y-4 oder gap-4 zum Container hinzu'
+    })
+  }
+  
+  // Prüfe auf "nackte" Text-Ausgabe
+  const nakedTextMatches = content.match(/>\s*\{[a-zA-Z_][a-zA-Z0-9_.]*\}\s*</g) || []
+  if (nakedTextMatches.length > 5) {
+    violations.push({
+      type: 'warning',
+      pattern: 'naked-text',
+      problem: `${nakedTextMatches.length} Stellen mit Text ohne umgebendes Styling`,
+      fix: 'Wrape Text in styled spans oder paragraphs'
+    })
+  }
+  
+  return violations
+}
 
 function validateDesign(files: { path: string; content: string }[]): DesignValidationResult {
   const violations: DesignViolation[] = []
@@ -3076,6 +3229,15 @@ function validateDesign(files: { path: string; content: string }[]): DesignValid
       }
     }
     
+    // "Nur Text" Design-Analyse
+    const textOnlyViolations = analyzeTextOnlyDesign(content)
+    for (const violation of textOnlyViolations) {
+      if (!violations.some(v => v.pattern === violation.pattern)) {
+        violations.push(violation)
+        score -= violation.type === 'critical' ? 25 : violation.type === 'warning' ? 10 : 5
+      }
+    }
+    
     // Allgemeine Pattern-Prüfung
     for (const pattern of badDesignPatterns) {
       // Skip context-spezifische Patterns wenn Context nicht passt
@@ -3103,6 +3265,8 @@ function validateDesign(files: { path: string; content: string }[]): DesignValid
     if (content.includes('rounded-')) score += 2
     if (content.includes('shadow-')) score += 1
     if (content.includes('backdrop-blur')) score += 2
+    if (content.includes('bg-gradient')) score += 3
+    if (content.includes('border-zinc')) score += 2
   }
   
   // Generiere Auto-Fix Prompt wenn kritische Violations
