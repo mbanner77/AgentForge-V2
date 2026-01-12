@@ -2336,6 +2336,315 @@ function formatDocumentation(doc: DocumentationBlock): string {
   return result
 }
 
+// Intelligente Fehler-Prävention beim Code-Schreiben
+interface PreventionRule {
+  name: string
+  check: (code: string) => boolean
+  message: string
+  autoFix: string
+}
+
+const codePreventionRules: PreventionRule[] = [
+  {
+    name: 'Missing useClient',
+    check: (code) => (code.includes('useState') || code.includes('useEffect') || code.includes('onClick')) && !code.includes('"use client"'),
+    message: 'Client-Komponente ohne "use client" Direktive',
+    autoFix: 'Füge "use client" am Anfang der Datei hinzu'
+  },
+  {
+    name: 'Async in useEffect',
+    check: (code) => /useEffect\(\s*async/.test(code),
+    message: 'useEffect Callback darf nicht async sein',
+    autoFix: 'Erstelle eine async Funktion innerhalb von useEffect und rufe sie auf'
+  },
+  {
+    name: 'setState in render',
+    check: (code) => {
+      const hasSetState = code.includes('setState') || /set[A-Z]\w+\(/.test(code)
+      const inRender = !code.includes('onClick') && !code.includes('useEffect') && !code.includes('onChange')
+      return hasSetState && inRender && code.split('\n').length < 20
+    },
+    message: 'State-Update möglicherweise im Render',
+    autoFix: 'Verschiebe setState in useEffect oder Event-Handler'
+  },
+  {
+    name: 'Empty dependency array with state',
+    check: (code) => {
+      const hasEmptyDeps = /useEffect\([^)]+,\s*\[\s*\]\s*\)/.test(code)
+      const usesState = /\[.*set[A-Z]/.test(code)
+      return hasEmptyDeps && usesState
+    },
+    message: 'useEffect mit leerem Array verwendet möglicherweise State',
+    autoFix: 'Prüfe ob Dependencies im Array fehlen'
+  },
+  {
+    name: 'Direct DOM manipulation',
+    check: (code) => code.includes('document.getElementById') || code.includes('document.querySelector'),
+    message: 'Direkte DOM-Manipulation in React vermeiden',
+    autoFix: 'Verwende useRef stattdessen'
+  },
+  {
+    name: 'Index as key',
+    check: (code) => /key=\{.*index.*\}/.test(code) && code.includes('.map('),
+    message: 'Index als Key kann zu Problemen führen',
+    autoFix: 'Verwende eine eindeutige ID als Key'
+  }
+]
+
+function checkCodeForPreventions(code: string): PreventionRule[] {
+  return codePreventionRules.filter(rule => rule.check(code))
+}
+
+// Automatische Accessibility-Verbesserungen
+interface A11yImprovement {
+  element: string
+  issue: string
+  fix: string
+  priority: 'critical' | 'important' | 'recommended'
+}
+
+function analyzeAccessibility(code: string): A11yImprovement[] {
+  const improvements: A11yImprovement[] = []
+  
+  // Buttons ohne Text oder aria-label
+  if (code.match(/<button[^>]*>\s*<[^/]/)) {
+    improvements.push({
+      element: 'button',
+      issue: 'Button enthält nur Icon ohne beschreibenden Text',
+      fix: 'Füge aria-label="Beschreibung" hinzu',
+      priority: 'critical'
+    })
+  }
+  
+  // Images ohne alt
+  if (code.match(/<img[^>]*(?!alt=)[^>]*>/)) {
+    improvements.push({
+      element: 'img',
+      issue: 'Bild ohne alt-Attribut',
+      fix: 'Füge alt="Beschreibung" hinzu',
+      priority: 'critical'
+    })
+  }
+  
+  // Links ohne href
+  if (code.match(/<a[^>]*(?!href)[^>]*>/)) {
+    improvements.push({
+      element: 'a',
+      issue: 'Link ohne href-Attribut',
+      fix: 'Füge href hinzu oder verwende button',
+      priority: 'important'
+    })
+  }
+  
+  // Form inputs ohne label
+  if (code.includes('<input') && !code.includes('<label') && !code.includes('aria-label')) {
+    improvements.push({
+      element: 'input',
+      issue: 'Input ohne zugehöriges Label',
+      fix: 'Füge <label> oder aria-label hinzu',
+      priority: 'critical'
+    })
+  }
+  
+  // Fehlende Semantik
+  if (code.includes('<div') && !code.includes('<main') && !code.includes('<section') && !code.includes('<article')) {
+    improvements.push({
+      element: 'div',
+      issue: 'Fehlende semantische HTML-Elemente',
+      fix: 'Verwende main, section, article, nav, header, footer',
+      priority: 'recommended'
+    })
+  }
+  
+  // Fehlende Fokus-Styles
+  if (code.includes('outline: none') || code.includes('outline-none')) {
+    improvements.push({
+      element: 'focus',
+      issue: 'Fokus-Outline entfernt ohne Alternative',
+      fix: 'Füge focus:ring-2 oder ähnliches hinzu',
+      priority: 'important'
+    })
+  }
+  
+  // Color contrast (vereinfacht)
+  if (code.includes('text-gray-400') && code.includes('bg-gray-300')) {
+    improvements.push({
+      element: 'text',
+      issue: 'Möglicherweise schlechter Farbkontrast',
+      fix: 'Prüfe Kontrast mit WCAG-Richtlinien',
+      priority: 'important'
+    })
+  }
+  
+  return improvements
+}
+
+// Smart Component Composition - Erkennt Komponenten die zusammengehören
+interface CompositionSuggestion {
+  name: string
+  reason: string
+  components: string[]
+  example: string
+}
+
+function suggestComponentComposition(files: { path: string; content: string }[]): CompositionSuggestion[] {
+  const suggestions: CompositionSuggestion[] = []
+  const allContent = files.map(f => f.content).join('\n')
+  
+  // List + Item Pattern
+  if (allContent.includes('.map(') && !files.some(f => f.path.includes('Item'))) {
+    suggestions.push({
+      name: 'List-Item Pattern',
+      reason: 'Liste ohne separate Item-Komponente',
+      components: ['ItemList', 'ListItem'],
+      example: `// ItemList.tsx
+export function ItemList({ items }) {
+  return items.map(item => <ListItem key={item.id} {...item} />)
+}
+
+// ListItem.tsx  
+export function ListItem({ title, description }) {
+  return <div>...</div>
+}`
+    })
+  }
+  
+  // Form + Input Pattern
+  if (allContent.includes('<form') && allContent.match(/<input/g)?.length > 2 && !files.some(f => f.path.includes('Input'))) {
+    suggestions.push({
+      name: 'Form-Input Pattern',
+      reason: 'Formular mit vielen Inputs ohne wiederverwendbare Input-Komponente',
+      components: ['Form', 'FormInput', 'FormLabel'],
+      example: `// FormInput.tsx
+export function FormInput({ label, error, ...props }) {
+  return (
+    <div>
+      <label>{label}</label>
+      <input {...props} />
+      {error && <span className="text-red-400">{error}</span>}
+    </div>
+  )
+}`
+    })
+  }
+  
+  // Card Pattern
+  if (allContent.match(/className="[^"]*rounded[^"]*p-[46][^"]*"/g)?.length > 3) {
+    suggestions.push({
+      name: 'Card Pattern',
+      reason: 'Ähnliche Card-Styles wiederholen sich',
+      components: ['Card', 'CardHeader', 'CardContent', 'CardFooter'],
+      example: `// Card.tsx
+export function Card({ children, className }) {
+  return (
+    <div className={\`bg-zinc-900/50 border border-zinc-800 rounded-2xl p-6 \${className}\`}>
+      {children}
+    </div>
+  )
+}`
+    })
+  }
+  
+  // Modal/Dialog Pattern
+  if (allContent.includes('fixed inset-0') && !files.some(f => f.path.includes('Modal') || f.path.includes('Dialog'))) {
+    suggestions.push({
+      name: 'Modal Pattern',
+      reason: 'Overlay-Code ohne wiederverwendbare Modal-Komponente',
+      components: ['Modal', 'ModalHeader', 'ModalContent', 'ModalFooter'],
+      example: `// Modal.tsx - siehe Blueprint`
+    })
+  }
+  
+  return suggestions.slice(0, 3)
+}
+
+// Erweiterte Code-Optimierungsvorschläge
+interface CodeOptimization {
+  type: 'performance' | 'readability' | 'maintainability' | 'bundle-size'
+  title: string
+  current: string
+  suggested: string
+  impact: 'low' | 'medium' | 'high'
+}
+
+function analyzeCodeOptimizations(files: { path: string; content: string }[]): CodeOptimization[] {
+  const suggestions: CodeOptimization[] = []
+  const allContent = files.map(f => f.content).join('\n')
+  
+  // Performance: Inline functions in JSX
+  const inlineHandlerCount = (allContent.match(/onClick=\{\(\)\s*=>/g) || []).length
+  if (inlineHandlerCount > 5) {
+    suggestions.push({
+      type: 'performance',
+      title: 'Inline Event Handler',
+      current: `${inlineHandlerCount} inline onClick Handler`,
+      suggested: 'Extrahiere Handler mit useCallback',
+      impact: 'medium'
+    })
+  }
+  
+  // Performance: Missing useMemo for expensive operations
+  if (allContent.includes('.filter(') && allContent.includes('.map(') && !allContent.includes('useMemo')) {
+    suggestions.push({
+      type: 'performance',
+      title: 'Fehlende Memoization',
+      current: 'filter + map ohne useMemo',
+      suggested: 'Wrape teure Operationen in useMemo',
+      impact: 'medium'
+    })
+  }
+  
+  // Bundle Size: Large imports
+  if (allContent.includes("from 'lodash'") && !allContent.includes("from 'lodash/")) {
+    suggestions.push({
+      type: 'bundle-size',
+      title: 'Lodash Bundle',
+      current: "import { x } from 'lodash'",
+      suggested: "import x from 'lodash/x'",
+      impact: 'high'
+    })
+  }
+  
+  // Readability: Magic numbers
+  const magicNumbers = allContent.match(/(?<![a-zA-Z0-9_])\d{3,}(?![a-zA-Z0-9_])/g) || []
+  if (magicNumbers.length > 3) {
+    suggestions.push({
+      type: 'readability',
+      title: 'Magic Numbers',
+      current: `${magicNumbers.length} hardcoded Zahlen`,
+      suggested: 'Extrahiere in benannte Konstanten',
+      impact: 'low'
+    })
+  }
+  
+  // Maintainability: Long files
+  for (const file of files) {
+    const lines = file.content.split('\n').length
+    if (lines > 300) {
+      suggestions.push({
+        type: 'maintainability',
+        title: 'Lange Datei',
+        current: `${file.path}: ${lines} Zeilen`,
+        suggested: 'Teile in kleinere Komponenten/Module auf',
+        impact: 'high'
+      })
+    }
+  }
+  
+  // Performance: Re-renders durch Object/Array Literals
+  if (allContent.match(/style=\{\{/g)?.length > 10) {
+    suggestions.push({
+      type: 'performance',
+      title: 'Inline Style Objects',
+      current: 'Viele style={{...}} in JSX',
+      suggested: 'Definiere Styles außerhalb oder nutze Tailwind',
+      impact: 'medium'
+    })
+  }
+  
+  return suggestions.slice(0, 5)
+}
+
 // Projekttyp-Erkennung für angepasste Vorschläge
 type ProjectType = 'todo' | 'ecommerce' | 'dashboard' | 'chat' | 'blog' | 'portfolio' | 'form' | 'unknown'
 
