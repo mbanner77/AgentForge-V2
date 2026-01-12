@@ -8,6 +8,7 @@ import { marketplaceAgents } from "./marketplace-agents"
 import { getMcpServerById } from "./mcp-servers"
 import { getBestPracticesForRequest, getCriticalBestPractices } from "./best-practices-knowledge"
 import { componentLibrary, getRecommendedComponents, generateComponentFiles } from "./component-library"
+import { ProjectMemory, generateContextSummary } from "./project-memory"
 
 // RAG-Kontext für Agenten abrufen (mit Agent-spezifischer Filterung)
 async function fetchRagContext(

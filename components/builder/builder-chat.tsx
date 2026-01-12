@@ -18,6 +18,7 @@ interface BuilderChatProps {
   streamingAgent?: string // Welcher Agent gerade streamt
   hasFiles?: boolean // Ob bereits Dateien generiert wurden
   lastError?: string | null // Letzter Fehler aus der Preview
+  availableFiles?: { path: string; content: string }[] // Für @-Mentions
 }
 
 const agentIcons: Record<string, typeof Bot> = {
@@ -280,14 +281,49 @@ const quickActions = [
   },
 ]
 
-export function BuilderChat({ messages, onSendMessage, isProcessing, onImplementSuggestion, streamingContent, streamingAgent, hasFiles, lastError }: BuilderChatProps) {
+export function BuilderChat({ messages, onSendMessage, isProcessing, onImplementSuggestion, streamingContent, streamingAgent, hasFiles, lastError, availableFiles = [] }: BuilderChatProps) {
   const [input, setInput] = useState("")
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [showQuickActions, setShowQuickActions] = useState(false)
   const [selectedAction, setSelectedAction] = useState<typeof quickActions[0] | null>(null)
   const [showSuggestions, setShowSuggestions] = useState(false)
+  const [showFileMentions, setShowFileMentions] = useState(false)
+  const [mentionFilter, setMentionFilter] = useState("")
   const scrollRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  // @-Mentions: Erkenne @ im Input und zeige Datei-Vorschläge
+  const checkForMention = (text: string) => {
+    const lastAtIndex = text.lastIndexOf('@')
+    if (lastAtIndex !== -1) {
+      const afterAt = text.substring(lastAtIndex + 1)
+      // Prüfe ob wir noch im @-Mention Modus sind (kein Leerzeichen nach @)
+      if (!afterAt.includes(' ') && afterAt.length < 50) {
+        setShowFileMentions(true)
+        setMentionFilter(afterAt.toLowerCase())
+        return
+      }
+    }
+    setShowFileMentions(false)
+    setMentionFilter("")
+  }
+
+  // Gefilterte Dateien für @-Mentions
+  const filteredFiles = availableFiles.filter(f => 
+    f.path.toLowerCase().includes(mentionFilter) ||
+    f.path.split('/').pop()?.toLowerCase().includes(mentionFilter)
+  ).slice(0, 8)
+
+  // Füge @-Mention ein
+  const insertMention = (filePath: string) => {
+    const lastAtIndex = input.lastIndexOf('@')
+    if (lastAtIndex !== -1) {
+      const newInput = input.substring(0, lastAtIndex) + `@${filePath} `
+      setInput(newInput)
+    }
+    setShowFileMentions(false)
+    textareaRef.current?.focus()
+  }
 
   // Smart Prompt Suggestions basierend auf Eingabe - Erweitert
   const getSmartSuggestions = (text: string): string[] => {
@@ -743,14 +779,15 @@ export function BuilderChat({ messages, onSendMessage, isProcessing, onImplement
               value={input}
               onChange={(e) => {
                 setInput(e.target.value)
+                checkForMention(e.target.value)
                 if (selectedAction && !e.target.value.startsWith(selectedAction.prompt)) {
                   setSelectedAction(null)
                 }
               }}
               onKeyDown={handleKeyDown}
               placeholder={selectedAction?.placeholder || (messages.length > 1 
-                ? "Beschreibe weitere Verbesserungen... (z.B. 'Füge eine Suchfunktion hinzu')" 
-                : "Beschreibe deine App... (z.B. 'Erstelle einen Todo-Manager mit Dark Mode')")}
+                ? "Beschreibe Änderungen... (@ für Dateien, / für Befehle)" 
+                : "Beschreibe deine App... (z.B. 'Erstelle einen Todo-Manager')")}
               className="min-h-[80px] resize-none"
               disabled={isProcessing}
             />
@@ -758,8 +795,32 @@ export function BuilderChat({ messages, onSendMessage, isProcessing, onImplement
               {isProcessing ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
             </Button>
           </div>
+          {/* @-Mentions Dropdown */}
+          {showFileMentions && filteredFiles.length > 0 && !isProcessing && (
+            <div className="mt-2 border border-blue-500/30 rounded-md bg-background shadow-lg">
+              <div className="px-2 py-1 text-xs text-blue-400 border-b border-blue-500/30 bg-blue-500/10 flex items-center gap-1">
+                <FileCode className="h-3 w-3" />
+                Datei auswählen (↑↓ navigieren, ⏎ auswählen)
+              </div>
+              {filteredFiles.map((file, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => insertMention(file.path)}
+                  className="w-full px-3 py-2 text-left text-sm hover:bg-blue-500/10 flex items-center gap-2 group"
+                >
+                  <FileCode className="h-4 w-4 text-blue-400" />
+                  <span className="font-mono text-blue-300">@{file.path}</span>
+                  <span className="text-xs text-muted-foreground ml-auto">
+                    {file.content.split('\n').length} Zeilen
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+
           {/* Auto-Complete Dropdown */}
-          {matchingAutoComplete.length > 0 && !isProcessing && (
+          {matchingAutoComplete.length > 0 && !isProcessing && !showFileMentions && (
             <div className="mt-2 border border-border rounded-md bg-background shadow-lg">
               <div className="px-2 py-1 text-xs text-muted-foreground border-b border-border bg-muted/50">
                 ⏎ zum Auswählen, Esc zum Schließen
