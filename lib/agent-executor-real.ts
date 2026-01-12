@@ -882,6 +882,229 @@ Prüfe JEDEN Import und stelle sicher dass die Datei existiert!`
   }
 }
 
+// Automatische Code-Prüfung vor Ausgabe
+interface CodeValidationResult {
+  isValid: boolean
+  errors: string[]
+  warnings: string[]
+  autoFixSuggestions: string[]
+}
+
+function validateCodeBeforeOutput(files: { path: string; content: string }[]): CodeValidationResult {
+  const errors: string[] = []
+  const warnings: string[] = []
+  const autoFixSuggestions: string[] = []
+  
+  // 1. Import-Validierung
+  const missingImports = validateImports(files)
+  if (missingImports.length > 0) {
+    errors.push(`${missingImports.length} fehlende Dateien: ${missingImports.map(m => m.missingFile).join(', ')}`)
+    autoFixSuggestions.push(`Erstelle: ${missingImports.map(m => m.missingFile).join(', ')}`)
+  }
+  
+  // 2. Case-Sensitivity Prüfung
+  const caseIssues = validateCaseSensitivity(files)
+  if (caseIssues.length > 0) {
+    errors.push(`Case-Sensitivity Probleme: ${caseIssues.map(c => c.importedAs).join(', ')}`)
+    autoFixSuggestions.push('Benenne Dateien in PascalCase um')
+  }
+  
+  // 3. Export-Prüfung
+  for (const file of files) {
+    if (file.path.includes('components/') && !file.content.includes('export')) {
+      errors.push(`${file.path}: Kein Export gefunden`)
+      autoFixSuggestions.push(`Füge 'export' zu ${file.path} hinzu`)
+    }
+  }
+  
+  // 4. React Hooks Regeln
+  for (const file of files) {
+    // Hooks außerhalb von Komponenten
+    if (file.content.includes('useState') || file.content.includes('useEffect')) {
+      const hasComponent = file.content.includes('function') || file.content.includes('const')
+      if (!hasComponent) {
+        warnings.push(`${file.path}: Hooks müssen in Komponenten verwendet werden`)
+      }
+    }
+    
+    // useEffect ohne Dependencies
+    const effectMatches = file.content.match(/useEffect\s*\(\s*\(\)\s*=>\s*\{[^}]+\}\s*\)/g)
+    if (effectMatches) {
+      warnings.push(`${file.path}: useEffect ohne Dependency Array gefunden`)
+    }
+  }
+  
+  // 5. Doppelte Komponenten-Namen
+  const componentNames = new Map<string, string[]>()
+  for (const file of files) {
+    const matches = file.content.matchAll(/export\s+(?:function|const)\s+(\w+)/g)
+    for (const match of matches) {
+      const name = match[1]
+      if (!componentNames.has(name)) {
+        componentNames.set(name, [])
+      }
+      componentNames.get(name)!.push(file.path)
+    }
+  }
+  for (const [name, paths] of componentNames) {
+    if (paths.length > 1) {
+      errors.push(`Doppelte Komponente "${name}" in: ${paths.join(', ')}`)
+    }
+  }
+  
+  return {
+    isValid: errors.length === 0,
+    errors,
+    warnings,
+    autoFixSuggestions
+  }
+}
+
+// Intelligente Follow-Up Fragen basierend auf Kontext (erweitert)
+interface SmartFollowUpQuestion {
+  question: string
+  context: string
+  priority: 'low' | 'medium' | 'high'
+}
+
+function generateSmartFollowUpQuestions(
+  userRequest: string,
+  files: { path: string; content: string }[],
+  projectType: ProjectType
+): SmartFollowUpQuestion[] {
+  const questions: SmartFollowUpQuestion[] = []
+  const lowerRequest = userRequest.toLowerCase()
+  const allContent = files.map(f => f.content).join('\n')
+  
+  // Wenn Formular erwähnt aber keine Validierung
+  if ((lowerRequest.includes('form') || lowerRequest.includes('formular')) && 
+      !allContent.includes('validate') && !allContent.includes('zod')) {
+    questions.push({
+      question: 'Soll ich Formular-Validierung hinzufügen?',
+      context: 'Formular ohne Validierung erkannt',
+      priority: 'high'
+    })
+  }
+  
+  // Wenn Daten aber kein Persistenz
+  if ((lowerRequest.includes('speicher') || lowerRequest.includes('daten')) && 
+      !allContent.includes('localStorage') && !allContent.includes('fetch')) {
+    questions.push({
+      question: 'Sollen die Daten persistent gespeichert werden (localStorage/Backend)?',
+      context: 'Keine Datenpersistenz erkannt',
+      priority: 'medium'
+    })
+  }
+  
+  // Wenn Liste aber keine Pagination
+  if (allContent.includes('.map(') && !allContent.includes('page') && 
+      (lowerRequest.includes('liste') || lowerRequest.includes('list'))) {
+    questions.push({
+      question: 'Soll ich Pagination für lange Listen hinzufügen?',
+      context: 'Liste ohne Pagination',
+      priority: 'low'
+    })
+  }
+  
+  // Projekttyp-spezifische Fragen
+  if (projectType === 'ecommerce' && !allContent.includes('cart')) {
+    questions.push({
+      question: 'Soll ich einen Warenkorb hinzufügen?',
+      context: 'E-Commerce ohne Warenkorb',
+      priority: 'high'
+    })
+  }
+  
+  if (projectType === 'dashboard' && !allContent.includes('Chart') && !allContent.includes('recharts')) {
+    questions.push({
+      question: 'Soll ich Charts/Grafiken für das Dashboard hinzufügen?',
+      context: 'Dashboard ohne Visualisierungen',
+      priority: 'medium'
+    })
+  }
+  
+  return questions.slice(0, 3)
+}
+
+// Smart Error Prevention - Häufige Fehler vorab erkennen
+interface PotentialIssue {
+  type: 'error' | 'warning' | 'info'
+  message: string
+  file?: string
+  line?: number
+  prevention: string
+}
+
+function detectPotentialIssues(files: { path: string; content: string }[]): PotentialIssue[] {
+  const issues: PotentialIssue[] = []
+  
+  for (const file of files) {
+    const lines = file.content.split('\n')
+    
+    // 1. Async ohne await
+    if (file.content.includes('async') && !file.content.includes('await')) {
+      issues.push({
+        type: 'warning',
+        message: 'async Funktion ohne await',
+        file: file.path,
+        prevention: 'Entferne async oder füge await hinzu'
+      })
+    }
+    
+    // 2. console.log in Produktion
+    const consoleCount = (file.content.match(/console\.(log|warn|error)/g) || []).length
+    if (consoleCount > 3) {
+      issues.push({
+        type: 'info',
+        message: `${consoleCount} console Statements gefunden`,
+        file: file.path,
+        prevention: 'Entferne console Statements für Produktion'
+      })
+    }
+    
+    // 3. Hardcoded Strings die übersetzt werden sollten
+    const hardcodedStrings = file.content.match(/["'](Fehler|Error|Erfolgreich|Success|Laden|Loading)["']/g)
+    if (hardcodedStrings && hardcodedStrings.length > 2) {
+      issues.push({
+        type: 'info',
+        message: 'Hardcoded UI-Texte gefunden',
+        file: file.path,
+        prevention: 'Erwäge i18n für Mehrsprachigkeit'
+      })
+    }
+    
+    // 4. Fehlende Key Props in Listen
+    if (file.content.includes('.map(') && !file.content.includes('key=')) {
+      issues.push({
+        type: 'error',
+        message: 'map() ohne key prop',
+        file: file.path,
+        prevention: 'Füge key={uniqueId} zu jedem Element hinzu'
+      })
+    }
+    
+    // 5. useEffect mit fehlenden Dependencies
+    const effectRegex = /useEffect\(\s*\(\)\s*=>\s*\{[\s\S]*?\},\s*\[\s*\]\s*\)/g
+    const effectContent = file.content.match(effectRegex)
+    if (effectContent) {
+      for (const effect of effectContent) {
+        // Prüfe ob State-Variablen im Effect verwendet werden
+        const usedVars = effect.match(/\b(set\w+|use\w+)\b/g)
+        if (usedVars && usedVars.length > 0) {
+          issues.push({
+            type: 'warning',
+            message: 'useEffect mit leerem Dependency Array verwendet State',
+            file: file.path,
+            prevention: 'Füge verwendete Variablen zum Dependency Array hinzu'
+          })
+        }
+      }
+    }
+  }
+  
+  return issues.slice(0, 5)
+}
+
 // Projekt-Health-Check - Umfassende Analyse
 interface HealthCheckResult {
   overall: 'healthy' | 'warning' | 'critical'
