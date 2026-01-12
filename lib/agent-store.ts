@@ -286,6 +286,10 @@ export default function App() {
 ✓ Importiert App.tsx alle Komponenten korrekt?
 ✓ Ist der Code KOMPLETT (nicht nur Snippets)?
 ✓ Kann der Code DIREKT ausgeführt werden?
+✓ 🔴 EXISTIERT JEDE importierte Datei? (KRITISCH!)
+  → Für JEDEN Import prüfen: Wurde diese Datei auch erstellt?
+  → Wenn du "./components/MonthView" importierst, MUSST du MonthView.tsx erstellen!
+  → NIEMALS einen Import ohne die zugehörige Datei!
 
 ## 🏆 CODE-QUALITÄT REGELN:
 1. **TypeScript Best Practices:**
@@ -485,6 +489,10 @@ export default function App() {
 ✓ Ist der Code KOMPLETT (nicht nur Snippets)?
 ✓ Habe ich KEINE Anleitungen für den User geschrieben?
 ✓ Kann der Code DIREKT ausgeführt werden?
+✓ 🔴 EXISTIERT JEDE importierte Datei? (KRITISCH!)
+  → Für JEDEN Import: Wurde diese Datei auch erstellt?
+  → Import "./components/MonthView" → MonthView.tsx MUSS existieren!
+  → NIEMALS einen Import ohne die zugehörige Datei!
 
 Wenn eine dieser Fragen mit NEIN beantwortet wird, überarbeite deine Antwort!`,
   },

@@ -657,6 +657,83 @@ function generateChangeSummary(
   return { filesAdded, filesModified, featuresAdded, componentsAdded }
 }
 
+// Import-Validierung: Prüft ob alle importierten Dateien existieren
+interface MissingImport {
+  sourceFile: string
+  importPath: string
+  missingFile: string
+}
+
+function validateImports(files: { path: string; content: string }[]): MissingImport[] {
+  const missingImports: MissingImport[] = []
+  const existingPaths = new Set(files.map(f => f.path.toLowerCase()))
+  
+  for (const file of files) {
+    // Finde alle relativen Imports
+    const importRegex = /from\s+["'](\.\/.+?|\.\.\/.*?)["']/g
+    let match
+    
+    while ((match = importRegex.exec(file.content)) !== null) {
+      const importPath = match[1]
+      
+      // Ignoriere externe Packages
+      if (!importPath.startsWith('./') && !importPath.startsWith('../')) continue
+      
+      // Berechne den erwarteten Dateipfad
+      const baseDir = file.path.split('/').slice(0, -1).join('/')
+      let resolvedPath = importPath
+      
+      // Entferne ./ vom Anfang
+      if (resolvedPath.startsWith('./')) {
+        resolvedPath = resolvedPath.substring(2)
+      }
+      
+      // Kombiniere mit Base-Directory
+      const fullPath = baseDir ? `${baseDir}/${resolvedPath}` : resolvedPath
+      
+      // Prüfe verschiedene Dateiendungen
+      const possiblePaths = [
+        fullPath,
+        `${fullPath}.tsx`,
+        `${fullPath}.ts`,
+        `${fullPath}/index.tsx`,
+        `${fullPath}/index.ts`
+      ]
+      
+      const exists = possiblePaths.some(p => existingPaths.has(p.toLowerCase()))
+      
+      if (!exists) {
+        missingImports.push({
+          sourceFile: file.path,
+          importPath: importPath,
+          missingFile: `${fullPath}.tsx`
+        })
+      }
+    }
+  }
+  
+  return missingImports
+}
+
+// Generiere fehlende Dateien automatisch als leere Komponenten
+function generateMissingFilePrompt(missingImports: MissingImport[]): string {
+  if (missingImports.length === 0) return ''
+  
+  const fileList = [...new Set(missingImports.map(m => m.missingFile))].join(', ')
+  
+  return `
+🔴 FEHLENDE DATEIEN ERKANNT! Diese importierten Dateien existieren NICHT:
+${missingImports.map(m => `- "${m.missingFile}" (importiert in ${m.sourceFile})`).join('\n')}
+
+Du MUSST diese Dateien JETZT erstellen! Für jede fehlende Datei:
+1. Erstelle die Datei mit dem korrekten Pfad
+2. Implementiere die Komponente/Funktion die importiert wird
+3. Exportiere sie korrekt
+
+ERSTELLE JETZT: ${fileList}
+`
+}
+
 // Case-Sensitivity Validierung für Deployments
 interface CaseSensitivityIssue {
   file: string
@@ -721,7 +798,38 @@ function analyzeError(errorMessage: string): ErrorAnalysis {
     }
   }
   
-  // Import-Fehler
+  // FEHLENDE DATEI - "Failed to resolve import" (HÄUFIGSTER FEHLER!)
+  if (lowerError.includes('failed to resolve import') || lowerError.includes('does the file exist')) {
+    // Extrahiere den fehlenden Dateipfad aus der Fehlermeldung
+    const importMatch = errorMessage.match(/import\s+["']([^"']+)["']/)
+    const missingFile = importMatch ? importMatch[1] : 'unbekannt'
+    
+    return {
+      errorType: 'import',
+      severity: 'critical',
+      possibleCauses: [
+        'Die importierte Datei wurde nicht erstellt',
+        'Der Import-Pfad ist falsch',
+        'Die Datei hat einen anderen Namen als erwartet'
+      ],
+      suggestedFixes: [
+        'Erstelle die fehlende Datei mit dem korrekten Pfad',
+        'Prüfe ob der Import-Pfad korrekt ist',
+        'Stelle sicher dass die Komponente exportiert wird'
+      ],
+      autoFixPrompt: `KRITISCHER FEHLER: Die Datei "${missingFile}" existiert NICHT aber wird importiert!
+
+Du MUSST diese Datei JETZT erstellen:
+1. Erstelle die Datei mit EXAKT diesem Pfad: ${missingFile}.tsx
+2. Implementiere die Komponente/Funktion die dort erwartet wird
+3. Exportiere sie mit "export function/const ComponentName"
+
+WICHTIG: Gib ALLE Dateien aus - auch die bereits existierenden - damit nichts fehlt!
+Prüfe JEDEN Import und stelle sicher dass die Datei existiert!`
+    }
+  }
+  
+  // Import-Fehler (allgemein)
   if (lowerError.includes('cannot find module') || lowerError.includes('module not found')) {
     return {
       errorType: 'import',
