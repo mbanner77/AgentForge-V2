@@ -414,15 +414,24 @@ export function BuilderSidebar({ onClose }: BuilderSidebarProps) {
                         )}
                       </div>
 
-                      {/* System Prompt */}
-                      <div className="space-y-2">
-                        <Label className="text-sm">System Prompt</Label>
-                        <Textarea
-                          value={config.systemPrompt}
-                          onChange={(e) => updateAgentConfig(agentType, { systemPrompt: e.target.value })}
-                          className="min-h-[100px] resize-none text-xs"
-                        />
-                      </div>
+                      {/* System Prompt - Collapsible */}
+                      <Collapsible defaultOpen={false}>
+                        <CollapsibleTrigger className="flex w-full items-center justify-between rounded-md bg-secondary/50 px-3 py-2 text-sm font-medium hover:bg-secondary/70 transition-colors">
+                          <span>System Prompt</span>
+                          <ChevronDown className="h-4 w-4 transition-transform duration-200 [&[data-state=open]>svg]:rotate-180" />
+                        </CollapsibleTrigger>
+                        <CollapsibleContent className="pt-2">
+                          <Textarea
+                            value={config.systemPrompt}
+                            onChange={(e) => updateAgentConfig(agentType, { systemPrompt: e.target.value })}
+                            className="min-h-[150px] resize-y text-xs font-mono"
+                            placeholder="System Prompt für diesen Agent..."
+                          />
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {config.systemPrompt?.length || 0} Zeichen
+                          </p>
+                        </CollapsibleContent>
+                      </Collapsible>
 
                       {/* Tools */}
                       <div className="space-y-2">
