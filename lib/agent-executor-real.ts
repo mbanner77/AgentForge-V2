@@ -2646,6 +2646,367 @@ function analyzeCodeOptimizations(files: { path: string; content: string }[]): C
   return suggestions.slice(0, 5)
 }
 
+// ============================================
+// IMPORT-VALIDATOR: Prüft und fixt fehlende Imports
+// ============================================
+
+interface ImportValidation {
+  isValid: boolean
+  missingImports: { file: string; missing: string[] }[]
+  autoFixable: boolean
+}
+
+function validateAndFixImports(files: { path: string; content: string }[]): ImportValidation & { fixedFiles: { path: string; content: string }[] } {
+  const missingImports: { file: string; missing: string[] }[] = []
+  const fixedFiles: { path: string; content: string }[] = []
+  
+  // Sammle alle exportierten Komponenten
+  const exportedComponents: Map<string, string> = new Map()
+  for (const file of files) {
+    const exportMatches = file.content.matchAll(/export\s+(?:function|const)\s+(\w+)/g)
+    for (const match of exportMatches) {
+      exportedComponents.set(match[1], file.path)
+    }
+    // Default exports
+    const defaultMatch = file.content.match(/export\s+default\s+(?:function\s+)?(\w+)/)
+    if (defaultMatch) {
+      exportedComponents.set(defaultMatch[1], file.path)
+    }
+  }
+  
+  for (const file of files) {
+    const missing: string[] = []
+    let fixedContent = file.content
+    
+    // Finde verwendete aber nicht importierte Komponenten
+    const usedComponents = file.content.matchAll(/<(\w+)[\s/>]/g)
+    const importedComponents = new Set<string>()
+    
+    // Extrahiere bereits importierte
+    const importMatches = file.content.matchAll(/import\s+\{([^}]+)\}\s+from/g)
+    for (const match of importMatches) {
+      match[1].split(',').forEach(imp => importedComponents.add(imp.trim()))
+    }
+    
+    // React-Komponenten (Großbuchstabe am Anfang)
+    for (const match of usedComponents) {
+      const compName = match[1]
+      if (/^[A-Z]/.test(compName) && !importedComponents.has(compName)) {
+        // Ist es eine bekannte HTML-Element? Dann ignorieren
+        const htmlElements = ['App', 'Fragment', 'Suspense', 'StrictMode']
+        if (!htmlElements.includes(compName)) {
+          // Finde wo es exportiert wird
+          const exportedFrom = exportedComponents.get(compName)
+          if (exportedFrom && exportedFrom !== file.path) {
+            missing.push(compName)
+            
+            // Auto-Fix: Füge Import hinzu
+            const importPath = exportedFrom.replace(/\.tsx?$/, '').replace(/^src\//, './')
+            const newImport = `import { ${compName} } from "${importPath}";\n`
+            
+            // Füge Import nach "use client" oder am Anfang ein
+            if (fixedContent.includes('"use client"')) {
+              fixedContent = fixedContent.replace('"use client";\n', `"use client";\n${newImport}`)
+            } else if (fixedContent.includes("'use client'")) {
+              fixedContent = fixedContent.replace("'use client';\n", `'use client';\n${newImport}`)
+            } else {
+              fixedContent = newImport + fixedContent
+            }
+          }
+        }
+      }
+    }
+    
+    // Prüfe React Hooks ohne Import
+    const reactHooks = ['useState', 'useEffect', 'useCallback', 'useMemo', 'useRef', 'useContext', 'useReducer']
+    const usedHooks = reactHooks.filter(hook => file.content.includes(hook + '('))
+    const hasReactImport = file.content.includes('from "react"') || file.content.includes("from 'react'")
+    
+    if (usedHooks.length > 0 && !hasReactImport) {
+      missing.push(...usedHooks.map(h => `React.${h}`))
+      const hookImport = `import { ${usedHooks.join(', ')} } from "react";\n`
+      if (fixedContent.includes('"use client"')) {
+        fixedContent = fixedContent.replace('"use client";\n', `"use client";\n${hookImport}`)
+      } else {
+        fixedContent = hookImport + fixedContent
+      }
+    }
+    
+    if (missing.length > 0) {
+      missingImports.push({ file: file.path, missing })
+      fixedFiles.push({ path: file.path, content: fixedContent })
+    }
+  }
+  
+  return {
+    isValid: missingImports.length === 0,
+    missingImports,
+    autoFixable: true,
+    fixedFiles
+  }
+}
+
+// ============================================
+// COMPLETENESS-CHECK: Prüft ob alle Komponenten vollständig sind
+// ============================================
+
+interface CompletenessCheck {
+  isComplete: boolean
+  issues: { file: string; issue: string; severity: 'error' | 'warning' }[]
+}
+
+function checkCodeCompleteness(files: { path: string; content: string }[]): CompletenessCheck {
+  const issues: CompletenessCheck['issues'] = []
+  
+  for (const file of files) {
+    const content = file.content
+    
+    // Prüfe auf TODO/FIXME/Platzhalter
+    if (content.includes('// TODO') || content.includes('// FIXME') || content.includes('// ...')) {
+      issues.push({ file: file.path, issue: 'Enthält TODO/FIXME Kommentare', severity: 'warning' })
+    }
+    
+    // Prüfe auf leere Funktionen
+    if (content.match(/\(\)\s*=>\s*\{\s*\}/)) {
+      issues.push({ file: file.path, issue: 'Leere Arrow-Funktion gefunden', severity: 'warning' })
+    }
+    
+    // Prüfe auf unvollständige JSX
+    if (content.includes('...') && !content.includes('...props') && !content.includes('...rest')) {
+      issues.push({ file: file.path, issue: 'Möglicherweise unvollständiger Code (...)', severity: 'error' })
+    }
+    
+    // Prüfe auf fehlende Return-Statements in Komponenten
+    if (content.includes('function') && content.includes('return') === false && file.path.endsWith('.tsx')) {
+      issues.push({ file: file.path, issue: 'Komponente ohne return Statement', severity: 'error' })
+    }
+    
+    // Prüfe auf unbalancierte Klammern
+    const openBraces = (content.match(/{/g) || []).length
+    const closeBraces = (content.match(/}/g) || []).length
+    if (openBraces !== closeBraces) {
+      issues.push({ file: file.path, issue: `Unbalancierte Klammern: ${openBraces} { vs ${closeBraces} }`, severity: 'error' })
+    }
+    
+    // Prüfe auf fehlende Exports
+    if (file.path.includes('components/') && !content.includes('export')) {
+      issues.push({ file: file.path, issue: 'Komponente ohne export', severity: 'error' })
+    }
+    
+    // Prüfe auf console.log (sollte in Produktion entfernt werden)
+    if (content.includes('console.log')) {
+      issues.push({ file: file.path, issue: 'Enthält console.log', severity: 'warning' })
+    }
+  }
+  
+  return {
+    isComplete: issues.filter(i => i.severity === 'error').length === 0,
+    issues
+  }
+}
+
+// ============================================
+// ERROR-LEARNING: Speichert Fehler und deren Lösungen
+// ============================================
+
+interface LearnedError {
+  pattern: string
+  solution: string
+  occurrences: number
+  lastSeen: Date
+}
+
+// In-Memory Error-Learning Store
+const errorLearningStore: LearnedError[] = [
+  // Vordefinierte häufige Fehler
+  { pattern: 'Cannot find module', solution: 'Import-Pfad korrigieren oder Datei erstellen', occurrences: 0, lastSeen: new Date() },
+  { pattern: 'is not a function', solution: 'Prüfe ob Funktion korrekt exportiert/importiert wurde', occurrences: 0, lastSeen: new Date() },
+  { pattern: 'Cannot read properties of undefined', solution: 'Füge optional chaining (?.) oder Null-Check hinzu', occurrences: 0, lastSeen: new Date() },
+  { pattern: 'useState is not defined', solution: 'import { useState } from "react" hinzufügen', occurrences: 0, lastSeen: new Date() },
+  { pattern: 'useEffect is not defined', solution: 'import { useEffect } from "react" hinzufügen', occurrences: 0, lastSeen: new Date() },
+  { pattern: 'Unexpected token', solution: 'Syntax-Fehler: Prüfe Klammern, Kommas und JSX-Tags', occurrences: 0, lastSeen: new Date() },
+  { pattern: 'not assignable to type', solution: 'TypeScript-Typ korrigieren oder Type-Assertion verwenden', occurrences: 0, lastSeen: new Date() },
+  { pattern: 'Module not found', solution: 'Dependency installieren oder Import-Pfad korrigieren', occurrences: 0, lastSeen: new Date() },
+  { pattern: 'Each child in a list should have a unique "key"', solution: 'key={uniqueId} zu List-Items hinzufügen', occurrences: 0, lastSeen: new Date() },
+  { pattern: 'Too many re-renders', solution: 'State-Update in useEffect verschieben oder Dependency-Array prüfen', occurrences: 0, lastSeen: new Date() },
+]
+
+function learnFromError(errorMessage: string): string | null {
+  // Suche nach bekanntem Fehler-Pattern
+  for (const learned of errorLearningStore) {
+    if (errorMessage.toLowerCase().includes(learned.pattern.toLowerCase())) {
+      learned.occurrences++
+      learned.lastSeen = new Date()
+      return learned.solution
+    }
+  }
+  return null
+}
+
+function addLearnedError(pattern: string, solution: string) {
+  const existing = errorLearningStore.find(e => e.pattern === pattern)
+  if (existing) {
+    existing.solution = solution
+    existing.occurrences++
+    existing.lastSeen = new Date()
+  } else {
+    errorLearningStore.push({ pattern, solution, occurrences: 1, lastSeen: new Date() })
+  }
+}
+
+// ============================================
+// MULTI-PASS GENERATION: Generiert → Validiert → Korrigiert
+// ============================================
+
+interface MultiPassResult {
+  files: { path: string; content: string }[]
+  passes: number
+  validationResults: {
+    imports: ImportValidation
+    completeness: CompletenessCheck
+  }
+  wasAutoFixed: boolean
+}
+
+function runMultiPassValidation(
+  files: { path: string; content: string }[]
+): MultiPassResult {
+  let currentFiles = [...files]
+  let passes = 0
+  const maxPasses = 3
+  let wasAutoFixed = false
+  
+  while (passes < maxPasses) {
+    passes++
+    
+    // Pass 1: Import Validation
+    const importValidation = validateAndFixImports(currentFiles)
+    if (!importValidation.isValid && importValidation.fixedFiles.length > 0) {
+      // Merge fixed files
+      for (const fixed of importValidation.fixedFiles) {
+        const idx = currentFiles.findIndex(f => f.path === fixed.path)
+        if (idx !== -1) {
+          currentFiles[idx] = fixed
+        }
+      }
+      wasAutoFixed = true
+    }
+    
+    // Pass 2: Completeness Check
+    const completenessCheck = checkCodeCompleteness(currentFiles)
+    
+    // Wenn alles OK, breche ab
+    if (importValidation.isValid && completenessCheck.isComplete) {
+      return {
+        files: currentFiles,
+        passes,
+        validationResults: {
+          imports: importValidation,
+          completeness: completenessCheck
+        },
+        wasAutoFixed
+      }
+    }
+  }
+  
+  // Finale Ergebnisse nach max passes
+  const finalImportValidation = validateAndFixImports(currentFiles)
+  const finalCompletenessCheck = checkCodeCompleteness(currentFiles)
+  
+  return {
+    files: currentFiles,
+    passes,
+    validationResults: {
+      imports: finalImportValidation,
+      completeness: finalCompletenessCheck
+    },
+    wasAutoFixed
+  }
+}
+
+// ============================================
+// DESIGN-TOKEN SYSTEM: Konsistente Styles
+// ============================================
+
+const designTokens = {
+  colors: {
+    primary: '#3b82f6',
+    secondary: '#6366f1',
+    success: '#22c55e',
+    warning: '#f59e0b',
+    error: '#ef4444',
+    background: '#09090b',
+    surface: '#18181b',
+    border: '#27272a',
+    text: '#fafafa',
+    textMuted: '#a1a1aa',
+  },
+  spacing: {
+    xs: '4px',
+    sm: '8px',
+    md: '16px',
+    lg: '24px',
+    xl: '32px',
+  },
+  borderRadius: {
+    sm: '6px',
+    md: '12px',
+    lg: '16px',
+    full: '9999px',
+  },
+  shadows: {
+    sm: '0 1px 2px rgba(0,0,0,0.3)',
+    md: '0 4px 6px rgba(0,0,0,0.4)',
+    lg: '0 10px 15px rgba(0,0,0,0.5)',
+    glow: '0 0 20px rgba(59,130,246,0.3)',
+  },
+  transitions: {
+    fast: '150ms ease',
+    normal: '200ms ease',
+    slow: '300ms ease',
+  }
+}
+
+function generateDesignTokensCSS(): string {
+  return `:root {
+  /* Colors */
+  --color-primary: ${designTokens.colors.primary};
+  --color-secondary: ${designTokens.colors.secondary};
+  --color-success: ${designTokens.colors.success};
+  --color-warning: ${designTokens.colors.warning};
+  --color-error: ${designTokens.colors.error};
+  --color-background: ${designTokens.colors.background};
+  --color-surface: ${designTokens.colors.surface};
+  --color-border: ${designTokens.colors.border};
+  --color-text: ${designTokens.colors.text};
+  --color-text-muted: ${designTokens.colors.textMuted};
+  
+  /* Spacing */
+  --spacing-xs: ${designTokens.spacing.xs};
+  --spacing-sm: ${designTokens.spacing.sm};
+  --spacing-md: ${designTokens.spacing.md};
+  --spacing-lg: ${designTokens.spacing.lg};
+  --spacing-xl: ${designTokens.spacing.xl};
+  
+  /* Border Radius */
+  --radius-sm: ${designTokens.borderRadius.sm};
+  --radius-md: ${designTokens.borderRadius.md};
+  --radius-lg: ${designTokens.borderRadius.lg};
+  --radius-full: ${designTokens.borderRadius.full};
+  
+  /* Shadows */
+  --shadow-sm: ${designTokens.shadows.sm};
+  --shadow-md: ${designTokens.shadows.md};
+  --shadow-lg: ${designTokens.shadows.lg};
+  --shadow-glow: ${designTokens.shadows.glow};
+  
+  /* Transitions */
+  --transition-fast: ${designTokens.transitions.fast};
+  --transition-normal: ${designTokens.transitions.normal};
+  --transition-slow: ${designTokens.transitions.slow};
+}`
+}
+
 // Intelligente Code-Completion Vorschläge
 interface CompletionSuggestion {
   trigger: string
@@ -7561,6 +7922,31 @@ Gib ALLE Dateien (auch die neuen) vollständig aus!`
           }
         } catch (correctionError) {
           console.warn(`[Agent Executor] Auto-Korrektur fehlgeschlagen:`, correctionError)
+        }
+      }
+      
+      // MULTI-PASS VALIDATION: Import-Validator + Completeness-Check
+      if (agentType === "coder" && files.length > 0) {
+        console.log(`[Agent Executor] Starte Multi-Pass Validation...`)
+        const multiPassResult = runMultiPassValidation(files)
+        
+        if (multiPassResult.wasAutoFixed) {
+          console.log(`[Agent Executor] Multi-Pass: ${multiPassResult.passes} Durchläufe, Auto-Fix angewendet`)
+          // Aktualisiere files mit den korrigierten
+          files.length = 0
+          files.push(...multiPassResult.files.map(f => ({
+            path: f.path,
+            content: f.content,
+            language: f.path.endsWith('.tsx') ? 'typescript' : f.path.endsWith('.css') ? 'css' : 'typescript'
+          })))
+        }
+        
+        // Log Validation Results
+        if (!multiPassResult.validationResults.imports.isValid) {
+          console.log(`[Agent Executor] Import-Probleme: ${multiPassResult.validationResults.imports.missingImports.length} Dateien mit fehlenden Imports`)
+        }
+        if (!multiPassResult.validationResults.completeness.isComplete) {
+          console.log(`[Agent Executor] Completeness-Probleme: ${multiPassResult.validationResults.completeness.issues.length} Issues`)
         }
       }
       
