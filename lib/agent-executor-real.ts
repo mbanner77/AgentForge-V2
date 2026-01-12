@@ -1641,6 +1641,349 @@ function performHealthCheck(files: { path: string; content: string }[]): HealthC
   return { overall, score, checks }
 }
 
+// Erweiterte Prompt-Intelligenz - Interpretiert User-Anfragen besser
+interface InterpretedRequest {
+  type: 'create' | 'extend' | 'fix' | 'refactor' | 'style' | 'feature' | 'question'
+  confidence: number
+  suggestedActions: string[]
+  clarificationNeeded?: string
+  detectedEntities: string[]
+}
+
+function interpretUserRequest(request: string, existingFiles: { path: string; content: string }[]): InterpretedRequest {
+  const lower = request.toLowerCase()
+  const hasFiles = existingFiles.length > 0
+  
+  // Erkenne Request-Typ
+  let type: InterpretedRequest['type'] = 'create'
+  let confidence = 0.7
+  
+  // Fix/Error Keywords
+  if (lower.match(/fehler|error|bug|fix|korrigier|beheb|funktioniert nicht|geht nicht|broken/)) {
+    type = 'fix'
+    confidence = 0.9
+  }
+  // Extend/Add Keywords
+  else if (lower.match(/füge.*hinzu|add|erweitere|ergänze|hinzufügen|neue.*funktion|implementiere/)) {
+    type = 'extend'
+    confidence = 0.85
+  }
+  // Style/Design Keywords
+  else if (lower.match(/design|style|aussehen|schöner|modern|ui|ux|farbe|layout/)) {
+    type = 'style'
+    confidence = 0.85
+  }
+  // Refactor Keywords
+  else if (lower.match(/refactor|aufräumen|verbessern|optimier|clean|struktur/)) {
+    type = 'refactor'
+    confidence = 0.8
+  }
+  // Question Keywords
+  else if (lower.match(/wie|warum|was|kannst du|ist es möglich|erklär/)) {
+    type = 'question'
+    confidence = 0.75
+  }
+  // Feature Keywords
+  else if (lower.match(/feature|funktion|möglichkeit|option/)) {
+    type = 'feature'
+    confidence = 0.8
+  }
+  // Create wenn keine Files existieren
+  else if (!hasFiles) {
+    type = 'create'
+    confidence = 0.9
+  }
+  
+  // Erkenne Entities (Komponenten, Features, etc.)
+  const detectedEntities: string[] = []
+  
+  // UI-Komponenten
+  const uiPatterns = [
+    'button', 'form', 'input', 'modal', 'dialog', 'sidebar', 'navbar', 'header', 'footer',
+    'card', 'list', 'table', 'grid', 'calendar', 'chart', 'graph', 'dashboard',
+    'menu', 'dropdown', 'tabs', 'accordion', 'carousel', 'slider', 'pagination'
+  ]
+  for (const pattern of uiPatterns) {
+    if (lower.includes(pattern)) detectedEntities.push(pattern)
+  }
+  
+  // Features
+  const featurePatterns = [
+    'suche', 'search', 'filter', 'sort', 'login', 'auth', 'upload', 'download',
+    'dark mode', 'theme', 'notification', 'toast', 'drag', 'drop', 'export', 'import'
+  ]
+  for (const pattern of featurePatterns) {
+    if (lower.includes(pattern)) detectedEntities.push(pattern)
+  }
+  
+  // Generiere Vorschläge basierend auf Typ
+  const suggestedActions: string[] = []
+  
+  switch (type) {
+    case 'fix':
+      suggestedActions.push('Fehler analysieren und Ursache identifizieren')
+      suggestedActions.push('Minimale Änderung zur Behebung')
+      suggestedActions.push('Alle betroffenen Dateien vollständig ausgeben')
+      break
+    case 'extend':
+      suggestedActions.push('Bestehenden Code analysieren')
+      suggestedActions.push('Neue Komponente/Funktion hinzufügen')
+      suggestedActions.push('Integration in bestehende Struktur')
+      break
+    case 'style':
+      suggestedActions.push('Premium Design System anwenden')
+      suggestedActions.push('Konsistente Farben und Abstände')
+      suggestedActions.push('Hover/Active States hinzufügen')
+      break
+    case 'create':
+      suggestedActions.push('Projektstruktur planen')
+      suggestedActions.push('Alle Komponenten erstellen')
+      suggestedActions.push('Premium Design von Anfang an')
+      break
+  }
+  
+  // Prüfe ob Klärung nötig ist
+  let clarificationNeeded: string | undefined
+  if (confidence < 0.7) {
+    clarificationNeeded = 'Bitte präzisiere deine Anfrage'
+  }
+  if (type === 'extend' && detectedEntities.length === 0) {
+    clarificationNeeded = 'Was genau soll hinzugefügt werden?'
+  }
+  
+  return { type, confidence, suggestedActions, clarificationNeeded, detectedEntities }
+}
+
+// Automatische Code-Snippets für häufige Patterns
+interface CodeSnippet {
+  name: string
+  description: string
+  code: string
+  imports: string[]
+}
+
+function getCodeSnippetsForPattern(pattern: string): CodeSnippet[] {
+  const snippets: Record<string, CodeSnippet[]> = {
+    'search': [{
+      name: 'SearchInput mit Debounce',
+      description: 'Suchfeld mit 300ms Debounce',
+      code: `const [searchTerm, setSearchTerm] = useState('')
+const [debouncedTerm, setDebouncedTerm] = useState('')
+
+useEffect(() => {
+  const timer = setTimeout(() => setDebouncedTerm(searchTerm), 300)
+  return () => clearTimeout(timer)
+}, [searchTerm])
+
+const filteredItems = items.filter(item => 
+  item.name.toLowerCase().includes(debouncedTerm.toLowerCase())
+)`,
+      imports: ['useState', 'useEffect']
+    }],
+    'modal': [{
+      name: 'Modal Component',
+      description: 'Wiederverwendbares Modal',
+      code: `function Modal({ isOpen, onClose, title, children }) {
+  if (!isOpen) return null
+  
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+      <div className="relative bg-zinc-900 rounded-2xl p-6 max-w-md w-full mx-4 border border-zinc-800">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-semibold">{title}</h2>
+          <button onClick={onClose} className="text-zinc-400 hover:text-white">✕</button>
+        </div>
+        {children}
+      </div>
+    </div>
+  )
+}`,
+      imports: []
+    }],
+    'toast': [{
+      name: 'Toast Notification',
+      description: 'Einfache Toast-Benachrichtigung',
+      code: `const [toasts, setToasts] = useState([])
+
+const showToast = (message, type = 'info') => {
+  const id = Date.now()
+  setToasts(prev => [...prev, { id, message, type }])
+  setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3000)
+}
+
+// In JSX:
+<div className="fixed bottom-4 right-4 space-y-2">
+  {toasts.map(toast => (
+    <div key={toast.id} className={\`px-4 py-3 rounded-xl \${
+      toast.type === 'success' ? 'bg-emerald-500/20 text-emerald-400' :
+      toast.type === 'error' ? 'bg-red-500/20 text-red-400' :
+      'bg-blue-500/20 text-blue-400'
+    }\`}>{toast.message}</div>
+  ))}
+</div>`,
+      imports: ['useState']
+    }],
+    'loading': [{
+      name: 'Loading Skeleton',
+      description: 'Animierte Skeleton-Loader',
+      code: `function Skeleton({ className }) {
+  return (
+    <div className={\`animate-pulse bg-zinc-800 rounded \${className}\`} />
+  )
+}
+
+// Verwendung:
+{isLoading ? (
+  <div className="space-y-3">
+    <Skeleton className="h-4 w-3/4" />
+    <Skeleton className="h-4 w-1/2" />
+    <Skeleton className="h-20 w-full" />
+  </div>
+) : (
+  <ActualContent />
+)}`,
+      imports: []
+    }],
+    'form': [{
+      name: 'Form mit Validierung',
+      description: 'Kontrolliertes Formular',
+      code: `const [formData, setFormData] = useState({ name: '', email: '' })
+const [errors, setErrors] = useState({})
+
+const validate = () => {
+  const newErrors = {}
+  if (!formData.name) newErrors.name = 'Name ist erforderlich'
+  if (!formData.email) newErrors.email = 'Email ist erforderlich'
+  else if (!/\\S+@\\S+\\.\\S+/.test(formData.email)) newErrors.email = 'Email ungültig'
+  setErrors(newErrors)
+  return Object.keys(newErrors).length === 0
+}
+
+const handleSubmit = (e) => {
+  e.preventDefault()
+  if (validate()) {
+    // Submit logic
+  }
+}`,
+      imports: ['useState']
+    }],
+    'pagination': [{
+      name: 'Pagination',
+      description: 'Einfache Seiten-Navigation',
+      code: `const [currentPage, setCurrentPage] = useState(1)
+const itemsPerPage = 10
+
+const totalPages = Math.ceil(items.length / itemsPerPage)
+const paginatedItems = items.slice(
+  (currentPage - 1) * itemsPerPage,
+  currentPage * itemsPerPage
+)
+
+// In JSX:
+<div className="flex gap-2 justify-center mt-6">
+  <button 
+    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+    disabled={currentPage === 1}
+    className="px-3 py-1 rounded bg-zinc-800 disabled:opacity-50"
+  >←</button>
+  <span className="px-3 py-1">{currentPage} / {totalPages}</span>
+  <button
+    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+    disabled={currentPage === totalPages}
+    className="px-3 py-1 rounded bg-zinc-800 disabled:opacity-50"
+  >→</button>
+</div>`,
+      imports: ['useState']
+    }],
+    'darkmode': [{
+      name: 'Dark Mode Toggle',
+      description: 'Theme Switcher',
+      code: `const [isDark, setIsDark] = useState(true)
+
+useEffect(() => {
+  document.documentElement.classList.toggle('dark', isDark)
+  localStorage.setItem('theme', isDark ? 'dark' : 'light')
+}, [isDark])
+
+// Button:
+<button 
+  onClick={() => setIsDark(!isDark)}
+  className="p-2 rounded-lg bg-zinc-800 hover:bg-zinc-700"
+>
+  {isDark ? '☀️' : '🌙'}
+</button>`,
+      imports: ['useState', 'useEffect']
+    }]
+  }
+  
+  return snippets[pattern] || []
+}
+
+// Smart State Management Empfehlungen
+interface StateRecommendation {
+  current: string
+  recommendation: string
+  reason: string
+  codeExample?: string
+}
+
+function analyzeStateManagement(files: { path: string; content: string }[]): StateRecommendation[] {
+  const recommendations: StateRecommendation[] = []
+  const allContent = files.map(f => f.content).join('\n')
+  
+  const useStateCount = (allContent.match(/useState/g) || []).length
+  const useContextCount = (allContent.match(/useContext/g) || []).length
+  const useReducerCount = (allContent.match(/useReducer/g) || []).length
+  const zustandCount = (allContent.match(/create\(|useStore/g) || []).length
+  
+  // Zu viele useState → useReducer empfehlen
+  if (useStateCount > 8 && useReducerCount === 0) {
+    recommendations.push({
+      current: `${useStateCount} useState Aufrufe`,
+      recommendation: 'useReducer für komplexen State',
+      reason: 'Zentralisiert State-Logik und macht Updates vorhersehbarer',
+      codeExample: `const [state, dispatch] = useReducer(reducer, initialState)
+// dispatch({ type: 'ADD_ITEM', payload: item })`
+    })
+  }
+  
+  // Prop Drilling → Context empfehlen
+  const propsDepth = (allContent.match(/props\./g) || []).length
+  if (propsDepth > 15 && useContextCount === 0) {
+    recommendations.push({
+      current: 'Props werden durchgereicht',
+      recommendation: 'React Context für globalen State',
+      reason: 'Vermeidet Prop Drilling durch Komponenten-Hierarchie'
+    })
+  }
+  
+  // Viel State + Context → Zustand empfehlen
+  if (useStateCount > 12 && useContextCount > 0 && zustandCount === 0) {
+    recommendations.push({
+      current: 'Viel lokaler State + Context',
+      recommendation: 'Zustand für State Management',
+      reason: 'Einfacher als Redux, performanter als Context bei häufigen Updates',
+      codeExample: `const useStore = create((set) => ({
+  items: [],
+  addItem: (item) => set((state) => ({ items: [...state.items, item] }))
+}))`
+    })
+  }
+  
+  // Async State ohne React Query
+  const fetchCount = (allContent.match(/fetch\(|axios/g) || []).length
+  if (fetchCount > 3 && !allContent.includes('useQuery')) {
+    recommendations.push({
+      current: `${fetchCount} API-Aufrufe`,
+      recommendation: 'Custom Hook für Data Fetching',
+      reason: 'Kapselt Loading, Error und Caching-Logik'
+    })
+  }
+  
+  return recommendations.slice(0, 3)
+}
+
 // Code Complexity Score - Bewertet die Komplexität des Codes
 function calculateComplexityScore(files: { path: string; content: string }[]): { score: number; level: string; details: string[] } {
   let complexity = 0
