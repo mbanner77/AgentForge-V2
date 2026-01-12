@@ -3436,6 +3436,117 @@ function getDesignTemplateForComponent(componentType: string): string | undefine
   return componentDesignTemplates[componentType.toLowerCase()]
 }
 
+// ============================================
+// PARTIAL EDITS: Nur geänderte Dateien neu generieren
+// ============================================
+
+interface FileChange {
+  path: string
+  type: 'create' | 'modify' | 'delete'
+  reason: string
+}
+
+// Analysiere welche Dateien basierend auf dem Request geändert werden müssen
+function analyzeRequiredChanges(
+  userRequest: string, 
+  existingFiles: { path: string; content: string }[]
+): FileChange[] {
+  const changes: FileChange[] = []
+  const requestLower = userRequest.toLowerCase()
+  
+  // Keywords für verschiedene Änderungsarten
+  const createKeywords = ['erstelle', 'create', 'add', 'füge hinzu', 'neue', 'new', 'baue', 'build']
+  const modifyKeywords = ['ändere', 'modify', 'update', 'fix', 'korrigiere', 'verbessere', 'improve', 'anpasse']
+  const deleteKeywords = ['lösche', 'delete', 'entferne', 'remove']
+  
+  const isCreate = createKeywords.some(k => requestLower.includes(k))
+  const isModify = modifyKeywords.some(k => requestLower.includes(k))
+  const isDelete = deleteKeywords.some(k => requestLower.includes(k))
+  
+  // Erkenne erwähnte Komponenten/Dateien im Request
+  const mentionedComponents: string[] = []
+  const componentPatterns = [
+    /(\w+)[\s-]?komponente/gi,
+    /(\w+)[\s-]?component/gi,
+    /(\w+)\.tsx/gi,
+    /in\s+(\w+)/gi,
+  ]
+  
+  for (const pattern of componentPatterns) {
+    let match
+    while ((match = pattern.exec(userRequest)) !== null) {
+      mentionedComponents.push(match[1])
+    }
+  }
+  
+  // Wenn spezifische Komponenten erwähnt werden
+  if (mentionedComponents.length > 0) {
+    for (const comp of mentionedComponents) {
+      const existingFile = existingFiles.find(f => 
+        f.path.toLowerCase().includes(comp.toLowerCase())
+      )
+      
+      if (existingFile) {
+        if (isDelete) {
+          changes.push({ path: existingFile.path, type: 'delete', reason: `${comp} soll entfernt werden` })
+        } else {
+          changes.push({ path: existingFile.path, type: 'modify', reason: `${comp} soll geändert werden` })
+        }
+      } else if (isCreate) {
+        changes.push({ path: `components/${comp}.tsx`, type: 'create', reason: `${comp} soll erstellt werden` })
+      }
+    }
+  }
+  
+  // Wenn keine spezifischen Komponenten, aber generelle Änderung
+  if (changes.length === 0 && isModify) {
+    // Finde die Hauptdatei (page.tsx oder App.tsx)
+    const mainFile = existingFiles.find(f => 
+      f.path.includes('page.tsx') || f.path.includes('App.tsx')
+    )
+    if (mainFile) {
+      changes.push({ path: mainFile.path, type: 'modify', reason: 'Hauptkomponente anpassen' })
+    }
+  }
+  
+  return changes
+}
+
+// Generiere Partial-Edit Prompt für nur geänderte Dateien
+function generatePartialEditPrompt(
+  changes: FileChange[],
+  existingFiles: { path: string; content: string }[]
+): string {
+  if (changes.length === 0) return ''
+  
+  const fileContexts = changes
+    .filter(c => c.type !== 'create')
+    .map(c => {
+      const file = existingFiles.find(f => f.path === c.path)
+      if (!file) return ''
+      return `### ${c.path} (${c.type}: ${c.reason})
+\`\`\`typescript
+${file.content}
+\`\`\``
+    })
+    .filter(Boolean)
+    .join('\n\n')
+
+  return `
+## 🎯 PARTIAL EDIT MODE - Nur diese Dateien ändern:
+
+${changes.map(c => `- **${c.path}** → ${c.type.toUpperCase()}: ${c.reason}`).join('\n')}
+
+${fileContexts}
+
+## WICHTIG:
+1. Gib NUR die geänderten Dateien aus
+2. Behalte alle anderen Dateien unverändert
+3. Gib bei Modifikationen den VOLLSTÄNDIGEN neuen Code der Datei aus
+4. Bei DELETE: Gib die Datei NICHT aus
+`
+}
+
 // App-Typ Erkennung für Komponenten-Bibliothek
 function detectAppType(userRequest: string, files: { path: string; content: string }[]): string | null {
   const allContent = (userRequest + ' ' + files.map(f => f.content).join(' ')).toLowerCase()
@@ -6977,9 +7088,24 @@ export function useAgentExecutor() {
           droppedNote = `\n\n📁 **Weitere Dateien (nicht im Kontext):** ${droppedFiles.join(', ')}`
         }
         
+        // PARTIAL EDITS: Analysiere welche Dateien geändert werden müssen
+        const requiredChanges = analyzeRequiredChanges(userRequest, existingFiles)
+        const partialEditPrompt = requiredChanges.length > 0 
+          ? generatePartialEditPrompt(requiredChanges, existingFiles)
+          : ''
+        
+        const partialEditInfo = requiredChanges.length > 0
+          ? `\n\n## 🎯 PARTIAL EDIT ERKANNT:
+Nur ${requiredChanges.length} Datei(en) müssen geändert werden:
+${requiredChanges.map(c => `- ${c.path} (${c.type})`).join('\n')}
+`
+          : ''
+        
         filesContext = `\n\n## ⚠️ ITERATIONS-MODUS AKTIV - BESTEHENDE DATEIEN (${existingFiles.length} Dateien, ${Math.round(totalChars / 1000)}k Zeichen):
-${appStateContext}
+${appStateContext}${partialEditInfo}
 Dies ist eine Folge-Anfrage zu einem bestehenden Projekt. Analysiere den bestehenden Code sorgfältig!
+
+${partialEditPrompt}
 
 ${fileContexts.join("\n\n")}${droppedNote}
 
@@ -6987,7 +7113,7 @@ ${fileContexts.join("\n\n")}${droppedNote}
 1. Erkenne ob es ein BUGFIX, FEATURE oder ANPASSUNG ist
 2. Analysiere welche Teile des Codes betroffen sind
 3. Behalte ALLE funktionierenden Teile bei
-4. Gib bei Änderungen den VOLLSTÄNDIGEN aktualisierten Code aus
+4. Gib NUR die geänderten Dateien aus (Partial Edit Mode)
 5. Vergiss keine bestehenden Imports, States oder Handler`
       }
 

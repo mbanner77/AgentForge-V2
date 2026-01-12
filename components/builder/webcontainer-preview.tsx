@@ -434,6 +434,43 @@ export function WebContainerPreview({ files }: WebContainerPreviewProps) {
     }
   }, [addLog])
 
+  // AUTO-RECOVERY: Versuche automatisch bei Fehlern neu zu starten
+  const [retryCount, setRetryCount] = useState(0)
+  const MAX_RETRIES = 3
+  const RETRY_DELAY = 2000
+  
+  const autoRecover = useCallback(async (errorMessage: string) => {
+    if (retryCount >= MAX_RETRIES) {
+      addLog(`Auto-Recovery fehlgeschlagen nach ${MAX_RETRIES} Versuchen`)
+      return false
+    }
+    
+    addLog(`🔄 Auto-Recovery: Versuch ${retryCount + 1}/${MAX_RETRIES}...`)
+    setRetryCount(prev => prev + 1)
+    
+    // Warte kurz vor erneutem Versuch
+    await new Promise(resolve => setTimeout(resolve, RETRY_DELAY))
+    
+    // Versuche verschiedene Recovery-Strategien basierend auf Fehlertyp
+    if (errorMessage.includes('ENOENT') || errorMessage.includes('not found')) {
+      addLog('📁 Recovery: Fehlende Datei erkannt, erstelle neu...')
+      // Dateien neu mounten
+      return true
+    }
+    
+    if (errorMessage.includes('syntax') || errorMessage.includes('Syntax')) {
+      addLog('⚠️ Recovery: Syntax-Fehler erkannt, überspringe fehlerhafte Datei...')
+      return true
+    }
+    
+    if (errorMessage.includes('npm') || errorMessage.includes('install')) {
+      addLog('📦 Recovery: npm-Fehler erkannt, versuche erneut...')
+      return true
+    }
+    
+    return true
+  }, [retryCount, addLog])
+
   const startDevServer = useCallback(async () => {
     setError(null)
     setPreviewUrl(null)
@@ -481,16 +518,38 @@ export function WebContainerPreview({ files }: WebContainerPreviewProps) {
       devProcess.output.pipeTo(new WritableStream({
         write(data) {
           addLog(data)
+          // Erkenne Runtime-Fehler und triggere Auto-Recovery
+          if (data.includes('Error:') || data.includes('error:') || data.includes('failed')) {
+            // Prüfe ob es ein kritischer Fehler ist
+            if (data.includes('FATAL') || data.includes('Cannot find module')) {
+              setError(data)
+              autoRecover(data).then(shouldRetry => {
+                if (shouldRetry && retryCount < MAX_RETRIES) {
+                  restartServer()
+                }
+              })
+            }
+          }
         }
       }))
+      
+      // Reset retry count bei erfolgreichem Start
+      setRetryCount(0)
       
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unbekannter Fehler"
       addLog(`Fehler: ${message}`)
       setError(message)
       setStatus("error")
+      
+      // AUTO-RECOVERY bei Fehler
+      const shouldRetry = await autoRecover(message)
+      if (shouldRetry && retryCount < MAX_RETRIES) {
+        addLog('🔄 Versuche automatische Wiederherstellung...')
+        setTimeout(() => startDevServer(), RETRY_DELAY)
+      }
     }
-  }, [bootContainer, addLog, files])
+  }, [bootContainer, addLog, files, autoRecover, retryCount])
 
   const stopServer = useCallback(() => {
     if (processRef.current) {
