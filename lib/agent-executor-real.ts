@@ -6874,12 +6874,64 @@ export function useAgentExecutor() {
       // Baue die Nachrichten für den Agent
       const existingFiles = getFiles()
       
-      // INTELLIGENTES CONTEXT WINDOW MANAGEMENT
-      // Priorisiert wichtige Dateien basierend auf dem Request
-      const MAX_CONTEXT_CHARS = 60000 // ~15k Tokens (erhöht für besseren Kontext)
+      // VERBESSERTES KONTEXT-MANAGEMENT
+      // Speichert App-State und priorisiert wichtige Dateien
+      const MAX_CONTEXT_CHARS = 80000 // ~20k Tokens (erhöht für besseren Kontext)
       let filesContext = ""
+      let appStateContext = ""
       
       if (existingFiles.length > 0) {
+        // APP-STATE ANALYSE für besseres Kontext-Verständnis
+        const appState = {
+          totalFiles: existingFiles.length,
+          components: [] as string[],
+          hooks: [] as string[],
+          contexts: [] as string[],
+          hasRouter: false,
+          hasState: false,
+          mainFeatures: [] as string[],
+        }
+        
+        for (const file of existingFiles) {
+          const content = file.content
+          // Erkenne Komponenten
+          const compMatch = content.match(/export\s+(?:function|const)\s+(\w+)/g)
+          if (compMatch) {
+            appState.components.push(...compMatch.map(m => m.replace(/export\s+(?:function|const)\s+/, '')))
+          }
+          // Erkenne Hooks
+          if (content.includes('useState')) appState.hasState = true
+          const hookMatch = content.match(/function\s+use\w+/g)
+          if (hookMatch) appState.hooks.push(...hookMatch.map(m => m.replace('function ', '')))
+          // Erkenne Contexts
+          if (content.includes('createContext')) {
+            const ctxMatch = content.match(/const\s+(\w+Context)/g)
+            if (ctxMatch) appState.contexts.push(...ctxMatch.map(m => m.replace('const ', '')))
+          }
+          // Erkenne Router
+          if (content.includes('useRouter') || content.includes('next/navigation')) appState.hasRouter = true
+          // Erkenne Features
+          if (content.toLowerCase().includes('calendar') || content.toLowerCase().includes('kalender')) appState.mainFeatures.push('Kalender')
+          if (content.toLowerCase().includes('contact') || content.toLowerCase().includes('crm')) appState.mainFeatures.push('CRM/Kontakte')
+          if (content.toLowerCase().includes('dashboard')) appState.mainFeatures.push('Dashboard')
+          if (content.toLowerCase().includes('chat') || content.toLowerCase().includes('message')) appState.mainFeatures.push('Chat')
+        }
+        
+        // Erstelle App-State Zusammenfassung
+        if (appState.components.length > 0 || appState.mainFeatures.length > 0) {
+          appStateContext = `
+## 📊 APP-STATE ZUSAMMENFASSUNG:
+- **Komponenten (${appState.components.length}):** ${appState.components.slice(0, 15).join(', ')}${appState.components.length > 15 ? '...' : ''}
+- **Custom Hooks:** ${appState.hooks.length > 0 ? appState.hooks.join(', ') : 'keine'}
+- **Contexts:** ${appState.contexts.length > 0 ? appState.contexts.join(', ') : 'keine'}
+- **Features:** ${[...new Set(appState.mainFeatures)].join(', ') || 'nicht erkannt'}
+- **Hat State:** ${appState.hasState ? 'Ja' : 'Nein'}
+- **Hat Router:** ${appState.hasRouter ? 'Ja' : 'Nein'}
+
+**WICHTIG:** Behalte alle bestehenden Komponenten, Hooks und State bei!
+`
+        }
+        
         // Nutze intelligente Priorisierung
         const { prioritizedFiles, totalChars, droppedFiles } = prioritizeFilesForContext(
           existingFiles.map(f => ({ path: f.path, content: f.content })),
@@ -6900,6 +6952,7 @@ export function useAgentExecutor() {
         }
         
         filesContext = `\n\n## ⚠️ ITERATIONS-MODUS AKTIV - BESTEHENDE DATEIEN (${existingFiles.length} Dateien, ${Math.round(totalChars / 1000)}k Zeichen):
+${appStateContext}
 Dies ist eine Folge-Anfrage zu einem bestehenden Projekt. Analysiere den bestehenden Code sorgfältig!
 
 ${fileContexts.join("\n\n")}${droppedNote}
@@ -7340,6 +7393,61 @@ Gib ALLE Dateien (auch die neuen) vollständig aus!`
           }
         } catch (correctionError) {
           console.warn(`[Agent Executor] Auto-Korrektur fehlgeschlagen:`, correctionError)
+        }
+      }
+      
+      // DESIGN-VALIDIERUNG MIT AUTO-FIX
+      if (agentType === "coder" && files.length > 0) {
+        const designValidation = validateDesign(files)
+        
+        if (!designValidation.isValid && designValidation.autoFixPrompt) {
+          console.log(`[Agent Executor] Design-Probleme erkannt (Score: ${designValidation.score}), starte Auto-Fix...`)
+          
+          const designFixPrompt = `
+## 🎨 DESIGN-QUALITÄTSPRÜFUNG FEHLGESCHLAGEN!
+
+${designValidation.autoFixPrompt}
+
+## ALLE VIOLATIONS:
+${designValidation.violations.map(v => `- [${v.type.toUpperCase()}] ${v.problem}\n  → FIX: ${v.fix}`).join('\n')}
+
+## ANWEISUNGEN:
+1. Korrigiere ALLE oben genannten Design-Probleme
+2. ENTFERNE Demo-Komponenten (Hello World, Counter, etc.) komplett
+3. Stelle sicher dass ALLE Elemente Inline-Styles haben
+4. Kalender MUSS grid grid-cols-7 verwenden
+5. Gib den VOLLSTÄNDIGEN korrigierten Code aus
+
+WICHTIG: Nur die angeforderten Features, KEINE Demo-Komponenten!`
+
+          try {
+            const designFixMessages = [
+              ...messages,
+              { role: "assistant" as const, content: response.content },
+              { role: "user" as const, content: designFixPrompt }
+            ]
+            
+            const designFixResponse = await sendChatRequest({
+              messages: designFixMessages,
+              model: config.model,
+              temperature: 0.1,
+              maxTokens: config.maxTokens,
+              apiKey,
+              provider,
+            })
+            
+            const fixedFiles = parseCodeFromResponse(designFixResponse.content)
+            const fixedDesignValidation = validateDesign(fixedFiles)
+            
+            if (fixedDesignValidation.score > designValidation.score) {
+              console.log(`[Agent Executor] Design Auto-Fix erfolgreich: Score ${designValidation.score} → ${fixedDesignValidation.score}`)
+              response = designFixResponse
+              files.length = 0
+              files.push(...fixedFiles)
+            }
+          } catch (designFixError) {
+            console.warn(`[Agent Executor] Design Auto-Fix fehlgeschlagen:`, designFixError)
+          }
         }
       }
       
