@@ -81,6 +81,134 @@ function extractImports(content: string): string[] {
   return imports
 }
 
+// Bekannte Package-Versionen (für WebContainer/Vite Template)
+const KNOWN_PACKAGE_VERSIONS: Record<string, string> = {
+  "react": "^18.2.0",
+  "react-dom": "^18.2.0",
+  "lucide-react": "^0.294.0",
+  "date-fns": "^2.30.0",
+  "recharts": "^2.10.0",
+  "react-chartjs-2": "^5.2.0",
+  "chart.js": "^4.4.0",
+  "framer-motion": "^10.16.0",
+  "zustand": "^4.4.0",
+  "clsx": "^2.0.0",
+  "class-variance-authority": "^0.7.0",
+  "tailwind-merge": "^2.0.0",
+  "react-hook-form": "^7.48.0",
+  "zod": "^3.22.0",
+  "@tanstack/react-query": "^5.8.0",
+}
+
+function getPackageNameFromImport(importPath: string): string {
+  if (importPath.startsWith("@")) {
+    const parts = importPath.split("/")
+    return parts.slice(0, 2).join("/")
+  }
+  return importPath.split("/")[0]
+}
+
+function extractExternalPackagesFromFiles(files: ProjectFile[]): string[] {
+  const packages = new Set<string>()
+  const importRegex = /import\s+(?:(?:\{[^}]*\}|\*\s+as\s+\w+|\w+)\s*,?\s*)*\s*from\s+["']([^"']+)["']/g
+  const requireRegex = /require\s*\(\s*["']([^"']+)["']\s*\)/g
+
+  for (const file of files) {
+    const fileName = file.path.split("/").pop() || ""
+    const hasAllowedExtension = ALLOWED_EXTENSIONS.some(ext => fileName.endsWith(ext))
+    if (!hasAllowedExtension) continue
+
+    const content = cleanCodeForVite(file.content)
+
+    for (const match of content.matchAll(importRegex)) {
+      const importPath = match[1]
+
+      // Ignore relative + internal aliases
+      if (importPath.startsWith(".") || importPath.startsWith("@/")) continue
+
+      // Ignore Next.js/runtime-specific imports that we strip/replace
+      if (importPath.startsWith("next/") || importPath.startsWith("next") || importPath.startsWith("next-auth")) continue
+
+      const pkg = getPackageNameFromImport(importPath)
+      if (pkg) packages.add(pkg)
+    }
+
+    for (const match of content.matchAll(requireRegex)) {
+      const importPath = match[1]
+      if (importPath.startsWith(".") || importPath.startsWith("@/")) continue
+      const pkg = getPackageNameFromImport(importPath)
+      if (pkg) packages.add(pkg)
+    }
+  }
+
+  // Peer deps / common companions
+  if (packages.has("react-chartjs-2")) {
+    packages.add("chart.js")
+  }
+
+  // Never add built-ins to dependencies
+  const ignore = new Set([
+    "fs",
+    "path",
+    "os",
+    "crypto",
+    "http",
+    "https",
+    "stream",
+    "util",
+    "events",
+    "buffer",
+    "url",
+    "assert",
+  ])
+  for (const i of ignore) packages.delete(i)
+
+  // These come from the template anyway
+  packages.delete("react")
+  packages.delete("react-dom")
+
+  return Array.from(packages)
+}
+
+function mergeTemplateDependencies(baseDeps: Record<string, string>, extraPackages: string[]): Record<string, string> {
+  const merged = { ...baseDeps }
+  for (const pkg of extraPackages) {
+    if (!merged[pkg]) {
+      merged[pkg] = KNOWN_PACKAGE_VERSIONS[pkg] || "latest"
+    }
+  }
+  return merged
+}
+
+function detectMissingModuleFromLog(logLine: string): string[] {
+  const missing: string[] = []
+  const patterns: RegExp[] = [
+    /Failed to resolve import\s+["']([^"']+)["']/i,
+    /Cannot find module\s+["']([^"']+)["']/i,
+    /Module not found: Can't resolve\s+["']([^"']+)["']/i,
+  ]
+
+  for (const re of patterns) {
+    const match = logLine.match(re)
+    if (match?.[1]) {
+      const importPath = match[1]
+      if (!importPath.startsWith(".") && !importPath.startsWith("@/")) {
+        missing.push(getPackageNameFromImport(importPath))
+      }
+    }
+  }
+
+  return Array.from(new Set(missing))
+}
+
+function stripAnsi(input: string): string {
+  return input.replace(
+    // eslint-disable-next-line no-control-regex
+    /\u001b\[[0-9;]*m/g,
+    ""
+  )
+}
+
 // Typ für WebContainer Dateibaum
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type FileTree = Record<string, any>
@@ -260,12 +388,15 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             build: "vite build",
             preview: "vite preview"
           },
-          dependencies: {
-            "react": "^18.2.0",
-            "react-dom": "^18.2.0",
-            "lucide-react": "^0.294.0",
-            "date-fns": "^2.30.0"
-          },
+          dependencies: mergeTemplateDependencies(
+            {
+              "react": "^18.2.0",
+              "react-dom": "^18.2.0",
+              "lucide-react": "^0.294.0",
+              "date-fns": "^2.30.0",
+            },
+            extractExternalPackagesFromFiles(files)
+          ),
           devDependencies: {
             "@types/react": "^18.2.0",
             "@types/react-dom": "^18.2.0",
@@ -375,6 +506,8 @@ export function WebContainerPreview({ files }: WebContainerPreviewProps) {
   const [error, setError] = useState<string | null>(null)
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const processRef = useRef<{ kill: () => void } | null>(null)
+  const attemptedInstallsRef = useRef<Set<string>>(new Set())
+  const installLockRef = useRef(false)
 
   const addLog = useCallback((message: string) => {
     setLogs(prev => [...prev.slice(-100), `[${new Date().toLocaleTimeString()}] ${message}`])
@@ -492,6 +625,11 @@ export function WebContainerPreview({ files }: WebContainerPreviewProps) {
       const projectFiles = createViteProject(files)
       await container.mount(projectFiles)
       addLog("Dateien gemountet")
+
+      const externalPkgs = extractExternalPackagesFromFiles(files)
+      if (externalPkgs.length > 0) {
+        addLog(`📦 Erkannte externe Packages: ${externalPkgs.join(", ")}`)
+      }
       
       // npm install
       addLog("Installiere Dependencies (npm install)...")
@@ -518,10 +656,69 @@ export function WebContainerPreview({ files }: WebContainerPreviewProps) {
       devProcess.output.pipeTo(new WritableStream({
         write(data) {
           addLog(data)
+
+          // Missing-module Auto-Fix (Vite)
+          const normalized = stripAnsi(data)
+          const missingPkgs = normalized
+            .split("\n")
+            .flatMap(line => detectMissingModuleFromLog(line))
+
+          if (missingPkgs.length > 0) {
+            let newPkgs = missingPkgs.filter(p => !attemptedInstallsRef.current.has(p))
+            // Peer deps / companions
+            if (newPkgs.includes("react-chartjs-2") && !newPkgs.includes("chart.js")) {
+              newPkgs = [...newPkgs, "chart.js"]
+            }
+            if (newPkgs.length > 0 && !installLockRef.current) {
+              installLockRef.current = true
+              newPkgs.forEach(p => attemptedInstallsRef.current.add(p))
+              setError(`Fehlende Dependencies erkannt: ${newPkgs.join(", ")}`)
+              addLog(`📦 Auto-Install: ${newPkgs.join(", ")}`)
+              ;(async () => {
+                try {
+                  // Stop dev server
+                  if (processRef.current) {
+                    processRef.current.kill()
+                    processRef.current = null
+                  }
+
+                  setStatus("installing")
+                  const installProcess = await container.spawn("npm", ["install", ...newPkgs])
+                  installProcess.output.pipeTo(new WritableStream({
+                    write(chunk) {
+                      addLog(chunk)
+                    }
+                  }))
+                  const exitCode = await installProcess.exit
+                  if (exitCode !== 0) {
+                    throw new Error(`npm install ${newPkgs.join(" ")} fehlgeschlagen (Code ${exitCode})`)
+                  }
+
+                  addLog("✅ Auto-Install abgeschlossen, starte Dev-Server neu...")
+                  setStatus("starting")
+                  restartServer()
+                } catch (e) {
+                  const msg = e instanceof Error ? e.message : "Auto-Install fehlgeschlagen"
+                  addLog(`❌ ${msg}`)
+                  setError(msg)
+                  setStatus("error")
+                } finally {
+                  installLockRef.current = false
+                }
+              })()
+              return
+            }
+          }
+
           // Erkenne Runtime-Fehler und triggere Auto-Recovery
           if (data.includes('Error:') || data.includes('error:') || data.includes('failed')) {
             // Prüfe ob es ein kritischer Fehler ist
-            if (data.includes('FATAL') || data.includes('Cannot find module')) {
+            if (
+              data.includes('FATAL') ||
+              data.includes('Cannot find module') ||
+              data.includes('Failed to resolve import') ||
+              data.includes("Module not found: Can't resolve")
+            ) {
               setError(data)
               autoRecover(data).then(shouldRetry => {
                 if (shouldRetry && retryCount < MAX_RETRIES) {
